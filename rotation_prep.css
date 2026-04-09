@@ -899,6 +899,7 @@ body::before{
   letter-spacing:2px;
 }
 .portal-desc{
+  display:none;
   margin-top:10px;
   font-size:.84rem;
   line-height:1.8;
@@ -1503,6 +1504,7 @@ body::before{
 }
 
 .portal-desc{
+  display:none;
   margin-top:10px;
   font-size:.85rem;
   line-height:1.8;
