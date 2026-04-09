@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().data.role == 'admin';
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['passwordResetRequired', 'updatedAt']) &&
+        request.resource.data.passwordResetRequired is bool &&
+        request.resource.data.updatedAt is string
+      );
+      allow delete: if false;
+    }
+
+    match /checkResponses/{responseId} {
+      allow read: if isAdmin()
+        || (signedIn() && responseId.matches('^' + request.auth.uid + '__.*$'))
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && responseId.matches('^' + request.auth.uid + '__.*$');
+      allow delete: if isAdmin();
+    }
+
+    match /portalContent/{docId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /questionIssues/{issueId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, update: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+  }
+}
