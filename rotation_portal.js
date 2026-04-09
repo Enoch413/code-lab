@@ -121,7 +121,7 @@ function hydratePortalCard(id, kicker, title, desc){
   const descNode = card.querySelector('.portal-desc')
   if(kickerNode) kickerNode.textContent = kicker
   if(titleNode) titleNode.textContent = title
-  if(descNode) descNode.textContent = desc
+  if(descNode) descNode.textContent = ''
 }
 
 function bindPortalEvents(){
@@ -897,11 +897,7 @@ function renderCheckScreen(){
     return entry.status === 'ended'
   }).length
   document.getElementById('check-class-name').textContent = activeClassName
-  document.getElementById('check-class-meta').textContent = isPortalSuperAdmin()
-    ? '최고 관리자 계정으로 선택한 반의 CHECK 세트를 확인합니다.'
-    : isPortalAdmin()
-    ? '관리자 계정으로 선택한 반의 CHECK 세트를 확인합니다.'
-    : '로그인한 반에 배정된 CHECK 세트만 표시됩니다.'
+  document.getElementById('check-class-meta').textContent = ''
   if(checkChangeClassBtn){
     const canChangeClass = visibleClassEntries.length > 1 && !(typeof window.isPortalStudentLockedClass === 'function' && window.isPortalStudentLockedClass())
     checkChangeClassBtn.classList.toggle('hidden', !canChangeClass)

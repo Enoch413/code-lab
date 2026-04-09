@@ -83,7 +83,7 @@ function renderClassSummary(){
 
   if(currentClass){
     document.getElementById('current-class-name').textContent = currentClass.name
-    document.getElementById('current-class-meta').textContent = visibleSets.length + '개의 학습 세트가 연결되어 있습니다.'
+    document.getElementById('current-class-meta').textContent = ''
   }else{
     document.getElementById('current-class-name').textContent = ''
     document.getElementById('current-class-meta').textContent = ''
