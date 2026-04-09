@@ -1,0 +1,5 @@
+loginId,name,studentId,classIds,initialPassword,role,adminScope,passwordResetRequired
+student01,홍길동,student01,class-1-gangseo-b,pass1234,student,assigned,true
+student02,김영희,student02,class-2-gangseo-a,pass1234,student,assigned,true
+teacher01,김선생,teacher01,class-1-gangseo-b|class-2-gangseo-a,pass1234,admin,assigned,true
+superadmin,최고 관리자,superadmin,class-1-gangseo-b|class-2-gangseo-a|class-1-seonbu|class-3-seonbu|class-1-gangseo-a|class-2-gangseo-b|class-1-danwon|class-2-danwon,fhaktj1619!,admin,all,true

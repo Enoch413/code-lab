@@ -1,0 +1,22 @@
+{
+  "updatedAt": "2026-04-08T18:10:00+09:00",
+  "classes": [
+    {
+      "id": "class-1-gangseo-b",
+      "name": "1강서B"
+    },
+    {
+      "id": "class-2-gangseo-a",
+      "name": "2강서A"
+    },
+    {
+      "id": "class-1-seonbu",
+      "name": "1선부"
+    },
+    {
+      "id": "class-3-seonbu",
+      "name": "3선부"
+    }
+  ],
+  "checkSets": []
+}

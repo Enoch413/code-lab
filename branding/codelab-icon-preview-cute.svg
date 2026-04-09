@@ -1,0 +1,54 @@
+<svg width="2048" height="2048" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="104" y1="96" x2="920" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCFDFC"/>
+      <stop offset="1" stop-color="#EEF7F3"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="154" y1="148" x2="862" y2="874" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FBF9"/>
+    </linearGradient>
+    <linearGradient id="letterC" x1="248" y1="252" x2="624" y2="740" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#198579"/>
+      <stop offset="1" stop-color="#0F655C"/>
+    </linearGradient>
+    <linearGradient id="letterL" x1="486" y1="310" x2="760" y2="710" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4AAEA2"/>
+      <stop offset="1" stop-color="#17756B"/>
+    </linearGradient>
+    <filter id="shadow" x="82" y="84" width="860" height="860" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="26"/>
+      <feGaussianBlur stdDeviation="30"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.05 0 0 0 0 0.28 0 0 0 0 0.24 0 0 0 0.12 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="248" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="114" y="112" width="796" height="796" rx="214" fill="url(#panel)"/>
+    <rect x="114" y="112" width="796" height="796" rx="214" stroke="#DBECE5" stroke-width="8"/>
+
+    <path
+      d="M690 276C657 240 611 222 555 222C417 222 302 343 302 514C302 685 417 806 555 806C607 806 652 790 685 760"
+      stroke="url(#letterC)"
+      stroke-width="86"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+
+    <path
+      d="M548 336V680C548 710 571 734 600 734H719"
+      stroke="url(#letterL)"
+      stroke-width="78"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+
+    <circle cx="738" cy="290" r="22" fill="#BEE7DE"/>
+    <circle cx="782" cy="332" r="12" fill="#8CCFC1"/>
+    <path d="M274 286L286 312L314 324L286 336L274 362L262 336L234 324L262 312L274 286Z" fill="#DCEFEA"/>
+  </g>
+</svg>
