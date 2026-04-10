@@ -8,12 +8,15 @@ const PORTAL_CONFIG = window.ROTATION_PORTAL_CONFIG || {}
 const PORTAL_CLASS_REFERENCE = [
   { id: 'class-1-gangseo-b', name: '1강서B' },
   { id: 'class-2-gangseo-a', name: '2강서A' },
+  { id: 'class-3-gangseo', name: '3강서' },
   { id: 'class-1-seonbu', name: '1선부' },
+  { id: 'class-2-seonbu', name: '2선부' },
   { id: 'class-3-seonbu', name: '3선부' },
   { id: 'class-1-gangseo-a', name: '1강서A' },
   { id: 'class-2-gangseo-b', name: '2강서B' },
   { id: 'class-1-danwon', name: '1단원' },
-  { id: 'class-2-danwon', name: '2단원' }
+  { id: 'class-2-danwon', name: '2단원' },
+  { id: 'class-3-danwon', name: '3단원' }
 ]
 
 const portalState = {
