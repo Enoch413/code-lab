@@ -131,6 +131,7 @@
       <div class="account-row"><span class="account-label">권한</span><strong class="account-value" id="account-role"></strong></div>
     </div>
     <div class="account-actions">
+      <button class="btn btn-ghost hidden" type="button" id="account-admin-btn">ADMIN</button>
       <button class="btn btn-blue" type="button" id="account-password-btn">비밀번호 변경</button>
     </div>
   </section>
@@ -381,9 +382,61 @@
   </div>
 </div>
 
+<div class="screen" id="admin-portal-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="admin-portal-back-btn">ADMIN</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="admin-portal-refresh-btn">새로고침</button>
+  </div>
+
+  <div class="hd"><h1>TOOLS</h1><span class="sub" id="admin-portal-subtitle"></span></div>
+
+  <section class="admin-portal-hero">
+    <div class="admin-portal-kicker">TOOLS HUB</div>
+    <div class="admin-portal-title" id="admin-portal-user-name">관리자</div>
+    <div class="admin-portal-tags">
+      <span class="admin-portal-tag" id="admin-portal-lab-summary">LAB 5종 관리</span>
+    </div>
+  </section>
+
+  <section class="group">
+    <div class="group-title">
+      <h3>LAB INDEX</h3>
+      <span class="group-count">5 LAB</span>
+    </div>
+    <div class="admin-portal-grid">
+      <button class="admin-portal-card is-live" type="button" id="admin-portal-word-btn">
+        <span class="admin-portal-card-kicker">LAB 01</span>
+        <strong class="admin-portal-card-title">WORD LAB</strong>
+        <span class="admin-portal-card-badge">LIVE</span>
+      </button>
+      <button class="admin-portal-card is-live" type="button" id="admin-portal-pdf-btn">
+        <span class="admin-portal-card-kicker">LAB 02</span>
+        <strong class="admin-portal-card-title">PDF LAB</strong>
+        <span class="admin-portal-card-badge">LIVE</span>
+      </button>
+      <button class="admin-portal-card is-live" type="button" id="admin-portal-rotation-btn">
+        <span class="admin-portal-card-kicker">LAB 03</span>
+        <strong class="admin-portal-card-title">ROTATION LAB</strong>
+        <span class="admin-portal-card-badge">LIVE</span>
+      </button>
+      <button class="admin-portal-card is-live" type="button" id="admin-portal-builder-btn">
+        <span class="admin-portal-card-kicker">LAB 04</span>
+        <strong class="admin-portal-card-title">BUILDER LAB</strong>
+        <span class="admin-portal-card-badge">LIVE</span>
+      </button>
+      <button class="admin-portal-card is-live" type="button" id="admin-portal-pinpoint-btn">
+        <span class="admin-portal-card-kicker">LAB 05</span>
+        <strong class="admin-portal-card-title">PINPOINT LAB</strong>
+        <span class="admin-portal-card-badge">LIVE</span>
+      </button>
+    </div>
+  </section>
+</div>
+
 <div class="screen" id="admin-screen">
   <div class="screen-nav">
     <button class="btn btn-ghost btn-sm" type="button" id="admin-back-btn">메인</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="admin-portal-home-btn">TOOLS</button>
     <button class="btn btn-ghost btn-sm" type="button" id="admin-refresh-btn">새로고침</button>
   </div>
 
@@ -401,6 +454,8 @@
     </div>
   </div>
   <div class="stats" id="admin-stats"></div>
+
+  <button class="admin-tools-launch" type="button" id="admin-tools-entry-btn">TOOLS</button>
 
   <section class="group">
     <div class="group-title">
