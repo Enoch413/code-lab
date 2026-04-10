@@ -6,12 +6,15 @@
 
 - `1강서B` -> `class-1-gangseo-b`
 - `2강서A` -> `class-2-gangseo-a`
+- `3강서` -> `class-3-gangseo`
 - `1선부` -> `class-1-seonbu`
+- `2선부` -> `class-2-seonbu`
 - `3선부` -> `class-3-seonbu`
 - `1강서A` -> `class-1-gangseo-a`
 - `2강서B` -> `class-2-gangseo-b`
 - `1단원` -> `class-1-danwon`
 - `2단원` -> `class-2-danwon`
+- `3단원` -> `class-3-danwon`
 
 ## CSV 예시
 
