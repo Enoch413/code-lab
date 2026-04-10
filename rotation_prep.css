@@ -1980,14 +1980,17 @@ body::before{
 #auth-screen .auth-shell{
   min-height:100vh;
   min-height:100dvh;
+  align-items:center;
   justify-content:center;
 }
 
 #auth-screen .logo{
   margin-bottom:20px;
+  text-align:center;
 }
 
 #auth-screen .auth-card{
+  width:min(100%,460px);
   max-width:460px;
   padding:26px 22px 22px;
 }
