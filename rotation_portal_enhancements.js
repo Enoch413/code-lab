@@ -21,6 +21,7 @@ const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
   'account-screen': { title: 'CODE LAB', sub: '회원정보' },
   'password-screen': { title: 'CODE LAB', sub: '비밀번호 변경' },
+  'admin-portal-screen': { title: 'TOOLS', sub: '허브' },
   'class-screen': { title: 'PREP', sub: '반 선택' },
   'class-auth-screen': { title: 'PREP', sub: '반 비밀번호' },
   'home-screen': { title: 'PREP', sub: '학습 세트' },
@@ -31,6 +32,17 @@ const CHROME_SCREEN_TITLES = {
   'check-set-screen': { title: 'CHECK', sub: '답안 제출' },
   'admin-screen': { title: 'ADMIN', sub: '관리' }
 }
+
+const ADMIN_PORTAL_LABS = {
+  'WORD LAB': 'https://enoch413.github.io/word-lab/',
+  'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
+  'ROTATION LAB': 'https://enoch413.github.io/rotatation-lab/',
+  'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
+  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
+}
+
+const ADMIN_PORTAL_LAB_COUNT = 5
+const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
 portalState.forcePasswordReset = false
 portalState.contentMeta = portalState.contentMeta || {}
@@ -88,6 +100,15 @@ function bindPortalEnhancementEvents(){
     closeAppDrawer()
     openPasswordScreen(false)
   })
+  bindClick('admin-portal-back-btn', openAdminPortal)
+  bindClick('admin-portal-refresh-btn', refreshPortalData)
+  bindClick('admin-portal-word-btn', function(){ openLabPlaceholder('WORD LAB') })
+  bindClick('admin-portal-pdf-btn', function(){ openLabPlaceholder('PDF LAB') })
+  bindClick('admin-portal-rotation-btn', function(){ openLabPlaceholder('ROTATION LAB') })
+  bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
+  bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
+  bindClick('admin-portal-home-btn', openToolsPortal)
+  bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('admin-upload-prep-btn', function(){
     const input = document.getElementById('admin-prep-upload-input')
     if(input) input.click()
@@ -227,6 +248,7 @@ function restoreAppRoute(route){
   if(route.screenId === 'portal-screen') return showPortalScreen()
   if(route.screenId === 'account-screen') return openAccountScreen()
   if(route.screenId === 'password-screen') return openPasswordScreen(!!route.force)
+  if(route.screenId === 'admin-portal-screen') return openToolsPortal()
   if(route.screenId === 'check-screen') return openCheckPortal()
   if(route.screenId === 'check-set-screen') return openCheckSetPortal(route.checkSetId, { preserveHistory: true })
   if(route.screenId === 'admin-screen') return openAdminPortal()
@@ -243,6 +265,7 @@ function restoreFallbackRoute(defaultScreenId){
     return
   }
   if(defaultScreenId === 'check-screen') return openCheckPortal()
+  if(defaultScreenId === 'admin-portal-screen') return openToolsPortal()
   if(defaultScreenId === 'admin-screen') return openAdminPortal()
   showPortalScreen()
 }
@@ -526,6 +549,40 @@ async function refreshCheckDataAndRender(){
   showToast('CHECK 데이터를 새로 불러왔습니다.', 'var(--green)')
 }
 
+function openLabPlaceholder(name){
+  const url = ADMIN_PORTAL_LABS[name]
+  if(!url){
+    showToast(name + ' 주소가 아직 연결되지 않았습니다.', 'var(--red)')
+    return
+  }
+  const opened = window.open(url, '_blank', 'noopener,noreferrer')
+  if(!opened) window.location.href = url
+}
+
+function renderAdminPortalScreen(){
+  const profile = portalState.currentProfile || {}
+  const name = profile.name || profile.loginId || profile.studentId || '관리자'
+
+  setElementTextSafe('admin-portal-subtitle', 'TOOLS HUB')
+  setElementTextSafe('admin-portal-user-name', name)
+  setElementTextSafe(
+    'admin-portal-lab-summary',
+    'LAB ' + ADMIN_PORTAL_CONNECTED_LABS + ' / ' + ADMIN_PORTAL_LAB_COUNT + ' 연결 완료'
+  )
+}
+
+async function openToolsPortal(){
+  if(!isPortalAdmin()){
+    showToast('관리자 계정만 TOOLS를 이용할 수 있습니다.', 'var(--red)')
+    return
+  }
+  await syncPrepContentAfterLogin(false)
+  await ensureCheckData(false)
+  updateAdminUploadStatus()
+  renderAdminPortalScreen()
+  activatePortalScreen('admin-portal-screen')
+}
+
 async function openAdminPortal(){
   if(!isPortalAdmin()){
     showToast('관리자 계정만 통계를 볼 수 있습니다.', 'var(--red)')
@@ -542,6 +599,9 @@ function refreshPortalData(){
   const screenId = getCurrentActiveScreenId()
   if(screenId === 'check-screen' || screenId === 'check-set-screen'){
     return refreshCheckDataAndRender()
+  }
+  if(screenId === 'admin-portal-screen'){
+    return openToolsPortal()
   }
   if(screenId === 'admin-screen'){
     return openAdminPortal()
@@ -560,6 +620,7 @@ function refreshPortalData(){
   return Promise.resolve(syncPrepContentAfterLogin(true)).then(function(){
     if(screenId === 'portal-screen') showPortalScreen()
     if(screenId === 'account-screen') openAccountScreen()
+    if(screenId === 'admin-portal-screen') openToolsPortal()
     showToast('최신 데이터를 확인했습니다.', 'var(--green)')
   })
 }

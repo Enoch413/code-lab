@@ -2006,6 +2006,7 @@ body::before{
 #portal-screen,
 #account-screen,
 #password-screen,
+#admin-portal-screen,
 #class-screen,
 #class-auth-screen,
 #home-screen,
@@ -2020,6 +2021,7 @@ body::before{
 
 #portal-screen > .screen-nav,
 #password-screen > .screen-nav,
+#admin-portal-screen > .screen-nav,
 #class-screen > .screen-nav,
 #class-auth-screen > .screen-nav,
 #home-screen > .screen-nav,
@@ -2455,9 +2457,240 @@ body::before{
   word-break:keep-all;
 }
 
+.admin-portal-hero{
+  position:relative;
+  margin-bottom:18px;
+  padding:24px 20px;
+  border-radius:24px;
+  border:1px solid rgba(24,51,45,.1);
+  background:
+    radial-gradient(circle at top left, rgba(158,229,214,.5), transparent 36%),
+    linear-gradient(135deg, rgba(11,94,84,.96), rgba(27,41,63,.94));
+  color:#f5fcf9;
+  box-shadow:0 18px 36px rgba(17,32,31,.14);
+  overflow:hidden;
+}
+
+.admin-portal-hero::after{
+  content:'';
+  position:absolute;
+  inset:auto -40px -50px auto;
+  width:180px;
+  height:180px;
+  border-radius:50%;
+  background:rgba(255,255,255,.08);
+  pointer-events:none;
+}
+
+.admin-portal-kicker{
+  font-size:.7rem;
+  font-weight:800;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:rgba(245,252,249,.72);
+}
+
+.admin-portal-title{
+  margin-top:8px;
+  font-family:'Lexend', 'Noto Sans KR', sans-serif;
+  font-size:1.7rem;
+  font-weight:700;
+  letter-spacing:-.04em;
+  line-height:1.1;
+}
+
+.admin-portal-copy{
+  margin-top:10px;
+  max-width:680px;
+  font-size:.84rem;
+  line-height:1.7;
+  color:rgba(245,252,249,.86);
+  word-break:keep-all;
+}
+
+.admin-portal-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:16px;
+}
+
+.admin-portal-tag{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.12);
+  color:#f5fcf9;
+  font-size:.72rem;
+  font-weight:700;
+}
+
+.admin-portal-grid{
+  display:grid;
+  grid-template-columns:repeat(1,minmax(0,1fr));
+  gap:12px;
+}
+
+.admin-portal-card{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  min-height:160px;
+  padding:18px;
+  border-radius:20px;
+  border:1px solid rgba(16,111,86,.14);
+  background:linear-gradient(180deg,rgba(249,255,252,.98),rgba(232,247,240,.96));
+  box-shadow:0 14px 30px rgba(17,72,59,.08);
+  text-align:left;
+  cursor:pointer;
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.admin-portal-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(16,111,86,.24);
+  box-shadow:0 18px 34px rgba(17,72,59,.14);
+}
+
+.admin-portal-card:active{
+  transform:translateY(0);
+}
+
+.admin-portal-card-kicker{
+  font-size:.68rem;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:#6a857b;
+}
+
+.admin-portal-card-title{
+  font-family:'Lexend', 'Noto Sans KR', sans-serif;
+  font-size:1.1rem;
+  font-weight:700;
+  line-height:1.25;
+  color:var(--ink);
+}
+
+.admin-portal-card-copy{
+  font-size:.78rem;
+  line-height:1.65;
+  color:var(--muted);
+  word-break:keep-all;
+}
+
+.admin-portal-card-badge{
+  margin-top:auto;
+  display:inline-flex;
+  align-items:center;
+  min-height:30px;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:.68rem;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+
+.admin-portal-card.is-live{
+  background:
+    radial-gradient(circle at top left, rgba(212,244,226,.92), transparent 52%),
+    linear-gradient(135deg,#f2fff8,#dcefe6);
+  border-color:rgba(16,111,86,.26);
+}
+
+.admin-portal-card.is-live .admin-portal-card-kicker{
+  color:#5f7d73;
+}
+
+.admin-portal-card.is-live .admin-portal-card-title{
+  color:#183e35;
+}
+
+.admin-portal-card.is-live .admin-portal-card-badge{
+  background:rgba(16,111,86,.14);
+  color:#0f7f61;
+  box-shadow:inset 0 0 0 1px rgba(16,111,86,.08);
+}
+
+.admin-portal-card.is-soon{
+  background:linear-gradient(135deg,#fbfcfb,#f0f3f2);
+}
+
+.admin-portal-card.is-soon .admin-portal-card-badge{
+  background:rgba(51,79,92,.08);
+  color:#4d6670;
+}
+
+.admin-portal-card.is-tool{
+  min-height:148px;
+  background:linear-gradient(135deg,#ffffff,#eef4f5);
+  border-color:rgba(36,77,91,.12);
+}
+
+.admin-portal-card.is-tool .admin-portal-card-kicker{
+  color:#4f6b75;
+}
+
+.admin-portal-tools-grid .admin-portal-card-title{
+  font-size:1rem;
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  width:100%;
+  min-height:148px;
+  padding:0 24px;
+  margin-bottom:18px;
+  -webkit-appearance:none;
+  appearance:none;
+  border:none;
+  border-radius:24px;
+  background:linear-gradient(135deg,#eef6f4,#dfecea);
+  box-shadow:0 14px 30px rgba(30,44,42,.08);
+  color:var(--ink);
+  font-family:'Lexend', 'Noto Sans KR', sans-serif;
+  font-size:1.5rem;
+  font-weight:700;
+  letter-spacing:-.04em;
+  cursor:pointer;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch:hover{
+  transform:translateY(-2px);
+  box-shadow:0 18px 34px rgba(30,44,42,.12);
+  background:linear-gradient(135deg,#f3f8f7,#e2efec);
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch:active{
+  transform:translateY(0);
+}
+
 @media (min-width: 720px){
+  .admin-portal-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
   .account-actions,
   .admin-upload-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (min-width: 1080px){
+  .admin-portal-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+  .admin-portal-tools-grid{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
