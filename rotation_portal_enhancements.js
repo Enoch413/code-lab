@@ -555,8 +555,13 @@ function openLabPlaceholder(name){
     showToast(name + ' 주소가 아직 연결되지 않았습니다.', 'var(--red)')
     return
   }
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  if(!opened) window.location.href = url
+  const opened = window.open('', '_blank')
+  if(!opened){
+    showToast('새 창이 차단되었습니다. 팝업 차단을 해제한 뒤 다시 시도해 주세요.', 'var(--red)')
+    return
+  }
+  opened.opener = null
+  opened.location.href = url
 }
 
 function renderAdminPortalScreen(){
