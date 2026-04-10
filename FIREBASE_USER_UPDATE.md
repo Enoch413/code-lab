@@ -14,6 +14,7 @@ Use this when a student wants to change login ID, name, class, role, or password
 - Firebase Authentication display name
 - Firebase Authentication disabled state
 - Firestore `users/{uid}` document
+- Optional TOOLS LAB visibility via `allowedLabs`
 
 Because this project logs in with `loginId` but stores auth users as internal emails,
 changing the login ID also changes the internal Firebase email:
@@ -70,21 +71,35 @@ changing the login ID also changes the internal Firebase email:
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id msu7563 --password-reset-required true
 ```
 
-### 6. Set a new temporary password
+### 6. Limit which TOOLS LAB buttons an admin can see
+
+```powershell
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id khe2016 --allowed-labs "word-lab,builder-lab"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id khe2016 --allowed-labs "word-lab,builder-lab"
+```
+
+Notes:
+
+- Missing `allowedLabs` means all LAB buttons stay visible
+- `--allowed-labs ""` means show none
+- `--allowed-labs "all"` means show all
+- Supported values: `word-lab`, `pdf-lab`, `rotation-lab`, `builder-lab`, `pinpoint-lab`
+
+### 7. Set a new temporary password
 
 ```powershell
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id msu7563 --new-password pass5678 --password-reset-required true
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id msu7563 --new-password pass5678 --password-reset-required true
 ```
 
-### 7. Disable login without deleting data
+### 8. Disable login without deleting data
 
 ```powershell
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id msu7563 --disabled true
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id msu7563 --disabled true
 ```
 
-### 8. Re-enable login later
+### 9. Re-enable login later
 
 ```powershell
 & "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id msu7563 --disabled false

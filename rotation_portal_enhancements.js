@@ -41,6 +41,14 @@ const ADMIN_PORTAL_LABS = {
   'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
 }
 
+const ADMIN_PORTAL_LAB_BUTTON_IDS = {
+  'WORD LAB': 'admin-portal-word-btn',
+  'PDF LAB': 'admin-portal-pdf-btn',
+  'ROTATION LAB': 'admin-portal-rotation-btn',
+  'BUILDER LAB': 'admin-portal-builder-btn',
+  'PINPOINT LAB': 'admin-portal-pinpoint-btn'
+}
+
 const ADMIN_PORTAL_LAB_COUNT = 5
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
@@ -550,6 +558,10 @@ async function refreshCheckDataAndRender(){
 }
 
 function openLabPlaceholder(name){
+  if(!isAdminPortalLabAllowed(name)){
+    showToast('이 LAB은 현재 계정에 허용되지 않았습니다.', 'var(--red)')
+    return
+  }
   const url = ADMIN_PORTAL_LABS[name]
   if(!url){
     showToast(name + ' 주소가 아직 연결되지 않았습니다.', 'var(--red)')
@@ -564,16 +576,118 @@ function openLabPlaceholder(name){
   opened.location.href = url
 }
 
-function renderAdminPortalScreen(){
+function getAllAdminPortalLabs(){
+  return Object.keys(ADMIN_PORTAL_LABS)
+}
+
+function normalizeAdminPortalLabName(value){
+  const raw = String(value || '').trim().toLowerCase()
+  if(!raw) return ''
+  if(raw === 'all' || raw === '*') return '*'
+  if(raw === 'word' || raw === 'wordlab' || raw === 'word-lab' || raw === 'word lab') return 'WORD LAB'
+  if(raw === 'pdf' || raw === 'pdflab' || raw === 'pdf-lab' || raw === 'pdf lab') return 'PDF LAB'
+  if(raw === 'rotation' || raw === 'rotationlab' || raw === 'rotation-lab' || raw === 'rotation lab') return 'ROTATION LAB'
+  if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
+  if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
+  return ''
+}
+
+function normalizeAdminPortalLabList(values){
+  if(!Array.isArray(values)) return null
+  const allLabs = getAllAdminPortalLabs()
+  const normalized = []
+  values.forEach(function(value){
+    const next = normalizeAdminPortalLabName(value)
+    if(!next) return
+    if(next === '*'){
+      allLabs.forEach(function(labName){
+        if(normalized.indexOf(labName) < 0) normalized.push(labName)
+      })
+      return
+    }
+    if(normalized.indexOf(next) < 0) normalized.push(next)
+  })
+  return normalized
+}
+
+function extractAdminPortalLabList(source){
+  if(!source || typeof source !== 'object') return null
+  if(Array.isArray(source.allowedLabs)) return normalizeAdminPortalLabList(source.allowedLabs)
+  if(Array.isArray(source.toolLabs)) return normalizeAdminPortalLabList(source.toolLabs)
+  if(Array.isArray(source.labAccess)) return normalizeAdminPortalLabList(source.labAccess)
+  return null
+}
+
+async function resolveAdminPortalLabList(){
+  if(!isPortalAdmin()) return []
+
+  const profileLabs = extractAdminPortalLabList(portalState.currentProfile)
+  if(profileLabs) return profileLabs
+
+  if(
+    portalState.firebaseEnabled &&
+    portalState.db &&
+    portalState.currentUser &&
+    portalState.currentUser.uid
+  ){
+    try{
+      const snapshot = await portalState.db.collection('users').doc(portalState.currentUser.uid).get()
+      if(snapshot.exists){
+        const remoteLabs = extractAdminPortalLabList(snapshot.data())
+        if(remoteLabs){
+          if(portalState.currentProfile && typeof portalState.currentProfile === 'object'){
+            portalState.currentProfile.allowedLabs = remoteLabs.slice()
+          }
+          return remoteLabs
+        }
+      }
+    }catch(error){
+      console.error(error)
+    }
+  }
+
+  return getAllAdminPortalLabs()
+}
+
+function applyAdminPortalLabVisibility(allowedLabs){
+  const visibleLabs = Array.isArray(allowedLabs) ? allowedLabs : getAllAdminPortalLabs()
+  const groupCountNode = document.querySelector('#admin-portal-screen .group-count')
+  const emptyStateNode = document.getElementById('admin-portal-empty-state')
+
+  getAllAdminPortalLabs().forEach(function(labName){
+    const buttonId = ADMIN_PORTAL_LAB_BUTTON_IDS[labName]
+    const button = buttonId ? document.getElementById(buttonId) : null
+    if(button) button.classList.toggle('hidden', visibleLabs.indexOf(labName) < 0)
+  })
+
+  if(groupCountNode){
+    groupCountNode.textContent = String(visibleLabs.length) + ' LAB'
+  }
+
+  if(emptyStateNode){
+    emptyStateNode.classList.toggle('hidden', visibleLabs.length > 0)
+  }
+}
+
+function isAdminPortalLabAllowed(name){
+  const allowedLabs = Array.isArray(portalState.adminPortalAllowedLabs)
+    ? portalState.adminPortalAllowedLabs
+    : getAllAdminPortalLabs()
+  return allowedLabs.indexOf(name) >= 0
+}
+
+function renderAdminPortalScreen(allowedLabs){
   const profile = portalState.currentProfile || {}
   const name = profile.name || profile.loginId || profile.studentId || '관리자'
+  const visibleLabs = Array.isArray(allowedLabs) ? allowedLabs : getAllAdminPortalLabs()
 
   setElementTextSafe('admin-portal-subtitle', 'TOOLS HUB')
   setElementTextSafe('admin-portal-user-name', name)
   setElementTextSafe(
     'admin-portal-lab-summary',
-    'LAB ' + ADMIN_PORTAL_CONNECTED_LABS + ' / ' + ADMIN_PORTAL_LAB_COUNT + ' 연결 완료'
+    'LAB ' + visibleLabs.length + ' / ' + ADMIN_PORTAL_LAB_COUNT + ' 연결 완료'
   )
+  applyAdminPortalLabVisibility(visibleLabs)
 }
 
 async function openToolsPortal(){
@@ -583,8 +697,9 @@ async function openToolsPortal(){
   }
   await syncPrepContentAfterLogin(false)
   await ensureCheckData(false)
+  portalState.adminPortalAllowedLabs = await resolveAdminPortalLabList()
   updateAdminUploadStatus()
-  renderAdminPortalScreen()
+  renderAdminPortalScreen(portalState.adminPortalAllowedLabs)
   activatePortalScreen('admin-portal-screen')
 }
 
