@@ -47,6 +47,7 @@ python -m pip install -r .\requirements-firebase-admin.txt
 - `name`: 표시 이름
 - `studentId`: 학생용 표시 ID
 - `classIds`: 반 ID. 여러 개면 `|` 로 구분
+- `allowedLabs`: 관리자 TOOLS 화면에서 보일 LAB 목록. 여러 개면 `|` 로 구분
 - `initialPassword`: 초기 비밀번호
 - `role`: `student` 또는 `admin`
 - `adminScope`: `assigned` 또는 `all`
@@ -55,10 +56,10 @@ python -m pip install -r .\requirements-firebase-admin.txt
 예시:
 
 ```csv
-loginId,name,studentId,classIds,initialPassword,role,adminScope,passwordResetRequired
-student01,홍길동,student01,class-1-gangseo-b,,student,assigned,true
-khe2016,김혜은,khe2016,class-1-danwon|class-2-danwon,,admin,assigned,true
-superadmin,최고 관리자,superadmin,class-1-gangseo-b|class-2-gangseo-a,,admin,all,true
+loginId,name,studentId,classIds,allowedLabs,initialPassword,role,adminScope,passwordResetRequired
+student01,홍길동,student01,class-1-gangseo-b,,,student,assigned,true
+khe2016,,khe2016,class-1-danwon|class-2-danwon,word-lab|pdf-lab,,admin,assigned,true
+superadmin,최고 관리자,superadmin,class-1-gangseo-b|class-2-gangseo-a,all,,admin,all,true
 ```
 
 설명:

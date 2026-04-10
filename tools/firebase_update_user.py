@@ -53,6 +53,10 @@ def parse_args() -> argparse.Namespace:
         help="Admin scope. Use all for a superadmin-style account.",
     )
     parser.add_argument(
+        "--allowed-labs",
+        help="Optional visible TOOLS LAB list separated by | , or ;  Example: word-lab|builder-lab . Use all to allow every LAB, or an empty string for none.",
+    )
+    parser.add_argument(
         "--password-reset-required",
         help="true or false. Controls the forced password-change flag.",
     )
@@ -103,6 +107,29 @@ def parse_class_ids(value: str | None) -> list[str] | None:
     for item in tokens:
         if item not in seen:
             seen.add(item)
+            ordered.append(item)
+    return ordered
+
+
+def parse_allowed_labs(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if raw == "":
+        return []
+    tokens: list[str] = []
+    for chunk in raw.replace(",", "|").replace(";", "|").split("|"):
+        item = chunk.strip()
+        if item:
+            tokens.append(item)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in tokens:
+        lowered = item.lower()
+        if lowered == "all":
+            return ["all"]
+        if lowered not in seen:
+            seen.add(lowered)
             ordered.append(item)
     return ordered
 
@@ -185,6 +212,9 @@ def main() -> int:
         target_admin_scope = str(args.admin_scope or existing_doc.get("adminScope") or "assigned").strip().lower() or "assigned"
         if target_role != "admin":
             target_admin_scope = "assigned"
+        target_allowed_labs = parse_allowed_labs(args.allowed_labs)
+        if target_allowed_labs is None and isinstance(existing_doc.get("allowedLabs"), list):
+            target_allowed_labs = parse_allowed_labs("|".join(str(item).strip() for item in existing_doc.get("allowedLabs") if str(item).strip()))
         target_reset_required = parse_optional_bool(args.password_reset_required)
         if target_reset_required is None:
             target_reset_required = bool(existing_doc.get("passwordResetRequired", True))
@@ -223,6 +253,8 @@ def main() -> int:
             "createdAt": existing_doc.get("createdAt", now_iso()),
             "updatedAt": now_iso(),
         }
+        if target_allowed_labs is not None:
+            user_doc["allowedLabs"] = target_allowed_labs
 
         print(f"UID={uid}")
         print(f"CURRENT_LOGIN_ID={current_login_id}")
@@ -233,6 +265,7 @@ def main() -> int:
         print(f"TARGET_CLASS_IDS={'|'.join(target_class_ids)}")
         print(f"TARGET_ROLE={target_role}")
         print(f"TARGET_ADMIN_SCOPE={target_admin_scope}")
+        print(f"TARGET_ALLOWED_LABS={'|'.join(target_allowed_labs) if target_allowed_labs is not None else 'unchanged'}")
         print(f"PASSWORD_RESET_REQUIRED={str(target_reset_required).lower()}")
         print(f"LOGIN_DISABLED={str(target_disabled).lower()}")
         print(f"AUTH_UPDATES={','.join(sorted(auth_updates.keys())) if auth_updates else 'none'}")

@@ -22,6 +22,7 @@ class UserRow:
     name: str
     student_id: str
     class_ids: list[str]
+    allowed_labs: list[str] | None
     initial_password: str
     role: str
     admin_scope: str
@@ -94,6 +95,29 @@ def parse_class_ids(value: str | None) -> list[str]:
     return ordered
 
 
+def parse_allowed_labs(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if raw == "":
+        return None
+    tokens: list[str] = []
+    for chunk in raw.replace(",", "|").replace(";", "|").split("|"):
+        item = chunk.strip()
+        if item:
+            tokens.append(item)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in tokens:
+        lowered = item.lower()
+        if lowered == "all":
+            return ["all"]
+        if lowered not in seen:
+            seen.add(lowered)
+            ordered.append(item)
+    return ordered
+
+
 def normalize_role(value: str | None) -> str:
     role = str(value or "student").strip().lower() or "student"
     if role not in {"student", "admin"}:
@@ -125,6 +149,7 @@ def normalize_row(raw_row: dict[str, str], domain: str, row_number: int) -> User
 
     student_id = str(raw_row.get("studentId", "")).strip() or login_id
     class_ids = parse_class_ids(raw_row.get("classIds"))
+    allowed_labs = parse_allowed_labs(raw_row.get("allowedLabs"))
     role = normalize_role(raw_row.get("role"))
     admin_scope = normalize_admin_scope(raw_row.get("adminScope"), role)
     password_reset_required = parse_bool(raw_row.get("passwordResetRequired"), default=True)
@@ -139,6 +164,7 @@ def normalize_row(raw_row: dict[str, str], domain: str, row_number: int) -> User
         name=name,
         student_id=student_id,
         class_ids=class_ids,
+        allowed_labs=allowed_labs,
         initial_password=initial_password,
         role=role,
         admin_scope=admin_scope,
@@ -201,6 +227,11 @@ def build_user_doc(row: UserRow, uid: str, existing_doc: dict | None) -> dict:
         "name": row.name,
         "studentId": row.student_id,
         "classIds": row.class_ids,
+        "allowedLabs": (
+            row.allowed_labs
+            if row.allowed_labs is not None
+            else (existing_doc or {}).get("allowedLabs")
+        ),
         "role": row.role,
         "adminScope": row.admin_scope,
         "passwordResetRequired": (
