@@ -2973,6 +2973,9 @@ function buildPortalManagedSetItemHtml(kind, record){
   const renameButton = record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
     : ''
+  const dateButton = record && record.isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.changePortalManagedSetDates(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">기간 변경</button>'
+    : ''
   const deleteButton = record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.removePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">삭제</button>'
     : ''
@@ -2985,6 +2988,7 @@ function buildPortalManagedSetItemHtml(kind, record){
       '<div class="admin-content-item-actions">' +
         '<span class="admin-content-chip ' + chipClass + '">' + escapeHtml(chipLabel) + '</span>' +
         renameButton +
+        dateButton +
         deleteButton +
       '</div>' +
     '</div>'
@@ -3014,7 +3018,7 @@ function renderPrepAdminSetPanel(activeScreenId){
   const records = getVisiblePortalManagedSetRecords('prep', classInfo && classInfo.id)
   countNode.textContent = String(records.length)
   hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 배정된 PREP 세트입니다. 직접 업로드한 세트만 여기서 삭제할 수 있습니다.')
+    ? (classInfo.name + ' 반에 배정된 PREP 세트입니다. 직접 업로드한 세트만 이름/기간 변경과 삭제가 가능합니다.')
     : '먼저 반을 선택하면 PREP 세트를 올릴 수 있습니다.'
 
   list.innerHTML = records.length
@@ -3040,7 +3044,7 @@ function renderCheckAdminSetPanel(activeScreenId){
   const records = getVisiblePortalManagedSetRecords('check', classInfo && classInfo.id)
   countNode.textContent = String(records.length)
   hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 여기서 삭제할 수 있습니다.')
+    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 이름/기간 변경과 삭제가 가능합니다.')
     : '먼저 반을 선택하면 CHECK 세트를 올릴 수 있습니다.'
 
   list.innerHTML = records.length
@@ -3112,6 +3116,100 @@ async function renamePortalManagedSet(kind, docId){
   }
 }
 
+function normalizePortalManagedDateInput(value){
+  const text = String(value || '').trim()
+  if(!text) return ''
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null
+}
+
+function getPortalManagedSetDateValues(kind, payload){
+  if(kind === 'prep'){
+    return {
+      start: String(payload && payload.startDate || '').trim(),
+      end: String(payload && payload.endDate || '').trim()
+    }
+  }
+  return {
+    start: String(payload && payload.availableFrom || '').trim(),
+    end: String(payload && payload.availableTo || '').trim()
+  }
+}
+
+function applyPortalManagedSetDateValues(kind, payload, startDate, endDate){
+  if(kind === 'prep'){
+    payload.startDate = startDate
+    payload.endDate = endDate
+    return
+  }
+  payload.availableFrom = startDate
+  payload.availableTo = endDate
+}
+
+async function changePortalManagedSetDates(kind, docId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 세트 기간을 바꿀 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  try{
+    const currentDoc = await getCloudSetDoc(kind, docId)
+    if(!currentDoc || !currentDoc.payload){
+      showToast('기간을 바꿀 세트를 찾지 못했습니다.', 'var(--red)')
+      return
+    }
+
+    const currentDates = getPortalManagedSetDateValues(kind, currentDoc.payload)
+    const startRaw = typeof window.prompt === 'function'
+      ? window.prompt('시작일을 입력해 주세요. 비우면 시작 제한이 없습니다. (YYYY-MM-DD)', currentDates.start)
+      : currentDates.start
+    if(startRaw == null) return
+    const endRaw = typeof window.prompt === 'function'
+      ? window.prompt('종료일을 입력해 주세요. 비우면 종료 제한이 없습니다. (YYYY-MM-DD)', currentDates.end)
+      : currentDates.end
+    if(endRaw == null) return
+
+    const startDate = normalizePortalManagedDateInput(startRaw)
+    const endDate = normalizePortalManagedDateInput(endRaw)
+    if(startDate == null || endDate == null){
+      showToast('날짜는 YYYY-MM-DD 형식으로 입력해 주세요.', 'var(--red)')
+      return
+    }
+    if(startDate && endDate && startDate > endDate){
+      showToast('종료일은 시작일보다 빠를 수 없습니다.', 'var(--red)')
+      return
+    }
+    if(startDate === currentDates.start && endDate === currentDates.end){
+      showToast('변경된 기간이 없습니다.', 'var(--blue)')
+      return
+    }
+
+    const nextPayload = clonePlainData(currentDoc.payload) || {}
+    const targetClass = getPortalUploadTargetClass(kind)
+    applyPortalManagedSetDateValues(kind, nextPayload, startDate, endDate)
+
+    await saveCloudSetDoc(kind, currentDoc.docId, Object.assign({}, currentDoc, {
+      payload: nextPayload
+    }))
+
+    if(kind === 'prep'){
+      await syncPrepContentAfterLogin(true)
+      if(targetClass && targetClass.id){
+        restorePortalPrepClassSelection(targetClass.id)
+      }
+      showHome()
+    }else{
+      await ensureCheckData(true)
+      renderCheckScreen()
+      syncPortalAdminSetPanels('check-screen')
+    }
+
+    showToast('세트 기간을 변경했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('세트 기간 변경 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
 async function removePortalManagedSet(kind, docId){
   if(!isPortalAdmin()){
     showToast('관리자만 세트를 삭제할 수 있습니다.', 'var(--red)')
@@ -3142,4 +3240,5 @@ async function removePortalManagedSet(kind, docId){
 }
 
 window.renamePortalManagedSet = renamePortalManagedSet
+window.changePortalManagedSetDates = changePortalManagedSetDates
 window.removePortalManagedSet = removePortalManagedSet
