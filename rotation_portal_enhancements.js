@@ -3,6 +3,13 @@ const PORTAL_CLOUD_DOCS = {
   check: 'check-data'
 }
 
+const PORTAL_CLOUD_SET_COLLECTIONS = {
+  prep: 'portalPrepSets',
+  check: 'portalCheckSets'
+}
+
+const PORTAL_CLASS_CATALOG_DOC = 'prep-classes'
+
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
   issues: 'rotation_portal_question_issues_v1'
@@ -78,6 +85,8 @@ portalState.historyInitialized = false
 portalState.currentRouteKey = ''
 portalState.isRestoringHistory = false
 portalState.prepSyncPromise = null
+portalState.prepSetInventory = portalState.prepSetInventory || []
+portalState.checkSetInventory = portalState.checkSetInventory || []
 
 document.addEventListener('DOMContentLoaded', initPortalEnhancements)
 
@@ -138,6 +147,14 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
+  bindClick('prep-admin-upload-btn', function(){
+    const input = document.getElementById('prep-set-upload-input')
+    if(input) input.click()
+  })
+  bindClick('check-admin-upload-btn', function(){
+    const input = document.getElementById('check-set-upload-input')
+    if(input) input.click()
+  })
   bindClick('admin-upload-prep-btn', function(){
     const input = document.getElementById('admin-prep-upload-input')
     if(input) input.click()
@@ -158,6 +175,20 @@ function bindPortalEnhancementEvents(){
   if(checkUploadInput){
     checkUploadInput.addEventListener('change', function(event){
       handlePortalContentUpload('check', event)
+    })
+  }
+
+  const prepSetUploadInput = document.getElementById('prep-set-upload-input')
+  if(prepSetUploadInput){
+    prepSetUploadInput.addEventListener('change', function(event){
+      handlePortalSetUpload('prep', event)
+    })
+  }
+
+  const checkSetUploadInput = document.getElementById('check-set-upload-input')
+  if(checkSetUploadInput){
+    checkSetUploadInput.addEventListener('change', function(event){
+      handlePortalSetUpload('check', event)
     })
   }
 }
@@ -434,6 +465,7 @@ window.onAppScreenActivated = function(screenId){
   updateAppChrome(screenId)
   syncAppHistoryState(screenId, false)
   syncCheckJumpButtonVisibility()
+  syncPortalAdminSetPanels(screenId)
 }
 
 function activatePortalScreen(screenId){
@@ -2276,3 +2308,838 @@ function mapResponseToSubmission(row){
     } : null
   }
 }
+
+function buildPortalSetStorageKey(kind){
+  return PORTAL_ENHANCEMENT_KEYS.contentPrefix + 'set_docs_' + String(kind || '').trim()
+}
+
+function readLocalPortalSetDocs(kind){
+  try{
+    const raw = localStorage.getItem(buildPortalSetStorageKey(kind))
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  }catch(error){
+    console.error(error)
+    return []
+  }
+}
+
+function writeLocalPortalSetDocs(kind, rows){
+  localStorage.setItem(buildPortalSetStorageKey(kind), JSON.stringify(Array.isArray(rows) ? rows : []))
+}
+
+function clonePlainData(value){
+  if(value == null) return null
+  return JSON.parse(JSON.stringify(value))
+}
+
+function getPortalSetCollection(kind){
+  return kind === 'check' ? PORTAL_CLOUD_SET_COLLECTIONS.check : PORTAL_CLOUD_SET_COLLECTIONS.prep
+}
+
+function derivePortalSetClassIds(kind, payload){
+  if(kind === 'prep'){
+    return Array.from(new Set(
+      (Array.isArray(payload && payload.classAssignments) ? payload.classAssignments : []).map(function(assignment){
+        return String(assignment && assignment.classId || '').trim()
+      }).filter(Boolean)
+    ))
+  }
+  return Array.from(new Set(
+    (Array.isArray(payload && payload.classIds) ? payload.classIds : []).map(function(classId){
+      return String(classId || '').trim()
+    }).filter(Boolean)
+  ))
+}
+
+function normalizePortalSetDoc(kind, source){
+  const payload = source && source.payload && typeof source.payload === 'object'
+    ? clonePlainData(source.payload)
+    : null
+  const classIds = Array.isArray(source && source.classIds)
+    ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+    : derivePortalSetClassIds(kind, payload)
+  return {
+    docId: String(source && (source.docId || source.id) || '').trim(),
+    title: String(source && source.title || '').trim(),
+    fileName: String(source && source.fileName || '').trim(),
+    payload: payload,
+    classIds: classIds,
+    createdAt: String(source && (source.createdAt || source.updatedAt) || '').trim(),
+    updatedAt: String(source && source.updatedAt || '').trim(),
+    sortOrder: Number(source && source.sortOrder || 0),
+    updatedBy: String(source && source.updatedBy || '').trim(),
+    updatedByName: String(source && source.updatedByName || '').trim()
+  }
+}
+
+function sortPortalSetDocs(rows){
+  return rows.slice().sort(function(a, b){
+    const leftOrder = Number(a && a.sortOrder || 0)
+    const rightOrder = Number(b && b.sortOrder || 0)
+    if(leftOrder !== rightOrder) return leftOrder - rightOrder
+    const leftCreated = String(a && a.createdAt || '')
+    const rightCreated = String(b && b.createdAt || '')
+    if(leftCreated !== rightCreated) return leftCreated.localeCompare(rightCreated)
+    return String(a && a.docId || '').localeCompare(String(b && b.docId || ''))
+  })
+}
+
+async function loadCloudSetDocs(kind){
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection(getPortalSetCollection(kind)).get()
+      return sortPortalSetDocs(snapshot.docs.map(function(doc){
+        return normalizePortalSetDoc(kind, Object.assign({ docId: doc.id }, doc.data() || {}))
+      }).filter(function(entry){
+        return entry.docId && entry.payload
+      }))
+    }catch(error){
+      console.warn('portal set read fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  return sortPortalSetDocs(readLocalPortalSetDocs(kind).map(function(entry){
+    return normalizePortalSetDoc(kind, entry)
+  }).filter(function(entry){
+    return entry.docId && entry.payload
+  }))
+}
+
+async function saveCloudSetDoc(kind, docId, record){
+  const localRows = readLocalPortalSetDocs(kind)
+  const existing = localRows.find(function(entry){
+    return String(entry && (entry.docId || entry.id) || '').trim() === docId
+  }) || null
+  const now = new Date().toISOString()
+  const nextDoc = normalizePortalSetDoc(kind, Object.assign({}, record, {
+    docId: docId,
+    createdAt: String(record && record.createdAt || existing && existing.createdAt || now).trim(),
+    updatedAt: now,
+    sortOrder: Number(record && record.sortOrder || existing && existing.sortOrder || Date.now()),
+    updatedBy: portalState.currentUser ? portalState.currentUser.uid : '',
+    updatedByName: portalState.currentProfile && portalState.currentProfile.name ? portalState.currentProfile.name : ''
+  }))
+
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await portalState.db.collection(getPortalSetCollection(kind)).doc(docId).set(nextDoc, { merge: true })
+    }catch(error){
+      console.warn('portal set write fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  const nextRows = localRows.filter(function(entry){
+    return String(entry && (entry.docId || entry.id) || '').trim() !== docId
+  })
+  nextRows.push(nextDoc)
+  writeLocalPortalSetDocs(kind, sortPortalSetDocs(nextRows))
+  return nextDoc
+}
+
+async function deleteCloudSetDoc(kind, docId){
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await portalState.db.collection(getPortalSetCollection(kind)).doc(docId).delete()
+    }catch(error){
+      console.warn('portal set delete fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  const nextRows = readLocalPortalSetDocs(kind).filter(function(entry){
+    return String(entry && (entry.docId || entry.id) || '').trim() !== docId
+  })
+  writeLocalPortalSetDocs(kind, nextRows)
+}
+
+async function getCloudSetDoc(kind, docId){
+  const targetId = String(docId || '').trim()
+  if(!targetId) return null
+  const rows = await loadCloudSetDocs(kind)
+  return rows.find(function(entry){
+    return String(entry && entry.docId || '').trim() === targetId
+  }) || null
+}
+
+function normalizePortalPrepClassList(source){
+  return (Array.isArray(source) ? source : []).map(function(entry, index){
+    const id = sanitizeId(String(entry && entry.id || ('class-' + (index + 1))))
+    if(!id) return null
+    return {
+      id: id,
+      name: String(entry && entry.name || id).trim() || id,
+      password: String(entry && entry.password || '').trim()
+    }
+  }).filter(Boolean)
+}
+
+function mergePortalPrepClasses(){
+  const seen = new Set()
+  const merged = []
+  Array.from(arguments).forEach(function(list){
+    normalizePortalPrepClassList(list).forEach(function(entry){
+      if(seen.has(entry.id)) return
+      seen.add(entry.id)
+      merged.push(entry)
+    })
+  })
+  return merged
+}
+
+function normalizePortalPrepConfig(){
+  const next = {
+    pageTitle: APP_CONFIG.defaultTitle,
+    globalPassword: '',
+    generatedAt: ''
+  }
+  Array.from(arguments).forEach(function(source){
+    if(!source || typeof source !== 'object') return
+    if(typeof source.pageTitle === 'string' && source.pageTitle.trim()){
+      next.pageTitle = source.pageTitle.trim()
+    }
+    if(typeof source.globalPassword === 'string'){
+      next.globalPassword = source.globalPassword.trim()
+    }
+    if(typeof source.generatedAt === 'string' && source.generatedAt.trim()){
+      next.generatedAt = source.generatedAt.trim()
+    }
+  })
+  return next
+}
+
+function normalizeStoredPrepSet(payload, index, classes){
+  try{
+    const normalized = normalizeStudySet(payload, index, classes)
+    if(!normalized || !normalized.passages.length || !normalized.classAssignments.length) return null
+    return normalized
+  }catch(error){
+    console.error(error)
+    return null
+  }
+}
+
+function summarizePortalPrepSet(studySet){
+  const classIds = Array.from(new Set(
+    (Array.isArray(studySet && studySet.classAssignments) ? studySet.classAssignments : []).map(function(assignment){
+      return String(assignment && assignment.classId || '').trim()
+    }).filter(Boolean)
+  ))
+  const passages = Array.isArray(studySet && studySet.passages) ? studySet.passages : []
+  return {
+    title: String(studySet && studySet.title || 'PREP 세트').trim() || 'PREP 세트',
+    classIds: classIds,
+    passageCount: passages.length,
+    questionCount: passages.reduce(function(sum, passage){
+      return sum + Number(Array.isArray(passage && passage.items) ? passage.items.length : 0)
+    }, 0),
+    startDate: String(studySet && studySet.startDate || '').trim(),
+    endDate: String(studySet && studySet.endDate || '').trim()
+  }
+}
+
+function buildPortalPrepSetInventory(legacySets, setDocs, classes){
+  const inventory = []
+  ;(Array.isArray(legacySets) ? legacySets : []).forEach(function(studySet){
+    inventory.push(Object.assign(summarizePortalPrepSet(studySet), {
+      docId: '',
+      isManaged: false,
+      updatedAt: '',
+      fileName: ''
+    }))
+  })
+  ;(Array.isArray(setDocs) ? setDocs : []).forEach(function(doc, index){
+    const studySet = normalizeStoredPrepSet(doc.payload, index, classes)
+    if(!studySet) return
+    inventory.push(Object.assign(summarizePortalPrepSet(studySet), {
+      docId: doc.docId,
+      isManaged: true,
+      updatedAt: doc.updatedAt,
+      fileName: doc.fileName
+    }))
+  })
+  return inventory
+}
+
+function normalizePortalCheckClassList(source){
+  return (Array.isArray(source) ? source : []).map(function(entry, index){
+    const id = sanitizeId(String(entry && entry.id || ('class-' + (index + 1))))
+    if(!id) return null
+    return {
+      id: id,
+      name: String(entry && entry.name || id).trim() || id
+    }
+  }).filter(Boolean)
+}
+
+function mergePortalCheckClasses(){
+  const seen = new Set()
+  const merged = []
+  Array.from(arguments).forEach(function(list){
+    normalizePortalCheckClassList(list).forEach(function(entry){
+      if(seen.has(entry.id)) return
+      seen.add(entry.id)
+      merged.push(entry)
+    })
+  })
+  return merged
+}
+
+function normalizeStoredCheckSet(payload){
+  try{
+    const normalized = normalizeCheckData({ checkSets: [payload] })
+    return normalized.checkSets[0] || null
+  }catch(error){
+    console.error(error)
+    return null
+  }
+}
+
+function summarizePortalCheckSet(checkSet){
+  return {
+    title: String(checkSet && checkSet.title || 'CHECK 세트').trim() || 'CHECK 세트',
+    classIds: Array.isArray(checkSet && checkSet.classIds)
+      ? checkSet.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+      : [],
+    questionCount: Array.isArray(checkSet && checkSet.questions) ? checkSet.questions.length : 0,
+    startDate: String(checkSet && checkSet.availableFrom || '').trim(),
+    endDate: String(checkSet && checkSet.availableTo || '').trim()
+  }
+}
+
+function buildPortalCheckSetInventory(legacySets, setDocs){
+  const inventory = []
+  ;(Array.isArray(legacySets) ? legacySets : []).forEach(function(checkSet){
+    inventory.push(Object.assign(summarizePortalCheckSet(checkSet), {
+      docId: '',
+      isManaged: false,
+      updatedAt: '',
+      fileName: ''
+    }))
+  })
+  ;(Array.isArray(setDocs) ? setDocs : []).forEach(function(doc){
+    const checkSet = normalizeStoredCheckSet(doc.payload)
+    if(!checkSet) return
+    inventory.push(Object.assign(summarizePortalCheckSet(checkSet), {
+      docId: doc.docId,
+      isManaged: true,
+      updatedAt: doc.updatedAt,
+      fileName: doc.fileName
+    }))
+  })
+  return inventory
+}
+
+function getLatestPortalTimestamp(values){
+  return (Array.isArray(values) ? values : []).reduce(function(latest, value){
+    const text = String(value || '').trim()
+    if(!text) return latest
+    if(!latest) return text
+    const nextTime = new Date(text).getTime()
+    const latestTime = new Date(latest).getTime()
+    if(Number.isNaN(nextTime)) return latest
+    if(Number.isNaN(latestTime) || nextTime > latestTime) return text
+    return latest
+  }, '')
+}
+
+async function loadPortalPrepBundleFromSources(){
+  const catalogDoc = await loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
+  const legacyDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep)
+  const setDocs = await loadCloudSetDocs('prep')
+  const catalogPayload = catalogDoc && catalogDoc.payload && typeof catalogDoc.payload === 'object'
+    ? catalogDoc.payload
+    : {}
+  const legacyBundle = legacyDoc && legacyDoc.payload ? normalizeBundleData(legacyDoc.payload) : null
+  const classes = mergePortalPrepClasses(
+    catalogPayload.classes,
+    legacyBundle ? legacyBundle.classes : [],
+    prepClasses
+  )
+  const prepConfig = normalizePortalPrepConfig(
+    bundleData && bundleData.prepConfig ? bundleData.prepConfig : null,
+    legacyBundle ? legacyBundle.prepConfig : null,
+    catalogPayload.prepConfig
+  )
+  const legacySets = legacyBundle ? legacyBundle.studySets.slice() : []
+  const uploadedSets = setDocs.map(function(doc, index){
+    return normalizeStoredPrepSet(doc.payload, index, classes)
+  }).filter(Boolean)
+
+  portalState.prepSetInventory = buildPortalPrepSetInventory(legacySets, setDocs, classes)
+
+  if(!legacyBundle && !setDocs.length && !classes.length){
+    portalState.prepSetInventory = []
+    return null
+  }
+
+  return {
+    version: 2,
+    prepConfig: prepConfig,
+    classes: classes,
+    studySets: legacySets.concat(uploadedSets),
+    updatedAt: getLatestPortalTimestamp([
+      catalogDoc && catalogDoc.updatedAt,
+      legacyDoc && legacyDoc.updatedAt
+    ].concat(setDocs.map(function(doc){
+      return doc.updatedAt
+    })))
+  }
+}
+
+async function loadPortalCheckDataFromSources(){
+  const legacyDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.check)
+  const setDocs = await loadCloudSetDocs('check')
+  const legacyData = legacyDoc && legacyDoc.payload ? normalizeCheckData(legacyDoc.payload) : null
+  const prepClassEntries = normalizePortalCheckClassList(prepClasses.map(function(classInfo){
+    return { id: classInfo.id, name: classInfo.name }
+  }))
+  const classes = mergePortalCheckClasses(
+    legacyData ? legacyData.classes : [],
+    prepClassEntries,
+    portalState.checkData && portalState.checkData.classes ? portalState.checkData.classes : []
+  )
+  const legacySets = legacyData ? legacyData.checkSets.slice() : []
+  const uploadedSets = setDocs.map(function(doc){
+    return normalizeStoredCheckSet(doc.payload)
+  }).filter(Boolean)
+
+  portalState.checkSetInventory = buildPortalCheckSetInventory(legacySets, setDocs)
+
+  if(!legacyDoc && !setDocs.length){
+    portalState.checkSetInventory = []
+    return null
+  }
+
+  return normalizeCheckData({
+    updatedAt: getLatestPortalTimestamp([legacyDoc && legacyDoc.updatedAt].concat(setDocs.map(function(doc){
+      return doc.updatedAt
+    }))),
+    classes: classes,
+    checkSets: legacySets.concat(uploadedSets)
+  })
+}
+
+async function syncPrepContentAfterLogin(forceReload){
+  if(!portalState.currentUser) return false
+  if(portalState.prepSyncPromise && !forceReload) return portalState.prepSyncPromise
+
+  portalState.prepSyncPromise = loadPortalPrepBundleFromSources().then(function(bundle){
+    if(!bundle) return false
+    portalState.contentMeta.prep = {
+      updatedAt: bundle.updatedAt || '',
+      fileName: '세트별 PREP 데이터'
+    }
+    if(typeof window.applyPrepSessionData === 'function'){
+      window.applyPrepSessionData(bundle, { source: 'remote', skipRoute: true })
+    }
+    return true
+  }).catch(function(error){
+    console.error(error)
+    return false
+  }).finally(function(){
+    portalState.prepSyncPromise = null
+  })
+
+  return portalState.prepSyncPromise
+}
+
+async function ensureCheckData(forceReload){
+  if(portalState.checkData && !forceReload) return portalState.checkData
+
+  if(portalState.currentUser){
+    const combined = await loadPortalCheckDataFromSources()
+    if(combined){
+      portalState.contentMeta.check = {
+        updatedAt: combined.updatedAt || '',
+        fileName: '세트별 CHECK 데이터'
+      }
+      portalState.checkData = combined
+      return portalState.checkData
+    }
+  }
+
+  const url = String(PORTAL_CONFIG.checkDataUrl || 'check_data.json')
+  const requestUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now()
+  try{
+    const response = await fetch(requestUrl, { cache: 'no-store' })
+    if(!response.ok) throw new Error('HTTP ' + response.status)
+    const parsed = await response.json()
+    portalState.checkData = normalizeCheckData(parsed)
+    portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
+    return portalState.checkData
+  }catch(error){
+    console.error(error)
+    portalState.checkData = { updatedAt: '', classes: [], checkSets: [] }
+    portalState.checkSetInventory = []
+    return portalState.checkData
+  }
+}
+
+function getPortalUploadTargetClass(kind){
+  if(kind === 'prep'){
+    return typeof getCurrentClass === 'function' ? getCurrentClass() : null
+  }
+  const activeEntry = typeof getActivePortalCheckClass === 'function' ? getActivePortalCheckClass() : null
+  return activeEntry && activeEntry.classInfo ? activeEntry.classInfo : null
+}
+
+function canManagePortalClass(classInfo){
+  if(!isPortalAdmin()) return false
+  const classId = String(classInfo && classInfo.id || '').trim()
+  if(!classId) return false
+  if(isPortalSuperAdmin()) return true
+  return getProfileClassIds().indexOf(classId) >= 0
+}
+
+async function savePrepClassCatalog(classInfo){
+  const classList = mergePortalPrepClasses(
+    prepClasses,
+    classInfo ? [classInfo] : []
+  )
+  if(!classList.length) return null
+  const currentBundle = bundleData && typeof bundleData === 'object' ? normalizeBundleData(bundleData) : null
+  const payload = {
+    classes: classList,
+    prepConfig: normalizePortalPrepConfig(
+      currentBundle ? currentBundle.prepConfig : null,
+      {
+        pageTitle: pageTitle || APP_CONFIG.defaultTitle,
+        globalPassword: globalPassword || '',
+        generatedAt: new Date().toISOString()
+      }
+    )
+  }
+  return saveCloudContentDoc(PORTAL_CLASS_CATALOG_DOC, payload, 'prep-classes.json')
+}
+
+function createPortalManagedSetId(kind, index){
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const stamp = Date.now()
+  const order = typeof index === 'number' ? '-' + String(index + 1) : ''
+  return sanitizeId(kind + '-set-' + stamp + '-' + suffix + order)
+}
+
+function buildPrepUploadRecords(raw, fileName, classInfo){
+  const normalized = normalizeBundleData(raw)
+  const sourceSets = Array.isArray(normalized && normalized.studySets) ? normalized.studySets : []
+  return sourceSets.map(function(studySet, index){
+    const docId = createPortalManagedSetId('prep', index)
+    const passageIndexes = Array.from({ length: Array.isArray(studySet && studySet.passages) ? studySet.passages.length : 0 }, function(_, passageIndex){
+      return passageIndex
+    })
+    return {
+      docId: docId,
+      title: String(studySet && studySet.title || ('PREP 세트 ' + (index + 1))).trim(),
+      classIds: [classInfo.id],
+      fileName: fileName,
+      sortOrder: Date.now() + index,
+      payload: {
+        id: docId,
+        title: String(studySet && studySet.title || ('PREP 세트 ' + (index + 1))).trim(),
+        sourceName: String(studySet && studySet.sourceName || fileName || '').trim(),
+        startDate: String(studySet && studySet.startDate || '').trim(),
+        endDate: String(studySet && studySet.endDate || '').trim(),
+        savedAt: new Date().toISOString(),
+        questionCounts: clonePlainData(studySet && studySet.questionCounts || {}) || {},
+        passages: clonePlainData(Array.isArray(studySet && studySet.passages) ? studySet.passages : []) || [],
+        classAssignments: passageIndexes.length ? [{
+          classId: classInfo.id,
+          passageIndexes: passageIndexes
+        }] : []
+      }
+    }
+  }).filter(function(record){
+    return Array.isArray(record && record.payload && record.payload.passages) && record.payload.passages.length > 0
+  })
+}
+
+function buildCheckUploadRecords(raw, fileName, classInfo){
+  let normalized = null
+  if(Array.isArray(raw && raw.checkSets) || Array.isArray(raw && raw.classes)){
+    normalized = normalizeCheckData(raw)
+  }else if(Array.isArray(raw && raw.questions)){
+    normalized = normalizeCheckData({ checkSets: [raw] })
+  }else if(Array.isArray(raw)){
+    normalized = normalizeCheckData({ checkSets: raw })
+  }else{
+    normalized = normalizeCheckData({ checkSets: [] })
+  }
+
+  return (Array.isArray(normalized && normalized.checkSets) ? normalized.checkSets : []).map(function(checkSet, index){
+    const docId = createPortalManagedSetId('check', index)
+    return {
+      docId: docId,
+      title: String(checkSet && checkSet.title || ('CHECK 세트 ' + (index + 1))).trim(),
+      classIds: [classInfo.id],
+      fileName: fileName,
+      sortOrder: Date.now() + index,
+      payload: Object.assign({}, clonePlainData(checkSet) || {}, {
+        id: docId,
+        title: String(checkSet && checkSet.title || ('CHECK 세트 ' + (index + 1))).trim(),
+        classIds: [classInfo.id]
+      })
+    }
+  }).filter(function(record){
+    return Array.isArray(record && record.payload && record.payload.questions) && record.payload.questions.length > 0
+  })
+}
+
+function restorePortalPrepClassSelection(classId){
+  const targetIndex = prepClasses.findIndex(function(entry){
+    return String(entry && entry.id || '').trim() === String(classId || '').trim()
+  })
+  if(targetIndex < 0) return false
+  selectClass(targetIndex, { stayOnCurrent: true })
+  return true
+}
+
+async function handlePortalSetUpload(kind, event){
+  const file = event && event.target && event.target.files ? event.target.files[0] : null
+  if(event && event.target) event.target.value = ''
+  if(!file) return
+  if(!isPortalAdmin()){
+    showToast('관리자만 세트를 업로드할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const classInfo = getPortalUploadTargetClass(kind)
+  if(!classInfo || !classInfo.id){
+    showToast('먼저 반을 선택해 주세요.', 'var(--red)')
+    return
+  }
+  if(!canManagePortalClass(classInfo)){
+    showToast('현재 계정으로 관리할 수 없는 반입니다.', 'var(--red)')
+    return
+  }
+
+  try{
+    const payload = await readJsonFileFromBrowser(file)
+    const records = kind === 'prep'
+      ? buildPrepUploadRecords(payload, file.name, classInfo)
+      : buildCheckUploadRecords(payload, file.name, classInfo)
+    if(!records.length){
+      showToast((kind === 'prep' ? 'PREP' : 'CHECK') + ' 세트 JSON을 찾지 못했습니다.', 'var(--red)')
+      return
+    }
+
+    await savePrepClassCatalog(classInfo)
+    for(let index = 0; index < records.length; index += 1){
+      await saveCloudSetDoc(kind, records[index].docId, records[index])
+    }
+
+    if(kind === 'prep'){
+      await syncPrepContentAfterLogin(true)
+      if(!restorePortalPrepClassSelection(classInfo.id) && typeof ensureScopedAdminPrepSelection === 'function'){
+        ensureScopedAdminPrepSelection()
+      }
+      showHome()
+    }else{
+      await ensureCheckData(true)
+      renderCheckScreen()
+      syncPortalAdminSetPanels('check-screen')
+    }
+
+    showToast((kind === 'prep' ? 'PREP' : 'CHECK') + ' 세트 ' + records.length + '개를 추가했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('세트 업로드 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+function buildPortalManagedSetMetaText(kind, record){
+  const parts = []
+  if(kind === 'prep'){
+    parts.push(String(record && record.passageCount || 0) + '지문')
+  }
+  parts.push(String(record && record.questionCount || 0) + '문항')
+  if(record && record.startDate && record.endDate){
+    parts.push(record.startDate + ' ~ ' + record.endDate)
+  }else if(record && record.startDate){
+    parts.push(record.startDate + '부터')
+  }else if(record && record.endDate){
+    parts.push(record.endDate + '까지')
+  }else{
+    parts.push('상시 노출')
+  }
+  if(record && record.updatedAt){
+    parts.push('업데이트 ' + formatAdminTime(record.updatedAt))
+  }
+  return parts.join(' · ')
+}
+
+function buildPortalManagedSetItemHtml(kind, record){
+  const chipClass = record && record.isManaged ? 'live' : 'legacy'
+  const chipLabel = record && record.isManaged ? '직접 업로드' : '기존 마스터'
+  const renameButton = record && record.isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
+    : ''
+  const deleteButton = record && record.isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.removePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">삭제</button>'
+    : ''
+  return '' +
+    '<div class="admin-content-item">' +
+      '<div class="admin-content-item-body">' +
+        '<div class="admin-content-item-title">' + escapeHtml(record && record.title || '') + '</div>' +
+        '<div class="admin-content-item-meta">' + escapeHtml(buildPortalManagedSetMetaText(kind, record)) + '</div>' +
+      '</div>' +
+      '<div class="admin-content-item-actions">' +
+        '<span class="admin-content-chip ' + chipClass + '">' + escapeHtml(chipLabel) + '</span>' +
+        renameButton +
+        deleteButton +
+      '</div>' +
+    '</div>'
+}
+
+function getVisiblePortalManagedSetRecords(kind, classId){
+  const source = kind === 'prep' ? portalState.prepSetInventory : portalState.checkSetInventory
+  const targetClassId = String(classId || '').trim()
+  return (Array.isArray(source) ? source : []).filter(function(record){
+    if(!targetClassId) return true
+    return Array.isArray(record && record.classIds) && record.classIds.indexOf(targetClassId) >= 0
+  })
+}
+
+function renderPrepAdminSetPanel(activeScreenId){
+  const panel = document.getElementById('prep-admin-set-panel')
+  const list = document.getElementById('prep-admin-set-list')
+  const countNode = document.getElementById('prep-admin-set-count')
+  const hintNode = document.getElementById('prep-admin-set-hint')
+  if(!panel || !list || !countNode || !hintNode) return
+
+  const shouldShow = isPortalAdmin() && activeScreenId === 'home-screen'
+  panel.classList.toggle('hidden', !shouldShow)
+  if(!shouldShow) return
+
+  const classInfo = typeof getCurrentClass === 'function' ? getCurrentClass() : null
+  const records = getVisiblePortalManagedSetRecords('prep', classInfo && classInfo.id)
+  countNode.textContent = String(records.length)
+  hintNode.textContent = classInfo
+    ? (classInfo.name + ' 반에 배정된 PREP 세트입니다. 직접 업로드한 세트만 여기서 삭제할 수 있습니다.')
+    : '먼저 반을 선택하면 PREP 세트를 올릴 수 있습니다.'
+
+  list.innerHTML = records.length
+    ? records.map(function(record){
+        return buildPortalManagedSetItemHtml('prep', record)
+      }).join('')
+    : '<div class="admin-content-item-empty">이 반에 연결된 PREP 세트가 아직 없습니다.</div>'
+}
+
+function renderCheckAdminSetPanel(activeScreenId){
+  const panel = document.getElementById('check-admin-set-panel')
+  const list = document.getElementById('check-admin-set-list')
+  const countNode = document.getElementById('check-admin-set-count')
+  const hintNode = document.getElementById('check-admin-set-hint')
+  if(!panel || !list || !countNode || !hintNode) return
+
+  const shouldShow = isPortalAdmin() && activeScreenId === 'check-screen'
+  panel.classList.toggle('hidden', !shouldShow)
+  if(!shouldShow) return
+
+  const activeEntry = typeof getActivePortalCheckClass === 'function' ? getActivePortalCheckClass() : null
+  const classInfo = activeEntry && activeEntry.classInfo ? activeEntry.classInfo : null
+  const records = getVisiblePortalManagedSetRecords('check', classInfo && classInfo.id)
+  countNode.textContent = String(records.length)
+  hintNode.textContent = classInfo
+    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 여기서 삭제할 수 있습니다.')
+    : '먼저 반을 선택하면 CHECK 세트를 올릴 수 있습니다.'
+
+  list.innerHTML = records.length
+    ? records.map(function(record){
+        return buildPortalManagedSetItemHtml('check', record)
+      }).join('')
+    : '<div class="admin-content-item-empty">이 반에 연결된 CHECK 세트가 아직 없습니다.</div>'
+}
+
+function syncPortalAdminSetPanels(screenId){
+  renderPrepAdminSetPanel(screenId)
+  renderCheckAdminSetPanel(screenId)
+}
+
+async function renamePortalManagedSet(kind, docId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 세트 이름을 바꿀 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  try{
+    const currentDoc = await getCloudSetDoc(kind, docId)
+    if(!currentDoc || !currentDoc.payload){
+      showToast('이름을 바꿀 세트를 찾지 못했습니다.', 'var(--red)')
+      return
+    }
+
+    const currentTitle = String(currentDoc.title || currentDoc.payload.title || '').trim()
+    const nextTitleRaw = typeof window.prompt === 'function'
+      ? window.prompt('새 세트 이름을 입력해 주세요.', currentTitle)
+      : currentTitle
+    if(nextTitleRaw == null) return
+
+    const nextTitle = String(nextTitleRaw || '').trim()
+    if(!nextTitle){
+      showToast('세트 이름은 비워둘 수 없습니다.', 'var(--red)')
+      return
+    }
+    if(nextTitle === currentTitle){
+      showToast('변경된 이름이 없습니다.', 'var(--blue)')
+      return
+    }
+
+    const nextPayload = clonePlainData(currentDoc.payload) || {}
+    nextPayload.title = nextTitle
+    const targetClass = getPortalUploadTargetClass(kind)
+
+    await saveCloudSetDoc(kind, currentDoc.docId, Object.assign({}, currentDoc, {
+      title: nextTitle,
+      payload: nextPayload
+    }))
+
+    if(kind === 'prep'){
+      await syncPrepContentAfterLogin(true)
+      if(targetClass && targetClass.id){
+        restorePortalPrepClassSelection(targetClass.id)
+      }
+      showHome()
+    }else{
+      await ensureCheckData(true)
+      renderCheckScreen()
+      syncPortalAdminSetPanels('check-screen')
+    }
+
+    showToast('세트 이름을 변경했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('세트 이름 변경 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+async function removePortalManagedSet(kind, docId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 세트를 삭제할 수 있습니다.', 'var(--red)')
+    return
+  }
+  const message = (kind === 'prep' ? 'PREP' : 'CHECK') + ' 세트를 삭제할까요?'
+  if(typeof window.confirm === 'function' && !window.confirm(message)) return
+
+  try{
+    const targetClass = getPortalUploadTargetClass(kind)
+    await deleteCloudSetDoc(kind, String(docId || '').trim())
+    if(kind === 'prep'){
+      await syncPrepContentAfterLogin(true)
+      if(targetClass && targetClass.id){
+        restorePortalPrepClassSelection(targetClass.id)
+      }
+      showHome()
+    }else{
+      await ensureCheckData(true)
+      renderCheckScreen()
+      syncPortalAdminSetPanels('check-screen')
+    }
+    showToast((kind === 'prep' ? 'PREP' : 'CHECK') + ' 세트를 삭제했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('세트 삭제 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+window.renamePortalManagedSet = renamePortalManagedSet
+window.removePortalManagedSet = removePortalManagedSet
