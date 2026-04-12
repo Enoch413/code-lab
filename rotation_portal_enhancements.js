@@ -33,6 +33,22 @@ const CHROME_SCREEN_TITLES = {
   'admin-screen': { title: 'ADMIN', sub: '관리' }
 }
 
+const CHROME_BREADCRUMBS = {
+  'portal-screen': ['CODE LAB', 'HOME'],
+  'account-screen': ['CODE LAB', '회원정보'],
+  'password-screen': ['CODE LAB', '비밀번호 변경'],
+  'admin-portal-screen': ['CODE LAB', 'TOOLS'],
+  'class-screen': ['CODE LAB', 'PREP', '반 선택'],
+  'class-auth-screen': ['CODE LAB', 'PREP', '반 비밀번호'],
+  'home-screen': ['CODE LAB', 'PREP', '학습 세트'],
+  'passage-screen': ['CODE LAB', 'PREP', '지문 선택'],
+  'study-menu-screen': ['CODE LAB', 'PREP', '유형 선택'],
+  'study-screen': ['CODE LAB', 'PREP', '학습'],
+  'check-screen': ['CODE LAB', 'CHECK', '세트 선택'],
+  'check-set-screen': ['CODE LAB', 'CHECK', '답안 제출'],
+  'admin-screen': ['CODE LAB', 'ADMIN']
+}
+
 const ADMIN_PORTAL_LABS = {
   'WORD LAB': 'https://enoch413.github.io/word-lab/',
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
@@ -56,6 +72,7 @@ portalState.forcePasswordReset = false
 portalState.contentMeta = portalState.contentMeta || {}
 portalState.currentQuestionIssues = portalState.currentQuestionIssues || []
 portalState.currentCheckDraftAnswers = portalState.currentCheckDraftAnswers || {}
+portalState.currentCheckEditTargets = portalState.currentCheckEditTargets || {}
 portalState.currentCheckFilter = portalState.currentCheckFilter || 'all'
 portalState.historyInitialized = false
 portalState.currentRouteKey = ''
@@ -67,6 +84,8 @@ document.addEventListener('DOMContentLoaded', initPortalEnhancements)
 function initPortalEnhancements(){
   bindPortalEnhancementEvents()
   window.addEventListener('popstate', handleAppPopState)
+  window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
+  window.addEventListener('resize', syncCheckJumpButtonVisibility)
   if(!history.state || !history.state.appRoute){
     syncAppHistoryState(getCurrentActiveScreenId(), true)
   }else{
@@ -74,6 +93,7 @@ function initPortalEnhancements(){
   }
   updatePortalUserCard()
   updateAppChrome(getCurrentActiveScreenId())
+  syncCheckJumpButtonVisibility()
   setTimeout(function(){
     if(!bundleData && !portalState.currentUser){
       showAuthScreen('')
@@ -117,6 +137,7 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
+  bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
   bindClick('admin-upload-prep-btn', function(){
     const input = document.getElementById('admin-prep-upload-input')
     if(input) input.click()
@@ -181,12 +202,142 @@ function getCurrentActiveScreenId(){
   return active ? active.id : 'auth-screen'
 }
 
+function getPendingPrepClass(){
+  if(!Array.isArray(prepClasses)) return null
+  return typeof pendingClassIndex === 'number' && pendingClassIndex >= 0
+    ? (prepClasses[pendingClassIndex] || null)
+    : null
+}
+
+function getCurrentPrepPassage(){
+  const studySet = typeof getCurrentStudySet === 'function' ? getCurrentStudySet() : null
+  if(!studySet || !Array.isArray(studySet.passages)) return null
+  return typeof currentPassage === 'number' && currentPassage >= 0
+    ? (studySet.passages[currentPassage] || null)
+    : null
+}
+
+function getCurrentPrepSection(){
+  const passage = getCurrentPrepPassage()
+  if(!passage || typeof groupItems !== 'function') return null
+  const sectionId = String(typeof currentStudySectionId === 'string' ? currentStudySectionId : '').trim()
+  if(!sectionId) return null
+  const sections = groupItems(passage.items)
+  return sections.find(function(section){
+    return section.id === sectionId
+  }) || null
+}
+
+function buildPrepBreadcrumb(screenId){
+  const parts = ['CODE LAB', 'PREP']
+  const currentClass = typeof getCurrentClass === 'function' ? getCurrentClass() : null
+  const currentSet = typeof getCurrentStudySet === 'function' ? getCurrentStudySet() : null
+  const currentPassageEntry = getCurrentPrepPassage()
+  const currentSection = getCurrentPrepSection()
+  const pendingClass = getPendingPrepClass()
+
+  if(screenId === 'class-screen'){
+    parts.push('반 선택')
+    return parts
+  }
+
+  if(screenId === 'class-auth-screen'){
+    if(pendingClass && pendingClass.name) parts.push(pendingClass.name)
+    parts.push('입장 인증')
+    return parts
+  }
+
+  if(currentClass && currentClass.name) parts.push(currentClass.name)
+
+  if(screenId === 'home-screen'){
+    parts.push('세트 선택')
+    return parts
+  }
+
+  if(currentSet && currentSet.title) parts.push(currentSet.title)
+
+  if(screenId === 'passage-screen'){
+    parts.push('지문 선택')
+    return parts
+  }
+
+  if(currentPassageEntry && currentPassageEntry.title) parts.push(currentPassageEntry.title)
+
+  if(screenId === 'study-menu-screen'){
+    parts.push('유형 선택')
+    return parts
+  }
+
+  if(currentSection && currentSection.title){
+    parts.push(currentSection.title)
+    return parts
+  }
+
+  if(screenId === 'study-screen'){
+    parts.push('학습')
+    return parts
+  }
+
+  return parts
+}
+
+function buildCheckBreadcrumb(screenId){
+  const parts = ['CODE LAB', 'CHECK']
+  const activeClassEntry = typeof getActivePortalCheckClass === 'function'
+    ? getActivePortalCheckClass()
+    : null
+  const activeClassName = activeClassEntry && activeClassEntry.classInfo
+    ? classInfoName(activeClassEntry.classInfo)
+    : ''
+
+  if(activeClassName) parts.push(activeClassName)
+
+  if(screenId === 'check-screen'){
+    parts.push('세트 선택')
+    return parts
+  }
+
+  if(screenId === 'check-set-screen'){
+    if(portalState.currentCheckSet && portalState.currentCheckSet.title){
+      parts.push(portalState.currentCheckSet.title)
+    }else{
+      parts.push('답안 제출')
+    }
+  }
+
+  return parts
+}
+
+function getAppBreadcrumb(screenId){
+  if(PREP_SCREEN_IDS.indexOf(screenId) >= 0){
+    return buildPrepBreadcrumb(screenId)
+  }
+  if(screenId === 'check-screen' || screenId === 'check-set-screen'){
+    return buildCheckBreadcrumb(screenId)
+  }
+  if(screenId === 'portal-screen') return ['CODE LAB', 'HOME']
+  if(screenId === 'account-screen') return ['CODE LAB', 'HOME', '회원정보']
+  if(screenId === 'password-screen') return ['CODE LAB', 'HOME', '비밀번호 변경']
+  if(screenId === 'admin-portal-screen') return ['CODE LAB', 'ADMIN', 'TOOLS']
+  if(screenId === 'admin-screen') return ['CODE LAB', 'ADMIN', 'CHECK 통계']
+  return CHROME_BREADCRUMBS[screenId] || ['CODE LAB']
+}
+
+function getAppChromeSubText(screenId, fallbackText){
+  if(screenId === 'check-set-screen' && portalState.currentCheckSet && portalState.currentCheckSet.title){
+    return portalState.currentCheckSet.title
+  }
+  const classNames = getProfileClassNames().join(', ')
+  return classNames || fallbackText || ''
+}
+
 function updateAppChrome(screenId){
   const chrome = document.getElementById('app-chrome')
   const menuButton = document.getElementById('app-menu-btn')
+  const breadcrumbNode = document.getElementById('app-chrome-breadcrumb')
   const titleNode = document.getElementById('app-chrome-title')
   const subNode = document.getElementById('app-chrome-sub')
-  if(!chrome || !titleNode || !subNode || !menuButton) return
+  if(!chrome || !titleNode || !subNode || !menuButton || !breadcrumbNode) return
 
   const hiddenScreens = ['auth-screen', 'boot-screen', 'pw-screen']
   const shouldShow = hiddenScreens.indexOf(screenId) < 0 && !!portalState.currentUser
@@ -195,9 +346,9 @@ function updateAppChrome(screenId){
   menuButton.disabled = !shouldShow
 
   const meta = CHROME_SCREEN_TITLES[screenId] || { title: 'CODE LAB', sub: '' }
+  breadcrumbNode.textContent = getAppBreadcrumb(screenId).join(' > ')
   titleNode.textContent = meta.title
-  const classNames = getProfileClassNames().join(', ')
-  subNode.textContent = classNames || meta.sub
+  subNode.textContent = getAppChromeSubText(screenId, meta.sub)
 }
 
 function syncAppHistoryState(screenId, replaceStateOnly){
@@ -235,6 +386,7 @@ function handleAppPopState(event){
   Promise.resolve(restoreAppRoute(route || { screenId: 'portal-screen' })).finally(function(){
     portalState.isRestoringHistory = false
     updateAppChrome(getCurrentActiveScreenId())
+    syncCheckJumpButtonVisibility()
   })
 }
 
@@ -281,6 +433,7 @@ function restoreFallbackRoute(defaultScreenId){
 window.onAppScreenActivated = function(screenId){
   updateAppChrome(screenId)
   syncAppHistoryState(screenId, false)
+  syncCheckJumpButtonVisibility()
 }
 
 function activatePortalScreen(screenId){
@@ -293,6 +446,46 @@ function activatePortalScreen(screenId){
   if(typeof window.onAppScreenActivated === 'function'){
     window.onAppScreenActivated(screenId)
   }
+}
+
+function scrollCheckScreenToBottom(){
+  if(getCurrentActiveScreenId() !== 'check-set-screen') return
+  const submitArea = document.getElementById('check-submit-actions')
+  if(submitArea && typeof submitArea.scrollIntoView === 'function'){
+    submitArea.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }
+  setTimeout(function(){
+    const scrollHeight = Math.max(
+      document.documentElement ? document.documentElement.scrollHeight : 0,
+      document.body ? document.body.scrollHeight : 0
+    )
+    window.scrollTo({ top: scrollHeight, behavior: 'smooth' })
+  }, 120)
+}
+
+function syncCheckJumpButtonVisibility(){
+  const button = document.getElementById('check-jump-bottom-btn')
+  if(!button){
+    return
+  }
+
+  if(getCurrentActiveScreenId() !== 'check-set-screen'){
+    button.classList.add('hidden')
+    return
+  }
+
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+  const scrollHeight = Math.max(
+    document.documentElement ? document.documentElement.scrollHeight : 0,
+    document.body ? document.body.scrollHeight : 0
+  )
+  const canScrollMore = scrollHeight - viewportHeight > 280
+  const submitArea = document.getElementById('check-submit-actions')
+  const nearBottom = submitArea
+    ? submitArea.getBoundingClientRect().top <= viewportHeight - 120
+    : (window.scrollY + viewportHeight >= scrollHeight - 180)
+
+  button.classList.toggle('hidden', !canScrollMore || nearBottom)
 }
 
 function showAuthScreen(errorMessage){
@@ -931,6 +1124,7 @@ async function openCheckSetPortal(setId, options){
   portalState.currentCheckSet = checkSet
   portalState.currentCheckSubmission = await loadExistingCheckSubmission(checkSet)
   portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, portalState.currentCheckSubmission)
+  portalState.currentCheckEditTargets = {}
   portalState.currentCheckFilter = countPendingCheckQuestions(checkSet, portalState.currentCheckSubmission) ? 'pending' : 'all'
   portalState.currentQuestionIssues = portalState.currentCheckSubmission
     ? await fetchMyQuestionIssues(checkSet)
@@ -952,6 +1146,14 @@ function renderCurrentCheckSet(){
   setElementTextSafe('check-current-set-name', checkSet.title)
   setElementTextSafe('check-current-set-meta', getCheckSetDateText(checkSet))
   renderCheckForm(checkSet, portalState.currentCheckSubmission)
+  if(getCurrentActiveScreenId() === 'check-set-screen'){
+    updateAppChrome('check-set-screen')
+  }
+  if(typeof requestAnimationFrame === 'function'){
+    requestAnimationFrame(syncCheckJumpButtonVisibility)
+  }else{
+    syncCheckJumpButtonVisibility()
+  }
 }
 
 function renderCheckForm(checkSet, submission){
@@ -1610,4 +1812,467 @@ function formatAdminTime(value){
   const date = new Date(value)
   if(Number.isNaN(date.getTime())) return ''
   return date.toLocaleString('ko-KR', { hour12: false })
+}
+
+function getCheckAnswerEditCount(submittedAnswer){
+  const count = Number(submittedAnswer && (submittedAnswer.revisionCount || submittedAnswer.editCount) || 0)
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+}
+
+function canCheckAnswerBeEdited(submittedAnswer){
+  return !!submittedAnswer && getCheckAnswerEditCount(submittedAnswer) < 1
+}
+
+function isCheckAnswerEditing(questionId){
+  const key = String(questionId || '').trim()
+  return !!(key && portalState.currentCheckEditTargets && portalState.currentCheckEditTargets[key])
+}
+
+function setCheckAnswerEditing(questionId, isEditing){
+  const key = String(questionId || '').trim()
+  if(!key) return
+  if(!portalState.currentCheckEditTargets) portalState.currentCheckEditTargets = {}
+  if(isEditing){
+    portalState.currentCheckEditTargets[key] = true
+  }else{
+    delete portalState.currentCheckEditTargets[key]
+  }
+}
+
+function getActiveCheckEditQuestionIds(){
+  return Object.keys(portalState.currentCheckEditTargets || {}).filter(function(questionId){
+    return !!portalState.currentCheckEditTargets[questionId]
+  })
+}
+
+function countOpenCheckEdits(){
+  return getActiveCheckEditQuestionIds().length
+}
+
+function countReadyCheckEdits(submission){
+  const answerMap = getSubmittedCheckAnswerMap(submission)
+  return getActiveCheckEditQuestionIds().reduce(function(count, questionId){
+    const submittedAnswer = answerMap.get(questionId) || null
+    if(!submittedAnswer || !canCheckAnswerBeEdited(submittedAnswer)) return count
+    const nextAnswer = getCurrentCheckDraftAnswer(questionId) || String(submittedAnswer.userAnswer || '').trim()
+    return nextAnswer && nextAnswer !== String(submittedAnswer.userAnswer || '').trim() ? count + 1 : count
+  }, 0)
+}
+
+function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
+  const existing = portalState.currentQuestionIssues.find(function(entry){
+    return String(entry.questionId || '') === String(question.id || '')
+  }) || null
+  const submittedText = submittedAnswer && submittedAnswer.userAnswer ? String(submittedAnswer.userAnswer) : ''
+  const buttonClass = existing ? 'check-question-issue-btn done' : 'check-question-issue-btn'
+  const buttonText = existing ? '질문 접수됨' : '질문 남기기'
+  const editTool = isEditingAnswer
+    ? '<button class="check-question-edit-btn active" type="button" onclick="cancelCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">수정 취소</button>'
+    : (canCheckAnswerBeEdited(submittedAnswer)
+        ? '<button class="check-question-edit-btn" type="button" onclick="startCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">답 수정하기 (1회)</button>'
+        : '<span class="check-edit-limit-badge">답 수정 1회 사용 완료</span>')
+
+  return '' +
+    '<div class="check-result-tools">' +
+      editTool +
+      '<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')" ' + (existing ? 'disabled' : '') + '>' +
+        escapeHtml(buttonText) +
+      '</button>' +
+    '</div>' +
+    (submittedText ? '<div class="check-question-prompt" style="margin-top:8px">' + (isEditingAnswer ? '현재 저장된 답: ' : '내 답: ') + escapeHtml(submittedText) + '</div>' : '')
+}
+
+window.startCheckAnswerEdit = function(questionId){
+  const checkSet = portalState.currentCheckSet
+  const submission = portalState.currentCheckSubmission
+  if(!checkSet || !submission) return
+
+  const submittedAnswer = submission.answers.find(function(entry){
+    return String(entry.questionId || '') === String(questionId || '')
+  }) || null
+  if(!submittedAnswer) return
+  if(!canCheckAnswerBeEdited(submittedAnswer)){
+    showToast('이 문항은 답 수정 1회를 이미 사용했습니다.', 'var(--blue)')
+    return
+  }
+
+  setCurrentCheckDraftAnswer(questionId, String(submittedAnswer.userAnswer || '').trim())
+  setCheckAnswerEditing(questionId, true)
+  portalState.currentCheckFilter = 'all'
+  renderCheckForm(checkSet, submission)
+  showToast('답 수정 모드가 열렸습니다. 답을 다시 선택한 뒤 제출해 주세요.', 'var(--blue)')
+}
+
+window.cancelCheckAnswerEdit = function(questionId){
+  const checkSet = portalState.currentCheckSet
+  const submission = portalState.currentCheckSubmission
+  if(!checkSet || !submission) return
+
+  const submittedAnswer = submission.answers.find(function(entry){
+    return String(entry.questionId || '') === String(questionId || '')
+  }) || null
+  if(!submittedAnswer) return
+
+  setCurrentCheckDraftAnswer(questionId, String(submittedAnswer.userAnswer || '').trim())
+  setCheckAnswerEditing(questionId, false)
+  renderCheckForm(checkSet, submission)
+}
+
+function renderCheckForm(checkSet, submission){
+  const form = document.getElementById('check-form')
+  if(!form || !checkSet) return
+
+  const answerMap = getSubmittedCheckAnswerMap(submission)
+  const submittedCount = getSubmittedCheckCount(submission)
+  const pendingCount = countPendingCheckQuestions(checkSet, submission)
+  const latestBatchIds = getLatestBatchQuestionIds(submission)
+  const openEditCount = countOpenCheckEdits()
+  const filterMode = resolveCheckFilterMode(checkSet, submission, portalState.currentCheckFilter)
+  portalState.currentCheckFilter = filterMode
+  const visibleQuestions = getVisibleCheckQuestions(checkSet, submission, filterMode)
+  const isLatestView = filterMode === 'latest'
+
+  const progressHtml =
+    '<section class="group check-progress-card">' +
+      '<div class="check-progress-top">' +
+        '<div class="check-progress-copy">' +
+          '<div class="check-progress-title">제출 현황</div>' +
+          '<div class="check-progress-meta">제출한 문항은 정답과 해설을 바로 확인할 수 있고, 문항별 답 수정은 1회만 가능합니다.</div>' +
+        '</div>' +
+        '<div class="check-progress-stats">' +
+          '<span class="check-progress-chip">전체 ' + checkSet.questions.length + '</span>' +
+          '<span class="check-progress-chip">제출 ' + submittedCount + '</span>' +
+          '<span class="check-progress-chip">남음 ' + pendingCount + '</span>' +
+          (openEditCount ? '<span class="check-progress-chip">수정 중 ' + openEditCount + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      (
+        isLatestView
+          ? (
+              '<div class="check-latest-banner">' +
+                '<span class="status-badge ok">이번 제출 결과</span>' +
+                '<div class="check-progress-meta">방금 제출한 문항 ' + latestBatchIds.length + '개만 모아 보여줍니다.</div>' +
+              '</div>'
+            )
+          : (
+              '<div class="check-filter-bar">' +
+                renderCheckFilterButton('all', '전체', checkSet.questions.length, filterMode === 'all') +
+                renderCheckFilterButton('pending', '미제출/수정', pendingCount + openEditCount, filterMode === 'pending') +
+              '</div>'
+            )
+      ) +
+    '</section>'
+
+  const cardHtml = visibleQuestions.length ? visibleQuestions.map(function(question, index){
+    const questionId = String(question && question.id || '').trim()
+    const submittedAnswer = answerMap.get(questionId) || null
+    const isEditingAnswer = !!submittedAnswer && isCheckAnswerEditing(questionId)
+    const selectedAnswer = isEditingAnswer
+      ? (getCurrentCheckDraftAnswer(questionId) || String(submittedAnswer.userAnswer || ''))
+      : (submittedAnswer ? String(submittedAnswer.userAnswer || '') : getCurrentCheckDraftAnswer(questionId))
+    const displayNumber = normalizeCheckQuestionNumber(question && question.number, index + 1)
+    const resultClass = submittedAnswer ? ('check-result show ' + (submittedAnswer.isCorrect ? 'correct' : 'wrong')) : 'check-result'
+    const resultTitle = isEditingAnswer
+      ? '답 수정 중'
+      : (submittedAnswer && submittedAnswer.isCorrect ? '정답' : '정답과 해설')
+    const editNote = isEditingAnswer
+      ? '<div class="check-edit-note">수정 모드입니다. 답을 다시 고른 뒤 아래 제출 버튼을 누르면 이 문항의 저장된 답이 1회에 한해 바뀝니다.</div>'
+      : ''
+
+    return '' +
+      '<section class="group check-form-card">' +
+        '<div class="check-question-meta">' +
+          '<span class="check-chip">' + escapeHtml(question.type) + '</span>' +
+          '<span class="check-chip">' + displayNumber + '번</span>' +
+          '<span class="check-chip">' + escapeHtml(question.problemType || '기타') + '</span>' +
+        '</div>' +
+        '<div class="check-question-title">문항 ' + displayNumber + '</div>' +
+        '<div class="check-question-prompt">' + escapeHtml(question.prompt || ('문항 ' + displayNumber)) + '</div>' +
+        '<div class="check-answer-box">' +
+          renderCheckAnswerField(question, selectedAnswer, !!submittedAnswer && !isEditingAnswer) +
+        '</div>' +
+        (submittedAnswer ? (
+          '<div class="' + resultClass + '">' +
+            '<div class="check-result-title">' + resultTitle + '</div>' +
+            '<div class="check-result-body">' + renderCheckResultBody(question, submittedAnswer) + '</div>' +
+            editNote +
+            renderCheckResultTools(question, submittedAnswer, isEditingAnswer) +
+          '</div>'
+        ) : '') +
+      '</section>'
+  }).join('') : '<div class="empty-box">선택한 조건에 맞는 문항이 없습니다.</div>'
+
+  form.innerHTML = progressHtml + cardHtml
+
+  bindCheckFormInteractions(checkSet, submission)
+  renderCheckSubmitArea(checkSet, submission)
+}
+
+function renderCheckSubmitArea(checkSet, submission){
+  const submitArea = document.getElementById('check-submit-actions')
+  if(!submitArea || !checkSet) return
+
+  const filterMode = resolveCheckFilterMode(checkSet, submission, portalState.currentCheckFilter)
+  const totalCount = checkSet.questions.length
+  const submittedCount = getSubmittedCheckCount(submission)
+  const pendingCount = countPendingCheckQuestions(checkSet, submission)
+  const draftCount = countDraftCheckQuestions(checkSet, submission)
+  const openEditCount = countOpenCheckEdits()
+  const editReadyCount = countReadyCheckEdits(submission)
+  const actionableCount = draftCount + editReadyCount
+  const latestBatch = submission && submission.latestBatch ? submission.latestBatch : null
+
+  let html = ''
+  if(filterMode === 'latest' && latestBatch && Array.isArray(latestBatch.questionIds) && latestBatch.questionIds.length){
+    const latestEditedCount = Number(latestBatch.editedCount || 0)
+    const latestNewCount = Number(latestBatch.newCount || Math.max(0, Number(latestBatch.summary && latestBatch.summary.total || 0) - latestEditedCount))
+    const latestSummaryText = latestEditedCount && latestNewCount
+      ? ('이번에 ' + latestNewCount + '문항 제출, ' + latestEditedCount + '문항 답 수정 완료')
+      : (latestEditedCount
+          ? ('이번에 ' + latestEditedCount + '문항의 답 수정을 반영했습니다.')
+          : ('이번에 ' + Number(latestBatch.summary && latestBatch.summary.total || latestBatch.questionIds.length || 0) + '문항을 제출했고, 그중 ' + Number(latestBatch.summary && latestBatch.summary.correct || 0) + '문항 정답입니다.'))
+
+    html += '' +
+      '<div class="status-note" style="margin-top:0">' +
+        '<div class="status-top">' +
+          '<span class="status-badge ok">최근 제출</span>' +
+          '<span class="status-time">' + escapeHtml(formatAdminTime(latestBatch.submittedAt || submission.submittedAt || '')) + '</span>' +
+        '</div>' +
+        '<div class="status-text">' + latestSummaryText + '</div>' +
+      '</div>'
+  }
+
+  let statusText = ''
+  if(openEditCount){
+    statusText = editReadyCount
+      ? ('수정 중인 문항 ' + openEditCount + '개 중 ' + editReadyCount + '개가 제출 준비되었습니다. 답 수정은 문항별로 1회만 가능합니다.')
+      : '수정 모드가 열려 있습니다. 기존과 다른 답을 선택해야 제출할 수 있습니다. 답 수정은 문항별로 1회만 가능합니다.'
+  }else if(pendingCount){
+    statusText = '아직 ' + pendingCount + '문항이 남아 있습니다. 먼저 답을 고른 문항만 제출할 수 있고, 제출한 문항도 문항별로 1회까지 답 수정이 가능합니다.'
+  }else{
+    statusText = '이 세트의 모든 문항을 제출했습니다. 필요하면 문항별로 답 수정 1회를 사용할 수 있습니다.'
+  }
+
+  html += '' +
+    '<div class="status-note check-submit-status">' +
+      '<div class="status-top">' +
+        '<span class="status-badge ' + ((pendingCount || openEditCount) ? 'blue' : 'ok') + '">' + ((pendingCount || openEditCount) ? '이어가기 가능' : '전체 제출 완료') + '</span>' +
+        '<span class="status-time">제출 ' + submittedCount + ' / 전체 ' + totalCount + (openEditCount ? (' · 수정 중 ' + openEditCount) : '') + '</span>' +
+      '</div>' +
+      '<div class="status-text">' + statusText + '</div>' +
+    '</div>'
+
+  if(filterMode === 'latest'){
+    if(pendingCount){
+      html += '<button class="btn btn-blue" type="button" id="check-continue-btn">미제출 문항 계속 풀기</button>'
+    }else{
+      html += '<button class="btn btn-blue" type="button" id="check-all-results-btn">전체 제출 현황 보기</button>'
+    }
+  }else if(pendingCount || openEditCount){
+    const buttonText = editReadyCount && draftCount
+      ? ('이번에 ' + actionableCount + '문항 제출')
+      : (editReadyCount
+          ? ('답 수정 ' + editReadyCount + '문항 제출')
+          : (draftCount
+              ? ('이번에 ' + draftCount + '문항 제출')
+              : '이번 문항 제출'))
+    html += '<button class="btn btn-blue" type="button" id="check-submit-btn"' + (actionableCount ? '' : ' disabled') + '>' + buttonText + '</button>'
+  }
+
+  submitArea.innerHTML = html
+  const submitButton = document.getElementById('check-submit-btn')
+  if(submitButton) submitButton.addEventListener('click', submitCurrentCheckSet)
+  const continueButton = document.getElementById('check-continue-btn')
+  if(continueButton) continueButton.addEventListener('click', function(){
+    portalState.currentCheckFilter = 'pending'
+    renderCurrentCheckSet()
+  })
+  const allResultsButton = document.getElementById('check-all-results-btn')
+  if(allResultsButton) allResultsButton.addEventListener('click', function(){
+    portalState.currentCheckFilter = 'all'
+    renderCurrentCheckSet()
+  })
+  if(typeof requestAnimationFrame === 'function'){
+    requestAnimationFrame(syncCheckJumpButtonVisibility)
+  }else{
+    syncCheckJumpButtonVisibility()
+  }
+}
+
+function buildCheckSubmitToastMessage(batchAnswers){
+  const list = Array.isArray(batchAnswers) ? batchAnswers : []
+  const editedCount = list.filter(function(answer){
+    return getCheckAnswerEditCount(answer) > 0
+  }).length
+  const newCount = Math.max(0, list.length - editedCount)
+  if(newCount && editedCount){
+    return newCount + '문항 제출, ' + editedCount + '문항 답 수정 완료'
+  }
+  if(editedCount){
+    return editedCount + '문항의 수정 답안을 반영했습니다.'
+  }
+  return newCount + '문항을 제출하고 정답과 해설을 표시했습니다.'
+}
+
+async function submitCurrentCheckSet(){
+  if(portalState.isSubmittingCheck) return
+  const checkSet = portalState.currentCheckSet
+  if(!checkSet) return
+
+  portalState.isSubmittingCheck = true
+  try{
+    const batchAnswers = collectCheckBatchAnswers(checkSet, portalState.currentCheckSubmission)
+    if(!batchAnswers.length){
+      showToast(
+        countOpenCheckEdits()
+          ? '수정 중인 문항이 있습니다. 기존과 다른 답을 선택해야 제출할 수 있습니다.'
+          : '아직 제출할 답안이 없습니다. 먼저 미제출 문항의 답을 선택해 주세요.',
+        'var(--blue)'
+      )
+      return
+    }
+
+    const submission = mergeCheckSubmission(portalState.currentCheckSubmission, batchAnswers)
+
+    await saveCheckSubmission(checkSet, submission)
+    portalState.currentCheckSubmission = submission
+    portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, submission)
+    portalState.currentCheckEditTargets = {}
+    portalState.currentCheckFilter = 'latest'
+    portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
+    renderCheckForm(checkSet, submission)
+    showToast(buildCheckSubmitToastMessage(batchAnswers), 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('답안 제출에 실패했습니다.', 'var(--red)')
+  }finally{
+    portalState.isSubmittingCheck = false
+  }
+}
+
+function resolveCheckFilterMode(checkSet, submission, preferredMode){
+  const mode = String(preferredMode || 'all').trim() || 'all'
+  if(mode === 'pending' && !countPendingCheckQuestions(checkSet, submission) && !countOpenCheckEdits()) return 'all'
+  if(mode === 'latest' && !getLatestBatchQuestionIds(submission).length) return 'all'
+  return ['all', 'pending', 'latest'].includes(mode) ? mode : 'all'
+}
+
+function getVisibleCheckQuestions(checkSet, submission, filterMode){
+  const questions = Array.isArray(checkSet && checkSet.questions) ? checkSet.questions : []
+  const submittedIds = new Set((submission && Array.isArray(submission.answers) ? submission.answers : []).map(function(answer){
+    return String(answer && answer.questionId || '').trim()
+  }).filter(Boolean))
+  const latestIds = new Set(getLatestBatchQuestionIds(submission))
+  if(filterMode === 'pending'){
+    return questions.filter(function(question){
+      const questionId = String(question && question.id || '').trim()
+      return !submittedIds.has(questionId) || isCheckAnswerEditing(questionId)
+    })
+  }
+  if(filterMode === 'latest'){
+    return questions.filter(function(question){
+      return latestIds.has(String(question && question.id || '').trim())
+    })
+  }
+  return questions
+}
+
+function collectCheckBatchAnswers(checkSet, submission){
+  const answerMap = getSubmittedCheckAnswerMap(submission)
+  const revisedAt = new Date().toISOString()
+  return (Array.isArray(checkSet && checkSet.questions) ? checkSet.questions : []).map(function(question, index){
+    const questionId = String(question && question.id || '').trim()
+    if(!questionId) return null
+
+    const submittedAnswer = answerMap.get(questionId) || null
+    const isEditingAnswer = !!submittedAnswer && isCheckAnswerEditing(questionId)
+    if(submittedAnswer && !isEditingAnswer) return null
+
+    const currentAnswer = submittedAnswer ? String(submittedAnswer.userAnswer || '').trim() : ''
+    const userAnswer = getCurrentCheckDraftAnswer(questionId) || currentAnswer
+    if(!userAnswer) return null
+
+    if(submittedAnswer){
+      if(!canCheckAnswerBeEdited(submittedAnswer) || userAnswer === currentAnswer) return null
+      return {
+        questionId: questionId,
+        number: normalizeCheckQuestionNumber(question.number, index + 1),
+        type: question.type,
+        problemType: normalizeCheckProblemType(question.problemType || question.category),
+        prompt: question.prompt,
+        userAnswer: userAnswer,
+        answer: question.answer,
+        explanation: question.explanation,
+        isCorrect: isAnswerAccepted(userAnswer, question),
+        originalUserAnswer: String(submittedAnswer.originalUserAnswer || submittedAnswer.userAnswer || '').trim(),
+        previousUserAnswer: currentAnswer,
+        revisionCount: getCheckAnswerEditCount(submittedAnswer) + 1,
+        revisedAt: revisedAt
+      }
+    }
+
+    return {
+      questionId: questionId,
+      number: normalizeCheckQuestionNumber(question.number, index + 1),
+      type: question.type,
+      problemType: normalizeCheckProblemType(question.problemType || question.category),
+      prompt: question.prompt,
+      userAnswer: userAnswer,
+      answer: question.answer,
+      explanation: question.explanation,
+      isCorrect: isAnswerAccepted(userAnswer, question),
+      revisionCount: 0
+    }
+  }).filter(Boolean)
+}
+
+function mergeCheckSubmission(existingSubmission, batchAnswers){
+  const mergedMap = new Map((existingSubmission && Array.isArray(existingSubmission.answers) ? existingSubmission.answers : []).map(function(answer){
+    return [String(answer && answer.questionId || '').trim(), answer]
+  }).filter(function(entry){ return entry[0] }))
+  batchAnswers.forEach(function(answer){
+    mergedMap.set(String(answer && answer.questionId || '').trim(), answer)
+  })
+  const mergedAnswers = sortCheckSubmissionAnswers(Array.from(mergedMap.values()))
+  const submittedAt = new Date().toISOString()
+  const editedCount = batchAnswers.filter(function(answer){
+    return getCheckAnswerEditCount(answer) > 0
+  }).length
+  return {
+    submittedAt: submittedAt,
+    summary: buildCheckSubmissionSummary(mergedAnswers),
+    answers: mergedAnswers,
+    latestBatch: {
+      submittedAt: submittedAt,
+      questionIds: batchAnswers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean),
+      summary: buildCheckSubmissionSummary(batchAnswers),
+      editedCount: editedCount,
+      newCount: Math.max(0, batchAnswers.length - editedCount)
+    }
+  }
+}
+
+function mapResponseToSubmission(row){
+  const answers = sortCheckSubmissionAnswers(Array.isArray(row && row.answers) ? row.answers : [])
+  const latestBatchIds = Array.isArray(row && row.latestBatch && row.latestBatch.questionIds)
+    ? row.latestBatch.questionIds.map(function(value){ return String(value || '').trim() }).filter(Boolean)
+    : answers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean)
+  const latestBatchSummary = row && row.latestBatch && row.latestBatch.summary
+    ? row.latestBatch.summary
+    : buildCheckSubmissionSummary(answers.filter(function(answer){
+        return latestBatchIds.includes(String(answer && answer.questionId || '').trim())
+      }))
+
+  return {
+    submittedAt: String(row && row.submittedAt || '').trim(),
+    summary: row && row.summary ? row.summary : buildCheckSubmissionSummary(answers),
+    answers: answers,
+    latestBatch: latestBatchIds.length ? {
+      submittedAt: String(row && row.latestBatch && row.latestBatch.submittedAt || row && row.submittedAt || '').trim(),
+      questionIds: latestBatchIds,
+      summary: latestBatchSummary,
+      editedCount: Number(row && row.latestBatch && row.latestBatch.editedCount || 0),
+      newCount: Number(row && row.latestBatch && row.latestBatch.newCount || Math.max(0, latestBatchIds.length - Number(row && row.latestBatch && row.latestBatch.editedCount || 0)))
+    } : null
+  }
 }
