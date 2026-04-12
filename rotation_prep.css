@@ -2069,8 +2069,18 @@ body::before{
 .app-chrome-copy{
   display:flex;
   flex-direction:column;
-  gap:2px;
+  gap:3px;
   min-width:0;
+}
+
+.app-chrome-breadcrumb{
+  font-size:.68rem;
+  font-weight:800;
+  letter-spacing:.4px;
+  color:rgba(61,58,52,.72);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .app-chrome-title{
@@ -2230,7 +2240,51 @@ body::before{
 .check-result-tools{
   margin-top:12px;
   display:flex;
+  flex-wrap:wrap;
   justify-content:flex-end;
+  gap:8px;
+}
+
+.check-edit-note{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:rgba(26,95,200,.08);
+  color:var(--blue);
+  font-size:.76rem;
+  line-height:1.7;
+  font-weight:700;
+}
+
+.check-question-edit-btn{
+  min-height:38px;
+  padding:9px 14px;
+  border-radius:999px;
+  border:1px solid rgba(13,77,68,.2);
+  background:rgba(13,77,68,.08);
+  color:var(--green);
+  font:inherit;
+  font-size:.78rem;
+  font-weight:800;
+}
+
+.check-question-edit-btn.active{
+  border-color:rgba(200,55,26,.2);
+  background:rgba(200,55,26,.08);
+  color:var(--red);
+}
+
+.check-edit-limit-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:38px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid rgba(24,51,45,.10);
+  background:#fff;
+  color:var(--muted);
+  font-size:.76rem;
+  font-weight:800;
 }
 
 .check-progress-card{
@@ -2351,6 +2405,27 @@ body::before{
   border-color:rgba(26,140,78,.2);
   background:rgba(26,140,78,.1);
   color:var(--green);
+}
+
+.check-jump-btn{
+  position:fixed;
+  right:18px;
+  bottom:calc(70px + var(--safe-b));
+  z-index:190;
+  min-height:44px;
+  padding:0 16px;
+  border:none;
+  border-radius:999px;
+  background:linear-gradient(135deg,#2b5f59,#0d4d44);
+  color:#f7fbf9;
+  font:inherit;
+  font-size:.82rem;
+  font-weight:800;
+  box-shadow:0 18px 34px rgba(13,77,68,.22);
+}
+
+.check-jump-btn:active{
+  transform:translateY(1px);
 }
 
 .admin-item-status{
