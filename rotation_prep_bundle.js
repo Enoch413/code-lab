@@ -6,7 +6,7 @@ function normalizeBundleData(data){
     generatedAt: String((source.prepConfig && source.prepConfig.generatedAt) || source.savedAt || source.updatedAt || '').trim()
   }
 
-  if(Array.isArray(source.studySets) && source.studySets.length){
+  if(Array.isArray(source.studySets)){
     const classes = normalizeBundleClasses(source.classes, source.studySets)
     const studySets = source.studySets.map(function(studySet, index){
       return normalizeStudySet(studySet, index, classes)
