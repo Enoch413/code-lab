@@ -240,6 +240,17 @@
   </div>
 
   <div id="dash" style="display:none;margin-top:24px">
+    <section class="group admin-content-panel hidden" id="prep-admin-set-panel">
+      <div class="group-title">
+        <h3>PREP 세트 관리</h3>
+        <span class="group-count" id="prep-admin-set-count">0</span>
+      </div>
+      <div class="admin-content-toolbar">
+        <div class="admin-content-copy" id="prep-admin-set-hint">현재 반에 올린 PREP 세트가 여기에 쌓입니다.</div>
+        <button class="btn btn-ghost btn-sm" type="button" id="prep-admin-upload-btn">세트 업로드</button>
+      </div>
+      <div class="admin-content-list" id="prep-admin-set-list"></div>
+    </section>
     <div class="stats" id="stats"></div>
     <div class="label">학습 세트 선택</div>
     <div class="set-list" id="set-list"></div>
@@ -354,6 +365,18 @@
     <button class="btn btn-ghost btn-sm hidden" type="button" id="check-change-class-btn">반 변경</button>
   </div>
 
+  <section class="group admin-content-panel hidden" id="check-admin-set-panel">
+    <div class="group-title">
+      <h3>CHECK 세트 관리</h3>
+      <span class="group-count" id="check-admin-set-count">0</span>
+    </div>
+    <div class="admin-content-toolbar">
+      <div class="admin-content-copy" id="check-admin-set-hint">현재 반에 올린 CHECK 세트가 여기에 쌓입니다.</div>
+      <button class="btn btn-ghost btn-sm" type="button" id="check-admin-upload-btn">세트 업로드</button>
+    </div>
+    <div class="admin-content-list" id="check-admin-set-list"></div>
+  </section>
+
   <div class="stats" id="check-stats"></div>
   <div class="label">CHECK 세트 선택</div>
   <div class="set-list" id="check-set-list"></div>
@@ -440,6 +463,7 @@
   </div>
 
   <div class="hd"><h1>ADMIN</h1><span class="sub" id="admin-subtitle"></span></div>
+  <button class="admin-tools-launch" type="button" id="admin-tools-entry-btn">TOOLS</button>
   <div class="class-bar admin-filter-bar" style="display:flex">
     <div class="class-bar-copy">
       <div class="class-bar-label">통계 범위</div>
@@ -453,20 +477,6 @@
     </div>
   </div>
   <div class="stats" id="admin-stats"></div>
-
-  <button class="admin-tools-launch" type="button" id="admin-tools-entry-btn">TOOLS</button>
-
-  <section class="group">
-    <div class="group-title">
-      <h3>운영 데이터 업로드</h3>
-      <span class="group-count">SYNC</span>
-    </div>
-    <div class="admin-upload-grid">
-      <button class="btn btn-ghost" type="button" id="admin-upload-prep-btn">PREP session 업로드</button>
-      <button class="btn btn-ghost" type="button" id="admin-upload-check-btn">CHECK data 업로드</button>
-    </div>
-    <div class="admin-upload-status" id="admin-upload-status">아직 업로드 기록이 없습니다.</div>
-  </section>
 
   <div class="admin-grid">
     <section class="group">
@@ -496,8 +506,8 @@
 <div class="toast" id="toast"></div>
 <button class="check-jump-btn hidden" type="button" id="check-jump-bottom-btn">맨 아래로</button>
 <input type="file" accept=".json,application/json" id="file-input" hidden>
-<input type="file" accept=".json,application/json" id="admin-prep-upload-input" hidden>
-<input type="file" accept=".json,application/json" id="admin-check-upload-input" hidden>
+<input type="file" accept=".json,application/json" id="prep-set-upload-input" hidden>
+<input type="file" accept=".json,application/json" id="check-set-upload-input" hidden>
 <footer class="prep-footer global">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
 
 <script src="./firebase-config.js"></script>
