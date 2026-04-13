@@ -45,6 +45,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /portalPrepSets/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /portalCheckSets/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /questionIssues/{issueId} {
       allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
       allow create, update: if signedIn() && request.resource.data.userId == request.auth.uid;
