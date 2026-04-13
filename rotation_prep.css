@@ -1253,6 +1253,7 @@ body::before{
   --slate:#345a6c;
   --shadow-soft:0 18px 40px rgba(16,33,29,.06);
   --shadow-card:0 24px 52px rgba(16,33,29,.08);
+  --app-chrome-offset:84px;
 }
 
 html{
@@ -2110,7 +2111,7 @@ body::before{
 #check-screen,
 #check-set-screen,
 #admin-screen{
-  padding-top:84px;
+  padding-top:var(--app-chrome-offset,84px);
 }
 
 #portal-screen > .screen-nav,
