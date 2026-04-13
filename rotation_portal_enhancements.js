@@ -61,7 +61,8 @@ const ADMIN_PORTAL_LABS = {
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
   'ROTATION LAB': 'https://enoch413.github.io/rotatation-lab/',
   'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
-  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
+  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/',
+  'MERGER LAB': 'http://127.0.0.1:8781/'
 }
 
 const ADMIN_PORTAL_LAB_BUTTON_IDS = {
@@ -69,10 +70,11 @@ const ADMIN_PORTAL_LAB_BUTTON_IDS = {
   'PDF LAB': 'admin-portal-pdf-btn',
   'ROTATION LAB': 'admin-portal-rotation-btn',
   'BUILDER LAB': 'admin-portal-builder-btn',
-  'PINPOINT LAB': 'admin-portal-pinpoint-btn'
+  'PINPOINT LAB': 'admin-portal-pinpoint-btn',
+  'MERGER LAB': 'admin-portal-merger-btn'
 }
 
-const ADMIN_PORTAL_LAB_COUNT = 5
+const ADMIN_PORTAL_LAB_COUNT = 6
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
 portalState.forcePasswordReset = false
@@ -146,6 +148,7 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-rotation-btn', function(){ openLabPlaceholder('ROTATION LAB') })
   bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
+  bindClick('admin-portal-merger-btn', function(){ openLabPlaceholder('MERGER LAB') })
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
@@ -833,6 +836,7 @@ function normalizeAdminPortalLabName(value){
   if(raw === 'rotation' || raw === 'rotationlab' || raw === 'rotation-lab' || raw === 'rotation lab') return 'ROTATION LAB'
   if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
   if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
+  if(raw === 'merger' || raw === 'mergerlab' || raw === 'merger-lab' || raw === 'merger lab') return 'MERGER LAB'
   return ''
 }
 
