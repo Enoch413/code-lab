@@ -61,7 +61,8 @@ const ADMIN_PORTAL_LABS = {
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
   'ROTATION LAB': 'https://enoch413.github.io/rotatation-lab/',
   'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
-  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
+  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/',
+  'MERGER LAB': 'http://127.0.0.1:8781/'
 }
 
 const ADMIN_PORTAL_LAB_BUTTON_IDS = {
@@ -69,10 +70,15 @@ const ADMIN_PORTAL_LAB_BUTTON_IDS = {
   'PDF LAB': 'admin-portal-pdf-btn',
   'ROTATION LAB': 'admin-portal-rotation-btn',
   'BUILDER LAB': 'admin-portal-builder-btn',
-  'PINPOINT LAB': 'admin-portal-pinpoint-btn'
+  'PINPOINT LAB': 'admin-portal-pinpoint-btn',
+  'MERGER LAB': 'admin-portal-merger-btn'
 }
 
-const ADMIN_PORTAL_LAB_COUNT = 5
+const ADMIN_PORTAL_LAB_OWNER_IDS = {
+  'MERGER LAB': ['passion413']
+}
+
+const ADMIN_PORTAL_LAB_COUNT = 6
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
 portalState.forcePasswordReset = false
@@ -146,6 +152,7 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-rotation-btn', function(){ openLabPlaceholder('ROTATION LAB') })
   bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
+  bindClick('admin-portal-merger-btn', function(){ openLabPlaceholder('MERGER LAB') })
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
@@ -824,6 +831,52 @@ function getAllAdminPortalLabs(){
   return Object.keys(ADMIN_PORTAL_LABS)
 }
 
+function getCurrentAdminPortalIdentitySet(){
+  const profile = portalState.currentProfile || {}
+  const user = portalState.currentUser || {}
+  const identities = new Set()
+
+  ;[
+    profile.loginId,
+    profile.studentId,
+    profile.name,
+    profile.uid,
+    user.uid,
+    user.loginId
+  ].forEach(function(value){
+    const text = String(value || '').trim().toLowerCase()
+    if(text) identities.add(text)
+  })
+
+  ;[
+    profile.email,
+    user.email
+  ].forEach(function(value){
+    const text = String(value || '').trim().toLowerCase()
+    if(!text) return
+    identities.add(text)
+    const localPart = text.split('@', 1)[0]
+    if(localPart) identities.add(localPart)
+  })
+
+  return identities
+}
+
+function isCurrentAdminAllowedPortalLab(name){
+  const ownerIds = Array.isArray(ADMIN_PORTAL_LAB_OWNER_IDS[name]) ? ADMIN_PORTAL_LAB_OWNER_IDS[name] : null
+  if(!ownerIds || !ownerIds.length) return true
+  const identities = getCurrentAdminPortalIdentitySet()
+  return ownerIds.some(function(ownerId){
+    return identities.has(String(ownerId || '').trim().toLowerCase())
+  })
+}
+
+function filterAdminPortalLabsForCurrentUser(labs){
+  return (Array.isArray(labs) ? labs : []).filter(function(labName){
+    return isCurrentAdminAllowedPortalLab(labName)
+  })
+}
+
 function normalizeAdminPortalLabName(value){
   const raw = String(value || '').trim().toLowerCase()
   if(!raw) return ''
@@ -833,12 +886,13 @@ function normalizeAdminPortalLabName(value){
   if(raw === 'rotation' || raw === 'rotationlab' || raw === 'rotation-lab' || raw === 'rotation lab') return 'ROTATION LAB'
   if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
   if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
+  if(raw === 'merger' || raw === 'mergerlab' || raw === 'merger-lab' || raw === 'merger lab') return 'MERGER LAB'
   return ''
 }
 
 function normalizeAdminPortalLabList(values){
   if(!Array.isArray(values)) return null
-  const allLabs = getAllAdminPortalLabs()
+  const allLabs = filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
   const normalized = []
   values.forEach(function(value){
     const next = normalizeAdminPortalLabName(value)
@@ -866,7 +920,7 @@ async function resolveAdminPortalLabList(){
   if(!isPortalAdmin()) return []
 
   const profileLabs = extractAdminPortalLabList(portalState.currentProfile)
-  if(profileLabs) return profileLabs
+  if(profileLabs) return filterAdminPortalLabsForCurrentUser(profileLabs)
 
   if(
     portalState.firebaseEnabled &&
@@ -880,9 +934,9 @@ async function resolveAdminPortalLabList(){
         const remoteLabs = extractAdminPortalLabList(snapshot.data())
         if(remoteLabs){
           if(portalState.currentProfile && typeof portalState.currentProfile === 'object'){
-            portalState.currentProfile.allowedLabs = remoteLabs.slice()
+            portalState.currentProfile.allowedLabs = filterAdminPortalLabsForCurrentUser(remoteLabs)
           }
-          return remoteLabs
+          return filterAdminPortalLabsForCurrentUser(remoteLabs)
         }
       }
     }catch(error){
@@ -890,11 +944,13 @@ async function resolveAdminPortalLabList(){
     }
   }
 
-  return getAllAdminPortalLabs()
+  return filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
 }
 
 function applyAdminPortalLabVisibility(allowedLabs){
-  const visibleLabs = Array.isArray(allowedLabs) ? allowedLabs : getAllAdminPortalLabs()
+  const visibleLabs = Array.isArray(allowedLabs)
+    ? filterAdminPortalLabsForCurrentUser(allowedLabs)
+    : filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
   const groupCountNode = document.querySelector('#admin-portal-screen .group-count')
   const emptyStateNode = document.getElementById('admin-portal-empty-state')
 
@@ -916,14 +972,16 @@ function applyAdminPortalLabVisibility(allowedLabs){
 function isAdminPortalLabAllowed(name){
   const allowedLabs = Array.isArray(portalState.adminPortalAllowedLabs)
     ? portalState.adminPortalAllowedLabs
-    : getAllAdminPortalLabs()
-  return allowedLabs.indexOf(name) >= 0
+    : filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
+  return allowedLabs.indexOf(name) >= 0 && isCurrentAdminAllowedPortalLab(name)
 }
 
 function renderAdminPortalScreen(allowedLabs){
   const profile = portalState.currentProfile || {}
   const name = profile.name || profile.loginId || profile.studentId || '관리자'
-  const visibleLabs = Array.isArray(allowedLabs) ? allowedLabs : getAllAdminPortalLabs()
+  const visibleLabs = Array.isArray(allowedLabs)
+    ? filterAdminPortalLabsForCurrentUser(allowedLabs)
+    : filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
 
   setElementTextSafe('admin-portal-subtitle', 'TOOLS HUB')
   setElementTextSafe('admin-portal-user-name', name)
