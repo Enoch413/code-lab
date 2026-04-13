@@ -631,7 +631,8 @@ async function loadCloudContentDoc(docId){
       if(!snapshot.exists) return null
       return snapshot.data() || null
     }catch(error){
-      console.warn('portalContent read fallback:', error && error.message ? error.message : error)
+      console.warn('portalContent read failed:', error && error.message ? error.message : error)
+      return null
     }
   }
 
@@ -660,7 +661,8 @@ async function saveCloudContentDoc(docId, payload, fileName){
       nextDoc.storage = 'cloud'
       return nextDoc
     }catch(error){
-      console.warn('portalContent write fallback:', error && error.message ? error.message : error)
+      console.warn('portalContent write failed:', error && error.message ? error.message : error)
+      throw new Error('Firebase save failed. This upload was not shared to other users.')
     }
   }
 
@@ -1100,7 +1102,7 @@ async function uploadPortalContent(kind, file){
     showToast((kind === 'prep' ? 'PREP session' : 'CHECK data') + ' 업로드가 완료되었습니다.', 'var(--green)')
   }catch(error){
     console.error(error)
-    showToast('업로드 중 오류가 발생했습니다.', 'var(--red)')
+    showToast(String(error && error.message || 'Upload failed.'), 'var(--red)')
   }
 }
 
@@ -2418,7 +2420,8 @@ async function loadCloudSetDocs(kind){
         return entry.docId && entry.payload
       }))
     }catch(error){
-      console.warn('portal set read fallback:', error && error.message ? error.message : error)
+      console.warn('portal set read failed:', error && error.message ? error.message : error)
+      return []
     }
   }
 
@@ -2447,8 +2450,11 @@ async function saveCloudSetDoc(kind, docId, record){
   if(portalState.firebaseEnabled && portalState.db){
     try{
       await portalState.db.collection(getPortalSetCollection(kind)).doc(docId).set(nextDoc, { merge: true })
+      nextDoc.storage = 'cloud'
+      return nextDoc
     }catch(error){
-      console.warn('portal set write fallback:', error && error.message ? error.message : error)
+      console.warn('portal set write failed:', error && error.message ? error.message : error)
+      throw new Error('Firebase set save failed. This set was not shared to other users.')
     }
   }
 
@@ -2457,6 +2463,7 @@ async function saveCloudSetDoc(kind, docId, record){
   })
   nextRows.push(nextDoc)
   writeLocalPortalSetDocs(kind, sortPortalSetDocs(nextRows))
+  nextDoc.storage = 'local'
   return nextDoc
 }
 
@@ -2465,7 +2472,8 @@ async function deleteCloudSetDoc(kind, docId){
     try{
       await portalState.db.collection(getPortalSetCollection(kind)).doc(docId).delete()
     }catch(error){
-      console.warn('portal set delete fallback:', error && error.message ? error.message : error)
+      console.warn('portal set delete failed:', error && error.message ? error.message : error)
+      throw new Error('Firebase set delete failed. Shared data was not changed.')
     }
   }
 
@@ -2965,7 +2973,7 @@ async function handlePortalSetUpload(kind, event){
     showToast((kind === 'prep' ? 'PREP' : 'CHECK') + ' 세트 ' + records.length + '개를 추가했습니다.', 'var(--green)')
   }catch(error){
     console.error(error)
-    showToast('세트 업로드 중 오류가 발생했습니다.', 'var(--red)')
+    showToast(String(error && error.message || 'Set upload failed.'), 'var(--red)')
   }
 }
 
