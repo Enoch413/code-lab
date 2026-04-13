@@ -95,6 +95,7 @@ function initPortalEnhancements(){
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
   window.addEventListener('resize', syncCheckJumpButtonVisibility)
+  window.addEventListener('resize', syncAppChromeLayout)
   if(!history.state || !history.state.appRoute){
     syncAppHistoryState(getCurrentActiveScreenId(), true)
   }else{
@@ -102,6 +103,7 @@ function initPortalEnhancements(){
   }
   updatePortalUserCard()
   updateAppChrome(getCurrentActiveScreenId())
+  syncAppChromeLayout()
   syncCheckJumpButtonVisibility()
   setTimeout(function(){
     if(!bundleData && !portalState.currentUser){
@@ -380,6 +382,23 @@ function updateAppChrome(screenId){
   breadcrumbNode.textContent = getAppBreadcrumb(screenId).join(' > ')
   titleNode.textContent = meta.title
   subNode.textContent = getAppChromeSubText(screenId, meta.sub)
+  queueAppChromeLayoutSync()
+}
+
+function queueAppChromeLayoutSync(){
+  if(typeof window.requestAnimationFrame === 'function'){
+    window.requestAnimationFrame(syncAppChromeLayout)
+    return
+  }
+  setTimeout(syncAppChromeLayout, 0)
+}
+
+function syncAppChromeLayout(){
+  const chrome = document.getElementById('app-chrome')
+  const isVisible = !!(chrome && !chrome.classList.contains('hidden'))
+  const height = isVisible ? Math.ceil(chrome.getBoundingClientRect().height) : 0
+  const offset = isVisible ? Math.max(84, height + 18) : 84
+  document.documentElement.style.setProperty('--app-chrome-offset', offset + 'px')
 }
 
 function syncAppHistoryState(screenId, replaceStateOnly){
