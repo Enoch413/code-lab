@@ -1040,6 +1040,17 @@ function renderCheckForm(checkSet, submission){
     form.querySelectorAll('.check-choice-grid').forEach(function(group){
       group.querySelectorAll('.check-choice-btn').forEach(function(button){
         button.addEventListener('click', function(){
+          const isMultiSelect = group.dataset.multiSelect === 'true'
+          const maxChoices = Math.max(1, Number(group.dataset.maxChoices || 1))
+          if(isMultiSelect){
+            const nextState = toggleChoiceAnswerValue(getChoiceGroupAnswer(group), String(button.dataset.choice || '').trim(), maxChoices)
+            if(nextState.blocked){
+              showToast(maxChoices + '개까지만 선택할 수 있습니다.', 'var(--blue)')
+              return
+            }
+            applyChoiceGroupSelection(group, nextState.value)
+            return
+          }
           group.querySelectorAll('.check-choice-btn').forEach(function(node){
             node.classList.remove('active')
           })
@@ -1166,9 +1177,100 @@ function normalizeAnswerForCompare(value){
     .trim()
 }
 
+const CHOICE_TOKEN_MAP = {
+  '1': '1',
+  '2': '2',
+  '3': '3',
+  '4': '4',
+  '5': '5',
+  '\u2460': '1',
+  '\u2461': '2',
+  '\u2462': '3',
+  '\u2463': '4',
+  '\u2464': '5',
+  '\u2776': '1',
+  '\u2777': '2',
+  '\u2778': '3',
+  '\u2779': '4',
+  '\u277A': '5',
+  '\u2780': '1',
+  '\u2781': '2',
+  '\u2782': '3',
+  '\u2783': '4',
+  '\u2784': '5'
+}
+
+function getChoiceAnswerValues(value){
+  const matches = String(value || '').match(/[1-5\u2460-\u2464\u2776-\u277A\u2780-\u2784]/g) || []
+  const seen = new Set()
+  return matches.map(function(token){
+    return CHOICE_TOKEN_MAP[token] || ''
+  }).filter(function(token){
+    if(!token || seen.has(token)) return false
+    seen.add(token)
+    return true
+  }).sort(function(left, right){
+    return Number(left) - Number(right)
+  })
+}
+
 function normalizeChoiceAnswer(value){
-  const match = String(value || '').trim().match(/[1-5]/)
-  return match ? match[0] : ''
+  return getChoiceAnswerValues(value).join(',')
+}
+
+function formatChoiceAnswer(value){
+  const values = getChoiceAnswerValues(value)
+  return values.length ? values.join(', ') : String(value || '').trim()
+}
+
+function getChoiceSelectionLimit(question){
+  const count = getChoiceAnswerValues(question && question.answer).length
+  return count > 1 ? count : 1
+}
+
+function isChoiceQuestionMultiSelect(question){
+  return normalizeCheckQuestionType(question && question.type) === '객관식' && getChoiceSelectionLimit(question) > 1
+}
+
+function getChoiceGroupAnswer(group){
+  if(!group) return ''
+  return normalizeChoiceAnswer(Array.from(group.querySelectorAll('.check-choice-btn.active')).map(function(node){
+    return String(node && node.dataset && node.dataset.choice || '').trim()
+  }).join(','))
+}
+
+function applyChoiceGroupSelection(group, value){
+  if(!group) return
+  const selected = new Set(getChoiceAnswerValues(value))
+  group.querySelectorAll('.check-choice-btn').forEach(function(node){
+    const choice = String(node && node.dataset && node.dataset.choice || '').trim()
+    node.classList.toggle('active', selected.has(choice))
+  })
+}
+
+function toggleChoiceAnswerValue(currentValue, nextChoice, maxChoices){
+  const normalizedChoice = normalizeChoiceAnswer(nextChoice)
+  const choice = getChoiceAnswerValues(normalizedChoice)[0] || ''
+  const values = getChoiceAnswerValues(currentValue)
+  const limit = Math.max(1, Number(maxChoices) || 1)
+  const index = values.indexOf(choice)
+
+  if(!choice){
+    return { value: normalizeChoiceAnswer(currentValue), changed: false, blocked: false }
+  }
+  if(index >= 0){
+    values.splice(index, 1)
+    return { value: values.join(','), changed: true, blocked: false }
+  }
+  if(values.length >= limit){
+    return { value: values.join(','), changed: false, blocked: true }
+  }
+
+  values.push(choice)
+  values.sort(function(left, right){
+    return Number(left) - Number(right)
+  })
+  return { value: values.join(','), changed: true, blocked: false }
 }
 
 function normalizeCheckQuestionType(value){
@@ -1218,13 +1320,17 @@ function renderCheckAnswerField(question, selectedAnswer, isLocked){
     '</div>'
   }
 
-  return '<div class="check-choice-grid" data-check-question-id="' + escapeHtml(question.id) + '">' +
+  const selectedChoices = new Set(getChoiceAnswerValues(selectedAnswer))
+  const selectionLimit = getChoiceSelectionLimit(question)
+  const isMultiSelect = isChoiceQuestionMultiSelect(question)
+
+  return '<div class="check-choice-grid" data-check-question-id="' + escapeHtml(question.id) + '" data-multi-select="' + (isMultiSelect ? 'true' : 'false') + '" data-max-choices="' + selectionLimit + '">' +
     [1, 2, 3, 4, 5].map(function(choice){
       const value = String(choice)
-      const activeClass = selectedAnswer === value ? ' active' : ''
+      const activeClass = selectedChoices.has(value) ? ' active' : ''
       return '<button class="check-choice-btn' + activeClass + '" type="button" data-choice="' + value + '">' + value + '</button>'
     }).join('') +
-  '</div>'
+  '</div>' + (isMultiSelect ? ('<div class="check-choice-hint">' + selectionLimit + '개 선택</div>') : '')
 }
 
 function renderSubmittedCheckAnswer(question, selectedAnswer){
@@ -1255,8 +1361,69 @@ function readCheckUserAnswer(question){
     return String(field && field.dataset.choice || '').trim()
   }
 
-  const field = document.querySelector('[data-check-question-id="' + question.id + '"] .check-choice-btn.active')
-  return String(field && field.dataset.choice || '').trim()
+  const group = document.querySelector('[data-check-question-id="' + question.id + '"]')
+  return getChoiceGroupAnswer(group)
+}
+
+function renderCheckAnswerField(question, selectedAnswer, isLocked){
+  if(isLocked){
+    return renderSubmittedCheckAnswer(question, selectedAnswer)
+  }
+
+  if(normalizeCheckQuestionType(question.type) === '주관식'){
+    return '<div class="check-choice-grid check-choice-grid-binary" data-check-binary-id="' + escapeHtml(question.id) + '">' +
+      ['맞음', '틀림'].map(function(choice){
+        const activeClass = selectedAnswer === choice ? ' active' : ''
+        return '<button class="check-choice-btn check-choice-btn-binary' + activeClass + '" type="button" data-choice="' + escapeHtml(choice) + '">' + escapeHtml(choice) + '</button>'
+      }).join('') +
+    '</div>'
+  }
+
+  const selectedChoices = new Set(getChoiceAnswerValues(selectedAnswer))
+  const selectionLimit = getChoiceSelectionLimit(question)
+  const isMultiSelect = isChoiceQuestionMultiSelect(question)
+
+  return '<div class="check-choice-grid" data-check-question-id="' + escapeHtml(question.id) + '" data-multi-select="' + (isMultiSelect ? 'true' : 'false') + '" data-max-choices="' + selectionLimit + '">' +
+    [1, 2, 3, 4, 5].map(function(choice){
+      const value = String(choice)
+      const activeClass = selectedChoices.has(value) ? ' active' : ''
+      return '<button class="check-choice-btn' + activeClass + '" type="button" data-choice="' + value + '">' + value + '</button>'
+    }).join('') +
+  '</div>' + (isMultiSelect ? ('<div class="check-choice-hint">' + selectionLimit + '개 선택</div>') : '')
+}
+
+function renderSubmittedCheckAnswer(question, selectedAnswer){
+  const type = normalizeCheckQuestionType(question && question.type)
+  const label = type === '주관식' ? '내가 체크한 값' : '내가 고른 답'
+  const value = type === '객관식'
+    ? (formatChoiceAnswer(selectedAnswer) || '미선택')
+    : (String(selectedAnswer || '').trim() || '미선택')
+  return '' +
+    '<div class="check-submitted-answer">' +
+      '<span class="check-submitted-label">' + escapeHtml(label) + '</span>' +
+      '<strong class="check-submitted-value">' + escapeHtml(value) + '</strong>' +
+    '</div>'
+}
+
+function renderCheckResultBody(question, submittedAnswer){
+  if(normalizeCheckQuestionType(question.type) === '주관식'){
+    const userState = submittedAnswer ? String(submittedAnswer.userAnswer || '').trim() : ''
+    return '자기 점검: ' + escapeHtml(userState || '미선택') +
+      (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
+  }
+
+  return '정답: ' + escapeHtml(formatChoiceAnswer(question.answer) || '등록된 정답 없음') +
+    (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
+}
+
+function readCheckUserAnswer(question){
+  if(normalizeCheckQuestionType(question.type) === '주관식'){
+    const field = document.querySelector('[data-check-binary-id="' + question.id + '"] .check-choice-btn.active')
+    return String(field && field.dataset.choice || '').trim()
+  }
+
+  const group = document.querySelector('[data-check-question-id="' + question.id + '"]')
+  return getChoiceGroupAnswer(group)
 }
 
 async function saveCheckSubmission(checkSet, submission){

@@ -973,6 +973,12 @@ body::before{
 .check-choice-grid-binary{
   grid-template-columns:repeat(2,minmax(0,1fr));
 }
+.check-choice-hint{
+  margin-top:8px;
+  font-size:.78rem;
+  font-weight:700;
+  color:var(--muted);
+}
 .check-choice-btn{
   min-height:54px;
   border:1.5px solid var(--border);
