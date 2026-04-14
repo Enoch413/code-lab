@@ -77,7 +77,6 @@ const ADMIN_PORTAL_LAB_BUTTON_IDS = {
 const ADMIN_PORTAL_LAB_OWNER_IDS = {
   'MERGER LAB': ['passion413']
 }
-
 const ADMIN_PORTAL_LAB_COUNT = 6
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
@@ -98,6 +97,8 @@ document.addEventListener('DOMContentLoaded', initPortalEnhancements)
 
 function initPortalEnhancements(){
   bindPortalEnhancementEvents()
+  bindPasswordSubmitOverride()
+  overrideSharedClassListRenderer()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
   window.addEventListener('resize', syncCheckJumpButtonVisibility)
@@ -116,6 +117,71 @@ function initPortalEnhancements(){
       showAuthScreen('')
     }
   }, 0)
+}
+
+function overrideSharedClassListRenderer(){
+  if(typeof renderClassList !== 'function') return
+  if(renderClassList.__portalSharedOverride === true) return
+
+  renderClassList = function(){
+    const container = document.getElementById('class-list')
+    if(!container) return
+
+    const visibleEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
+      ? window.getVisiblePortalPrepClassEntries()
+      : prepClasses.map(function(classInfo, index){
+          return { classInfo: classInfo, index: index }
+        })
+
+    if(!visibleEntries.length){
+      container.innerHTML = '<div class="empty-box">반 정보가 없습니다.</div>'
+      return
+    }
+
+    container.innerHTML = visibleEntries.map(function(entry, visibleIndex){
+      const classInfo = entry.classInfo
+      const index = entry.index
+      const studyCount = studySets.filter(function(studySet){
+        return studySet.classAssignments.some(function(assignment){
+          return assignment.classId === classInfo.id && assignment.passageIndexes.length > 0
+        })
+      }).length
+      const portalCardMeta = getPortalClassSelectionCardMeta(classInfo, index) || {}
+      const previewText = portalCardMeta.preview || (studyCount + '개의 학습 세트가 준비되어 있습니다.')
+      const primaryTagText = portalCardMeta.primaryTag || ('세트 ' + studyCount)
+
+      return '' +
+        '<div class="class-item" onclick="requestClassAccess(' + index + ')">' +
+          '<div class="class-num">' + (visibleIndex + 1) + '</div>' +
+          '<div class="class-body">' +
+            '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
+            '<div class="class-preview">' + escapeHtml(previewText) + '</div>' +
+            '<div class="class-tags">' +
+              '<span class="class-tag">' + escapeHtml(primaryTagText) + '</span>' +
+              '<span class="class-tag">' + (classInfo.password ? '비밀번호 있음' : '바로 입장') + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="p-arrow">&rsaquo;</div>' +
+        '</div>'
+    }).join('')
+  }
+
+  renderClassList.__portalSharedOverride = true
+}
+
+function bindPasswordSubmitOverride(){
+  const originalButton = document.getElementById('password-submit-btn')
+  if(!originalButton || !originalButton.parentNode) return
+  if(originalButton.dataset.overrideBound === 'true') return
+
+  const replacementButton = originalButton.cloneNode(true)
+  replacementButton.dataset.overrideBound = 'true'
+  originalButton.parentNode.replaceChild(replacementButton, originalButton)
+  replacementButton.addEventListener('click', function(event){
+    event.preventDefault()
+    event.stopPropagation()
+    submitPasswordChange()
+  })
 }
 
 function bindPortalEnhancementEvents(){
@@ -348,7 +414,53 @@ function buildCheckBreadcrumb(screenId){
   return parts
 }
 
+function isCheckClassSelectionContext(){
+  const returnScreen = String(portalState.classSelectionReturnScreen || '').trim()
+  return returnScreen === 'check-screen' || returnScreen === 'check-set-screen'
+}
+
+function getPortalClassSelectionCardMeta(classInfo){
+  if(!isCheckClassSelectionContext()){
+    return null
+  }
+
+  const classId = String(classInfo && classInfo.id || '').trim()
+  const checkSets = Array.isArray(portalState.checkData && portalState.checkData.checkSets)
+    ? portalState.checkData.checkSets
+    : []
+  const checkCount = checkSets.filter(function(checkSet){
+    const classIds = Array.isArray(checkSet && checkSet.classIds) ? checkSet.classIds : []
+    return classId && classIds.indexOf(classId) >= 0
+  }).length
+
+  return {
+    preview: checkCount + '개의 CHECK 세트가 준비되어 있습니다.',
+    primaryTag: '세트 ' + checkCount
+  }
+}
+
+function buildCheckClassSelectionBreadcrumb(screenId){
+  const parts = ['CODE LAB', 'CHECK']
+  const pendingClass = getPendingPrepClass()
+
+  if(screenId === 'class-screen'){
+    parts.push('반 선택')
+    return parts
+  }
+
+  if(screenId === 'class-auth-screen'){
+    if(pendingClass && pendingClass.name) parts.push(pendingClass.name)
+    parts.push('입장 인증')
+    return parts
+  }
+
+  return parts
+}
+
 function getAppBreadcrumb(screenId){
+  if((screenId === 'class-screen' || screenId === 'class-auth-screen') && isCheckClassSelectionContext()){
+    return buildCheckClassSelectionBreadcrumb(screenId)
+  }
   if(PREP_SCREEN_IDS.indexOf(screenId) >= 0){
     return buildPrepBreadcrumb(screenId)
   }
@@ -363,12 +475,39 @@ function getAppBreadcrumb(screenId){
   return CHROME_BREADCRUMBS[screenId] || ['CODE LAB']
 }
 
+function getAppChromeMeta(screenId){
+  if((screenId === 'class-screen' || screenId === 'class-auth-screen') && isCheckClassSelectionContext()){
+    return {
+      title: 'CHECK',
+      sub: screenId === 'class-auth-screen' ? '반 비밀번호' : '반 선택'
+    }
+  }
+  return CHROME_SCREEN_TITLES[screenId] || { title: 'CODE LAB', sub: '' }
+}
+
 function getAppChromeSubText(screenId, fallbackText){
   if(screenId === 'check-set-screen' && portalState.currentCheckSet && portalState.currentCheckSet.title){
     return portalState.currentCheckSet.title
   }
   const classNames = getProfileClassNames().join(', ')
   return classNames || fallbackText || ''
+}
+
+function syncSharedClassSelectionCopy(screenId){
+  const targetScreenId = screenId || getCurrentActiveScreenId()
+  const isCheckContext =
+    (targetScreenId === 'class-screen' || targetScreenId === 'class-auth-screen') &&
+    isCheckClassSelectionContext()
+  const classTitle = isCheckContext ? 'CHECK' : 'PREP'
+  const authHelp = isCheckContext
+    ? '이 반에 열려 있는 CHECK 세트를 보려면 반 비밀번호를 입력해 주세요.'
+    : '이 반에 열려 있는 학습 세트를 보려면 반 비밀번호를 입력해 주세요.'
+  const classScreenTitle = document.querySelector('#class-screen .hd h1')
+  const classAuthScreenTitle = document.querySelector('#class-auth-screen .hd h1')
+
+  if(classScreenTitle) classScreenTitle.textContent = classTitle
+  if(classAuthScreenTitle) classAuthScreenTitle.textContent = classTitle
+  setElementTextSafe('class-auth-help', authHelp)
 }
 
 function updateAppChrome(screenId){
@@ -385,7 +524,7 @@ function updateAppChrome(screenId){
   chrome.setAttribute('aria-hidden', shouldShow ? 'false' : 'true')
   menuButton.disabled = !shouldShow
 
-  const meta = CHROME_SCREEN_TITLES[screenId] || { title: 'CODE LAB', sub: '' }
+  const meta = getAppChromeMeta(screenId)
   breadcrumbNode.textContent = getAppBreadcrumb(screenId).join(' > ')
   titleNode.textContent = meta.title
   subNode.textContent = getAppChromeSubText(screenId, meta.sub)
@@ -488,6 +627,10 @@ function restoreFallbackRoute(defaultScreenId){
 }
 
 window.onAppScreenActivated = function(screenId){
+  syncSharedClassSelectionCopy(screenId)
+  if(screenId === 'class-screen' && typeof renderClassList === 'function'){
+    renderClassList()
+  }
   updateAppChrome(screenId)
   syncAppHistoryState(screenId, false)
   syncCheckJumpButtonVisibility()
@@ -3327,3 +3470,130 @@ async function removePortalManagedSet(kind, docId){
 window.renamePortalManagedSet = renamePortalManagedSet
 window.changePortalManagedSetDates = changePortalManagedSetDates
 window.removePortalManagedSet = removePortalManagedSet
+
+async function getFirebaseUserProfileSnapshot(uid){
+  const docRef = portalState.db.collection('users').doc(uid)
+  try{
+    return await docRef.get({ source: 'server' })
+  }catch(error){
+    console.warn('users profile server read failed:', error && error.message ? error.message : error)
+    return await docRef.get()
+  }
+}
+
+async function fetchOrCreateUserProfile(user){
+  const snapshot = await getFirebaseUserProfileSnapshot(user.uid)
+  if(snapshot.exists){
+    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
+  }
+
+  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
+  const loginId = derivePortalLoginId({ email: user.email || '' })
+  const profile = {
+    uid: user.uid,
+    loginId: loginId,
+    email: user.email || '',
+    name: user.displayName || '',
+    studentId: loginId,
+    classIds: fallbackClassId ? [fallbackClassId] : [],
+    role: 'student',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  await saveFirebaseUserProfile(user.uid, profile)
+  return normalizeUserProfile(profile)
+}
+
+async function loginPortalUser(loginId, password){
+  if(portalState.firebaseEnabled){
+    await portalState.auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
+    return
+  }
+
+  const user = findLocalPortalUser(loginId, password)
+  if(!user) throw new Error('?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.')
+
+  localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
+  portalState.currentUser = buildLocalAuthUser(user)
+  portalState.currentProfile = user
+  routePortalAfterState()
+}
+
+async function submitPasswordChange(){
+  const currentPassword = String(document.getElementById('password-current').value || '').trim()
+  const nextPassword = String(document.getElementById('password-next').value || '').trim()
+  const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
+
+  if(!currentPassword || !nextPassword || !confirmPassword){
+    setPasswordError('紐⑤뱺 移몄쓣 ?낅젰??二쇱꽭??')
+    return
+  }
+  if(nextPassword.length < 6){
+    setPasswordError('??鍮꾨?踰덊샇??6???댁긽?쇰줈 ?낅젰??二쇱꽭??')
+    return
+  }
+  if(nextPassword !== confirmPassword){
+    setPasswordError('??鍮꾨?踰덊샇 ?뺤씤???쇱튂?섏? ?딆뒿?덈떎.')
+    return
+  }
+  if(currentPassword === nextPassword){
+    setPasswordError('?꾩옱 鍮꾨?踰덊샇? ?ㅻⅨ 媛믪쑝濡?諛붽퓭 二쇱꽭??')
+    return
+  }
+
+  try{
+    if(portalState.firebaseEnabled){
+      const user = portalState.auth.currentUser
+      if(!user || !user.email) throw new Error('Login information is unavailable.')
+      const updatedAt = new Date().toISOString()
+      const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword)
+      await user.reauthenticateWithCredential(credential)
+      await user.updatePassword(nextPassword)
+      await saveFirebaseUserProfile(user.uid, {
+        passwordResetRequired: false,
+        updatedAt: updatedAt
+      })
+
+      const refreshedSnapshot = await getFirebaseUserProfileSnapshot(user.uid)
+      if(refreshedSnapshot.exists){
+        portalState.currentProfile = normalizeUserProfile(Object.assign({ uid: user.uid }, refreshedSnapshot.data()))
+      }else{
+        portalState.currentProfile = normalizeUserProfile(Object.assign({}, portalState.currentProfile || {}, {
+          uid: user.uid,
+          passwordResetRequired: false,
+          updatedAt: updatedAt
+        }))
+      }
+    }else{
+      const currentUserId = portalState.currentUser ? portalState.currentUser.uid : ''
+      const users = readLocalUsers()
+      const targetIndex = users.findIndex(function(entry){
+        return entry.id === currentUserId
+      })
+      if(targetIndex < 0) throw new Error('Account information was not found.')
+      if(users[targetIndex].password !== currentPassword) throw new Error('Current password is incorrect.')
+
+      users[targetIndex].password = nextPassword
+      users[targetIndex].passwordResetRequired = false
+      users[targetIndex].updatedAt = new Date().toISOString()
+      writeLocalUsers(users)
+      portalState.currentProfile = users[targetIndex]
+      portalState.currentUser = buildLocalAuthUser(users[targetIndex])
+    }
+
+    portalState.forcePasswordChange = false
+    portalState.forcePasswordReset = false
+    clearPasswordError()
+    clearPasswordFields()
+
+    const backBtn = document.getElementById('password-back-btn')
+    const homeBtn = document.getElementById('password-home-btn')
+    if(backBtn) backBtn.style.display = ''
+    if(homeBtn) homeBtn.style.display = ''
+
+    showToast('鍮꾨?踰덊샇瑜?蹂寃쏀뻽?듬땲??', 'var(--green)')
+    showPortalScreen()
+  }catch(error){
+    setPasswordError(getPasswordChangeErrorMessage(error))
+  }
+}
