@@ -513,6 +513,30 @@
 <input type="file" accept=".json,application/json" id="file-input" hidden>
 <input type="file" accept=".json,application/json" id="prep-set-upload-input" hidden>
 <input type="file" accept=".json,application/json" id="check-set-upload-input" hidden>
+<div class="check-set-editor-modal hidden" id="check-set-editor-modal" aria-hidden="true">
+  <div class="check-set-editor-backdrop" id="check-set-editor-backdrop"></div>
+  <div class="check-set-editor-sheet" role="dialog" aria-modal="true" aria-labelledby="check-set-editor-title">
+    <div class="check-set-editor-head">
+      <div class="check-set-editor-copy">
+        <div class="check-set-editor-kicker">CHECK SET EDITOR</div>
+        <h2 class="check-set-editor-title" id="check-set-editor-title">CHECK 세트 문항 수정</h2>
+        <p class="check-set-editor-meta" id="check-set-editor-meta"></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="button" id="check-set-editor-close-btn">닫기</button>
+    </div>
+    <div class="check-set-editor-note" id="check-set-editor-note">
+      저장하면 이후 제출부터 수정된 정답과 해설이 사용됩니다. 이미 제출한 학생 결과는 자동으로 바뀌지 않습니다.
+    </div>
+    <div class="check-set-editor-list" id="check-set-editor-list"></div>
+    <div class="check-set-editor-foot">
+      <div class="check-set-editor-status" id="check-set-editor-status">변경 없음</div>
+      <div class="check-set-editor-actions">
+        <button class="btn btn-ghost btn-sm" type="button" id="check-set-editor-cancel-btn">취소</button>
+        <button class="btn btn-blue btn-sm" type="button" id="check-set-editor-save-btn">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
 <footer class="prep-footer global">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
 
 <script src="./firebase-config.js"></script>
