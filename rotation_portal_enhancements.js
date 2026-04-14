@@ -89,6 +89,7 @@ portalState.isRestoringHistory = false
 portalState.prepSyncPromise = null
 portalState.prepSetInventory = portalState.prepSetInventory || []
 portalState.checkSetInventory = portalState.checkSetInventory || []
+portalState.checkSetRegradeDocId = portalState.checkSetRegradeDocId || ''
 portalState.checkSetEditor = portalState.checkSetEditor || {
   open: false,
   isSaving: false,
@@ -3511,11 +3512,199 @@ async function savePortalManagedCheckSetEditor(){
   }
 }
 
+async function fetchCheckResponsesForSet(checkSetId){
+  const targetId = String(checkSetId || '').trim()
+  if(!targetId) return []
+
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection('checkResponses')
+        .where('checkSetId', '==', targetId)
+        .get()
+      return snapshot.docs.map(function(doc){
+        return Object.assign({ id: doc.id }, doc.data() || {})
+      })
+    }catch(error){
+      console.warn('checkResponses set read fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  return (Array.isArray(readLocalResponses()) ? readLocalResponses() : []).filter(function(entry){
+    return String(entry && entry.checkSetId || '').trim() === targetId
+  })
+}
+
+function buildCheckQuestionLookup(checkSet){
+  return new Map((Array.isArray(checkSet && checkSet.questions) ? checkSet.questions : []).map(function(question){
+    const questionId = String(question && question.id || '').trim()
+    return questionId ? [questionId, question] : null
+  }).filter(Boolean))
+}
+
+function buildRegradedCheckSubmission(checkSet, row){
+  const submission = mapResponseToSubmission(row)
+  const questionLookup = buildCheckQuestionLookup(checkSet)
+  const answers = sortCheckSubmissionAnswers((Array.isArray(submission && submission.answers) ? submission.answers : []).map(function(answer, index){
+    if(!answer) return null
+    const questionId = String(answer.questionId || '').trim()
+    const nextQuestion = questionLookup.get(questionId)
+    if(!nextQuestion){
+      return Object.assign({}, answer)
+    }
+
+    return Object.assign({}, answer, {
+      number: normalizeCheckQuestionNumber(nextQuestion.number, index + 1),
+      type: nextQuestion.type,
+      problemType: normalizeCheckProblemType(nextQuestion.problemType || nextQuestion.category),
+      prompt: String(nextQuestion.prompt || '').trim(),
+      answer: nextQuestion.answer,
+      explanation: String(nextQuestion.explanation || '').trim(),
+      isCorrect: isAnswerAccepted(String(answer.userAnswer || '').trim(), nextQuestion)
+    })
+  }).filter(Boolean))
+
+  const latestBatchIds = Array.isArray(submission && submission.latestBatch && submission.latestBatch.questionIds)
+    ? submission.latestBatch.questionIds.map(function(value){ return String(value || '').trim() }).filter(Boolean)
+    : []
+  const latestBatchAnswers = latestBatchIds.length
+    ? answers.filter(function(answer){
+        return latestBatchIds.includes(String(answer && answer.questionId || '').trim())
+      })
+    : []
+  const editedCount = Number(submission && submission.latestBatch && submission.latestBatch.editedCount || 0)
+
+  return {
+    submittedAt: String(submission && submission.submittedAt || row && row.submittedAt || '').trim(),
+    summary: buildCheckSubmissionSummary(answers),
+    answers: answers,
+    latestBatch: latestBatchIds.length ? {
+      submittedAt: String(submission && submission.latestBatch && submission.latestBatch.submittedAt || submission && submission.submittedAt || row && row.submittedAt || '').trim(),
+      questionIds: latestBatchIds,
+      summary: buildCheckSubmissionSummary(latestBatchAnswers),
+      editedCount: editedCount,
+      newCount: Number(submission && submission.latestBatch && submission.latestBatch.newCount || Math.max(0, latestBatchIds.length - editedCount))
+    } : null
+  }
+}
+
+function serializeCheckResponseForCompare(row){
+  return JSON.stringify({
+    checkSetTitle: String(row && row.checkSetTitle || '').trim(),
+    summary: row && row.summary ? row.summary : null,
+    answers: Array.isArray(row && row.answers) ? row.answers : [],
+    latestBatch: row && row.latestBatch ? row.latestBatch : null
+  })
+}
+
+function buildRegradedCheckResponseRow(checkSet, row){
+  const submission = buildRegradedCheckSubmission(checkSet, row)
+  return Object.assign({}, row, {
+    checkSetTitle: String(checkSet && checkSet.title || row && row.checkSetTitle || '').trim(),
+    summary: submission.summary,
+    answers: submission.answers,
+    latestBatch: submission.latestBatch || null
+  })
+}
+
+async function saveRegradedCheckResponses(rows){
+  const nextRows = Array.isArray(rows) ? rows.filter(Boolean) : []
+  if(!nextRows.length) return
+
+  if(portalState.firebaseEnabled && portalState.db){
+    for(let index = 0; index < nextRows.length; index += 1){
+      const row = nextRows[index]
+      const docId = String(row && row.id || '').trim()
+      if(!docId) continue
+      await portalState.db.collection('checkResponses').doc(docId).set(row, { merge: true })
+    }
+    return
+  }
+
+  const targetIds = new Set(nextRows.map(function(row){
+    return String(row && row.id || '').trim()
+  }).filter(Boolean))
+  const preservedRows = readLocalResponses().filter(function(entry){
+    return !targetIds.has(String(entry && entry.id || '').trim())
+  })
+  writeLocalResponses(preservedRows.concat(nextRows))
+}
+
+async function regradePortalManagedCheckSet(docId){
+  const targetId = String(docId || '').trim()
+  if(!targetId) return
+  if(!isPortalAdmin()){
+    showToast('관리자만 학생 결과를 재채점할 수 있습니다.', 'var(--red)')
+    return
+  }
+  if(portalState.checkSetRegradeDocId === targetId){
+    showToast('이미 이 세트를 재채점하고 있습니다.', 'var(--blue)')
+    return
+  }
+
+  try{
+    const currentDoc = await getCloudSetDoc('check', targetId)
+    if(!currentDoc || !currentDoc.payload){
+      showToast('재채점할 CHECK 세트를 찾지 못했습니다.', 'var(--red)')
+      return
+    }
+
+    const checkSet = normalizeStoredCheckSet(currentDoc.payload)
+    if(!checkSet || !Array.isArray(checkSet.questions) || !checkSet.questions.length){
+      showToast('재채점할 문항이 없는 세트입니다.', 'var(--red)')
+      return
+    }
+
+    const confirmMessage = '이 세트의 기존 학생 결과와 ADMIN 통계를 현재 정답 기준으로 다시 계산할까요?'
+    if(typeof window.confirm === 'function' && !window.confirm(confirmMessage)) return
+
+    portalState.checkSetRegradeDocId = targetId
+    syncPortalAdminSetPanels(getCurrentActiveScreenId())
+
+    const responses = await fetchCheckResponsesForSet(checkSet.id)
+    if(!responses.length){
+      showToast('이 세트에는 아직 제출된 학생 결과가 없습니다.', 'var(--blue)')
+      return
+    }
+
+    let changedCount = 0
+    const nextRows = responses.map(function(row){
+      const before = serializeCheckResponseForCompare(row)
+      const nextRow = buildRegradedCheckResponseRow(checkSet, row)
+      const after = serializeCheckResponseForCompare(nextRow)
+      if(before !== after) changedCount += 1
+      return nextRow
+    })
+
+    await saveRegradedCheckResponses(nextRows)
+
+    if(getCurrentActiveScreenId() === 'check-set-screen' && portalState.currentCheckSet && portalState.currentCheckSet.id === checkSet.id){
+      await openCheckSetPortal(checkSet.id, { preserveHistory: true })
+    }else if(getCurrentActiveScreenId() === 'check-screen'){
+      renderCheckScreen()
+    }
+    if(getCurrentActiveScreenId() === 'admin-screen'){
+      await renderAdminScreen()
+    }
+
+    showToast('CHECK 세트 ' + responses.length + '건을 재채점했습니다. 변경 반영: ' + changedCount + '건', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('CHECK 세트 재채점 중 오류가 발생했습니다.', 'var(--red)')
+  }finally{
+    portalState.checkSetRegradeDocId = ''
+    syncPortalAdminSetPanels(getCurrentActiveScreenId())
+  }
+}
+
 function buildPortalManagedSetItemHtml(kind, record){
   const chipClass = record && record.isManaged ? 'live' : 'legacy'
   const chipLabel = record && record.isManaged ? '직접 업로드' : '기존 마스터'
   const editButton = kind === 'check' && record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(record.docId) + '\')">문항 수정</button>'
+    : ''
+  const isRegrading = kind === 'check' && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
+  const regradeButton = kind === 'check' && record && record.isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
     : ''
   const renameButton = record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
@@ -3535,6 +3724,7 @@ function buildPortalManagedSetItemHtml(kind, record){
       '<div class="admin-content-item-actions">' +
         '<span class="admin-content-chip ' + chipClass + '">' + escapeHtml(chipLabel) + '</span>' +
         editButton +
+        regradeButton +
         renameButton +
         dateButton +
         deleteButton +
@@ -3592,7 +3782,7 @@ function renderCheckAdminSetPanel(activeScreenId){
   const records = getVisiblePortalManagedSetRecords('check', classInfo && classInfo.id)
   countNode.textContent = String(records.length)
   hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 이름/기간 변경과 삭제가 가능합니다.')
+    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 문항 수정, 결과 재채점, 이름/기간 변경과 삭제가 가능합니다.')
     : '먼저 반을 선택하면 CHECK 세트를 올릴 수 있습니다.'
 
   list.innerHTML = records.length
@@ -3791,6 +3981,7 @@ window.renamePortalManagedSet = renamePortalManagedSet
 window.changePortalManagedSetDates = changePortalManagedSetDates
 window.removePortalManagedSet = removePortalManagedSet
 window.openPortalManagedCheckSetEditor = openPortalManagedCheckSetEditor
+window.regradePortalManagedCheckSet = regradePortalManagedCheckSet
 
 async function getFirebaseUserProfileSnapshot(uid){
   const docRef = portalState.db.collection('users').doc(uid)
