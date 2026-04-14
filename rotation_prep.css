@@ -1240,6 +1240,28 @@ body::before{
     width:100%;
     justify-content:flex-start;
   }
+  .check-set-editor-modal{
+    align-items:flex-end;
+    padding:10px 10px calc(16px + var(--safe-b));
+  }
+  .check-set-editor-sheet{
+    max-height:min(92vh,92dvh);
+    padding:18px 16px 16px;
+    border-radius:26px 26px 18px 18px;
+  }
+  .check-set-editor-head,
+  .check-set-editor-foot{
+    flex-direction:column;
+  }
+  .check-set-editor-grid{
+    grid-template-columns:1fr;
+  }
+  .check-set-editor-actions{
+    width:100%;
+  }
+  .check-set-editor-actions .btn{
+    width:100%;
+  }
 }
 
 /* 2026 Mobile-First Academic Refresh */
@@ -1274,6 +1296,10 @@ body{
   background:transparent;
   color:var(--ink);
   padding-bottom:calc(70px + var(--safe-b));
+}
+
+body.modal-open{
+  overflow:hidden;
 }
 
 body::before{
@@ -2300,6 +2326,188 @@ body::before{
 
 .app-drawer-link-danger{
   color:#ffd4cb;
+}
+
+.check-set-editor-modal{
+  position:fixed;
+  inset:0;
+  z-index:280;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px 16px calc(24px + var(--safe-b));
+}
+
+.check-set-editor-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(16,22,20,.46);
+  backdrop-filter:blur(3px);
+}
+
+.check-set-editor-sheet{
+  position:relative;
+  width:min(960px,100%);
+  max-height:min(88vh,900px);
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:22px 20px 18px;
+  border:1px solid rgba(18,49,43,.08);
+  border-radius:28px;
+  background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(243,248,246,.96));
+  box-shadow:0 30px 70px rgba(16,33,29,.18);
+  overflow:hidden;
+}
+
+.check-set-editor-head,
+.check-set-editor-foot{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.check-set-editor-copy{
+  min-width:0;
+  flex:1;
+}
+
+.check-set-editor-kicker{
+  font-size:.72rem;
+  font-weight:800;
+  letter-spacing:.12em;
+  color:var(--primary);
+}
+
+.check-set-editor-title{
+  margin:8px 0 0;
+  font-size:1.32rem;
+  line-height:1.25;
+  color:var(--ink);
+}
+
+.check-set-editor-meta{
+  margin:8px 0 0;
+  font-size:.82rem;
+  line-height:1.7;
+  color:var(--muted);
+}
+
+.check-set-editor-note{
+  padding:12px 14px;
+  border:1px solid rgba(13,77,68,.12);
+  border-radius:16px;
+  background:rgba(13,77,68,.06);
+  font-size:.8rem;
+  line-height:1.75;
+  color:var(--ink2);
+}
+
+.check-set-editor-list{
+  display:grid;
+  gap:12px;
+  overflow:auto;
+  padding-right:4px;
+}
+
+.check-set-editor-item{
+  padding:16px;
+  border:1.5px solid var(--border);
+  border-radius:20px;
+  background:rgba(255,255,255,.88);
+}
+
+.check-set-editor-item-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.check-set-editor-item-title{
+  font-size:.98rem;
+  font-weight:800;
+  color:var(--ink);
+}
+
+.check-set-editor-item-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+
+.check-set-editor-prompt{
+  margin-top:12px;
+  font-size:.86rem;
+  line-height:1.75;
+  color:var(--ink2);
+}
+
+.check-set-editor-grid{
+  display:grid;
+  grid-template-columns:minmax(0,220px) minmax(0,1fr);
+  gap:12px;
+  margin-top:14px;
+}
+
+.check-set-editor-field{
+  display:grid;
+  gap:8px;
+}
+
+.check-set-editor-label{
+  font-size:.78rem;
+  font-weight:800;
+  color:var(--ink2);
+}
+
+.check-set-editor-input,
+.check-set-editor-select,
+.check-set-editor-field textarea{
+  width:100%;
+  min-height:46px;
+  padding:12px 14px;
+  border:1.5px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.96);
+  color:var(--ink);
+  font:inherit;
+  outline:none;
+}
+
+.check-set-editor-field textarea{
+  min-height:132px;
+  resize:vertical;
+  line-height:1.7;
+}
+
+.check-set-editor-input:focus,
+.check-set-editor-select:focus,
+.check-set-editor-field textarea:focus{
+  border-color:rgba(13,77,68,.35);
+  box-shadow:0 0 0 4px rgba(13,77,68,.08);
+}
+
+.check-set-editor-help{
+  font-size:.74rem;
+  line-height:1.6;
+  color:var(--muted);
+}
+
+.check-set-editor-status{
+  font-size:.8rem;
+  line-height:1.7;
+  color:var(--muted);
+}
+
+.check-set-editor-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
 }
 
 .account-grid,
