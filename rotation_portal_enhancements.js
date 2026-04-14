@@ -1447,6 +1447,20 @@ function bindCheckFormInteractions(checkSet, submission){
         const questionId = group.dataset.checkQuestionId || group.dataset.checkBinaryId || ''
         if(!questionId) return
         const value = String(button.dataset.choice || '').trim()
+        const isMultiSelect = group.dataset.multiSelect === 'true'
+        const maxChoices = Math.max(1, Number(group.dataset.maxChoices || 1))
+        if(isMultiSelect){
+          const currentValue = getCurrentCheckDraftAnswer(questionId) || getChoiceGroupAnswer(group)
+          const nextState = toggleChoiceAnswerValue(currentValue, value, maxChoices)
+          if(nextState.blocked){
+            showToast(maxChoices + '개까지만 선택할 수 있습니다.', 'var(--blue)')
+            return
+          }
+          setCurrentCheckDraftAnswer(questionId, nextState.value)
+          applyChoiceGroupSelection(group, nextState.value)
+          renderCheckSubmitArea(checkSet, submission)
+          return
+        }
         setCurrentCheckDraftAnswer(questionId, value)
         group.querySelectorAll('.check-choice-btn').forEach(function(node){
           node.classList.remove('active')
@@ -1669,9 +1683,23 @@ function getCurrentCheckDraftAnswer(questionId){
   return String(portalState.currentCheckDraftAnswers && portalState.currentCheckDraftAnswers[questionId] || '').trim()
 }
 
+function getCurrentCheckQuestionById(questionId){
+  const checkSet = portalState.currentCheckSet
+  const targetId = String(questionId || '').trim()
+  if(!checkSet || !targetId || !Array.isArray(checkSet.questions)) return null
+  return checkSet.questions.find(function(question){
+    return String(question && question.id || '').trim() === targetId
+  }) || null
+}
+
 function setCurrentCheckDraftAnswer(questionId, value){
   if(!portalState.currentCheckDraftAnswers) portalState.currentCheckDraftAnswers = {}
-  portalState.currentCheckDraftAnswers[String(questionId || '').trim()] = String(value || '').trim()
+  const targetId = String(questionId || '').trim()
+  const question = getCurrentCheckQuestionById(targetId)
+  const normalizedValue = question && normalizeCheckQuestionType(question.type) === '객관식'
+    ? normalizeChoiceAnswer(value)
+    : String(value || '').trim()
+  portalState.currentCheckDraftAnswers[targetId] = normalizedValue
 }
 
 function resolveCheckFilterMode(checkSet, submission, preferredMode){
@@ -2389,7 +2417,13 @@ function collectCheckBatchAnswers(checkSet, submission){
     const isEditingAnswer = !!submittedAnswer && isCheckAnswerEditing(questionId)
     if(submittedAnswer && !isEditingAnswer) return null
 
-    const currentAnswer = submittedAnswer ? String(submittedAnswer.userAnswer || '').trim() : ''
+    const currentAnswer = submittedAnswer
+      ? (
+          normalizeCheckQuestionType(question && question.type) === '객관식'
+            ? normalizeChoiceAnswer(submittedAnswer.userAnswer)
+            : String(submittedAnswer.userAnswer || '').trim()
+        )
+      : ''
     const userAnswer = getCurrentCheckDraftAnswer(questionId) || currentAnswer
     if(!userAnswer) return null
 
