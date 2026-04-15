@@ -86,6 +86,8 @@ portalState.currentQuestionIssues = portalState.currentQuestionIssues || []
 portalState.currentCheckDraftAnswers = portalState.currentCheckDraftAnswers || {}
 portalState.currentCheckEditTargets = portalState.currentCheckEditTargets || {}
 portalState.currentCheckFilter = portalState.currentCheckFilter || 'all'
+portalState.adminCheckSetFilter = portalState.adminCheckSetFilter || 'all'
+portalState.adminCheckAnalytics = portalState.adminCheckAnalytics || null
 portalState.historyInitialized = false
 portalState.currentRouteKey = ''
 portalState.isRestoringHistory = false
@@ -1974,13 +1976,20 @@ function writeLocalQuestionIssues(rows){
 
 async function renderAdminScreen(){
   const responses = await fetchAllCheckResponses()
+  const studentProfiles = await fetchAdminStudentProfiles()
   const studentResponses = responses.filter(function(entry){
     return entry.role !== 'admin'
   })
 
   syncAdminClassFilterControls(studentResponses)
-  const filteredResponses = filterAdminResponsesByClass(studentResponses)
-  syncAdminStudentFilterControls(filteredResponses)
+  const classFilteredResponses = filterAdminResponsesByClass(studentResponses)
+  syncAdminCheckSetFilterControls(classFilteredResponses)
+  const filteredResponses = filterAdminResponsesByCheckSet(classFilteredResponses)
+
+  const analytics = buildAdminCheckAnalytics(filteredResponses, studentProfiles, classFilteredResponses)
+  portalState.adminCheckAnalytics = analytics
+  syncAdminStudentFilterControls(analytics.students)
+
   const wrongAnswers = extractWrongAnswers(filteredResponses)
   const studentWrongSetItems = buildStudentSetWrongItems(filteredResponses, portalState.adminStudentFilter)
 
@@ -2040,6 +2049,762 @@ async function renderAdminScreen(){
   updateAdminUploadStatus()
 }
 
+async function fetchAdminStudentProfiles(){
+  let rows = []
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection('users').get()
+      rows = snapshot.docs.map(function(doc){
+        return normalizeUserProfile(Object.assign({ uid: doc.id }, doc.data() || {}))
+      })
+    }catch(error){
+      console.warn('users admin read fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  if(!rows.length && typeof readLocalUsers === 'function'){
+    rows = readLocalUsers().map(function(entry){
+      return normalizeUserProfile(Object.assign({}, entry, {
+        uid: entry && (entry.uid || entry.id)
+      }))
+    })
+  }
+
+  return rows.filter(function(entry){
+    return String(entry && entry.role || 'student').trim().toLowerCase() !== 'admin'
+  })
+}
+
+function getAdminCheckSetKey(entry){
+  return String(entry && (entry.id || entry.checkSetId || entry.title || entry.checkSetTitle) || '').trim()
+}
+
+function getAdminResponseSetKey(entry){
+  return String(entry && (entry.checkSetId || entry.checkSetTitle) || '').trim()
+}
+
+function getAdminScopedCheckSets(){
+  const allSets = Array.isArray(portalState.checkData && portalState.checkData.checkSets)
+    ? portalState.checkData.checkSets
+    : []
+  const allowedClassIds = getProfileClassIds()
+
+  return allSets.filter(function(checkSet){
+    const classIds = Array.isArray(checkSet && checkSet.classIds) ? checkSet.classIds : []
+    if(isPortalAdmin() && !isPortalSuperAdmin()){
+      if(!classIds.some(function(classId){
+        return allowedClassIds.indexOf(classId) >= 0
+      })) return false
+    }
+    if(portalState.adminClassFilter !== 'all'){
+      return classIds.indexOf(portalState.adminClassFilter) >= 0
+    }
+    return true
+  })
+}
+
+function buildAdminCheckSetOptions(rows){
+  const map = new Map()
+  getAdminScopedCheckSets().forEach(function(checkSet){
+    const id = getAdminCheckSetKey(checkSet)
+    if(!id) return
+    map.set(id, {
+      id: id,
+      title: String(checkSet && checkSet.title || id).trim() || id,
+      questionCount: Array.isArray(checkSet && checkSet.questions) ? checkSet.questions.length : 0
+    })
+  })
+
+  ;(Array.isArray(rows) ? rows : []).forEach(function(entry){
+    const id = getAdminResponseSetKey(entry)
+    if(!id || map.has(id)) return
+    map.set(id, {
+      id: id,
+      title: String(entry && entry.checkSetTitle || id).trim() || id,
+      questionCount: Array.isArray(entry && entry.answers) ? entry.answers.length : 0
+    })
+  })
+
+  return [{ id: 'all', title: '전체 세트', questionCount: 0 }].concat(
+    Array.from(map.values()).sort(function(a, b){
+      return String(a.title || '').localeCompare(String(b.title || ''), 'ko')
+    })
+  )
+}
+
+function syncAdminCheckSetFilterControls(rows){
+  const select = document.getElementById('admin-check-set-filter')
+  const nameNode = document.getElementById('admin-set-filter-name')
+  const metaNode = document.getElementById('admin-set-filter-meta')
+  const exportButton = document.getElementById('admin-check-export-btn')
+  const options = buildAdminCheckSetOptions(rows)
+
+  if(!options.some(function(option){ return option.id === portalState.adminCheckSetFilter })){
+    portalState.adminCheckSetFilter = 'all'
+  }
+
+  if(select){
+    select.innerHTML = options.map(function(option){
+      const selected = option.id === portalState.adminCheckSetFilter ? ' selected' : ''
+      const suffix = option.questionCount ? (' · ' + option.questionCount + '문항') : ''
+      return '<option value="' + escapeHtml(option.id) + '"' + selected + '>' + escapeHtml(option.title + suffix) + '</option>'
+    }).join('')
+  }
+
+  const currentOption = options.find(function(option){
+    return option.id === portalState.adminCheckSetFilter
+  }) || options[0]
+
+  if(nameNode) nameNode.textContent = currentOption ? currentOption.title : '전체 세트'
+  if(metaNode){
+    metaNode.textContent = portalState.adminCheckSetFilter === 'all'
+      ? '현재 통계 범위의 모든 CHECK 세트를 함께 분석합니다. 세트를 고르면 문항별 미제출까지 더 정확히 볼 수 있습니다.'
+      : ((currentOption ? currentOption.title : '선택 세트') + ' 기준으로 문항별 오답/미제출 통계를 계산합니다.')
+  }
+  if(exportButton) exportButton.disabled = !options.length
+}
+
+function filterAdminResponsesByCheckSet(rows){
+  const targetId = String(portalState.adminCheckSetFilter || 'all').trim() || 'all'
+  if(targetId === 'all') return rows
+  return (Array.isArray(rows) ? rows : []).filter(function(entry){
+    return getAdminResponseSetKey(entry) === targetId
+  })
+}
+
+window.handleAdminCheckSetFilterChange = function(value){
+  portalState.adminCheckSetFilter = String(value || 'all').trim() || 'all'
+  portalState.adminStudentFilter = ''
+  renderAdminScreen()
+}
+
+window.handleAdminClassFilterChange = function(value){
+  portalState.adminClassFilter = String(value || 'all').trim() || 'all'
+  portalState.adminStudentFilter = ''
+  portalState.adminCheckSetFilter = 'all'
+  renderAdminScreen()
+}
+
+function buildAdminStudentOptions(rows){
+  const map = new Map()
+
+  ;(Array.isArray(rows) ? rows : []).forEach(function(entry){
+    const id = String(entry && (entry.id || entry.userId || entry.studentId || entry.email || entry.name) || '').trim()
+    if(!id || map.has(id)) return
+    const label = String(entry && entry.label || '').trim() || getAdminResponseStudentLabel(entry)
+    map.set(id, {
+      id: id,
+      label: label
+    })
+  })
+
+  return Array.from(map.values()).sort(function(a, b){
+    return String(a.label || '').localeCompare(String(b.label || ''), 'ko')
+  })
+}
+
+function syncAdminStudentFilterControls(rows){
+  const select = document.getElementById('admin-student-filter')
+  const students = buildAdminStudentOptions(rows)
+
+  if(!students.length){
+    portalState.adminStudentFilter = ''
+    if(select) select.innerHTML = '<option value="">전체 학생</option>'
+    return
+  }
+
+  if(portalState.adminStudentFilter && !students.some(function(student){
+    return student.id === portalState.adminStudentFilter
+  })){
+    portalState.adminStudentFilter = ''
+  }
+
+  if(select){
+    const options = [{ id: '', label: '전체 학생' }].concat(students)
+    select.innerHTML = options.map(function(student){
+      const selected = student.id === portalState.adminStudentFilter ? ' selected' : ''
+      return '<option value="' + escapeHtml(student.id) + '"' + selected + '>' + escapeHtml(student.label) + '</option>'
+    }).join('')
+  }
+}
+
+function findAdminCheckSetByKey(setKey){
+  const key = String(setKey || '').trim()
+  if(!key) return null
+  return getAdminScopedCheckSets().find(function(checkSet){
+    return getAdminCheckSetKey(checkSet) === key || String(checkSet && checkSet.title || '').trim() === key
+  }) || null
+}
+
+function buildAdminSyntheticCheckSetFromResponse(entry){
+  const id = getAdminResponseSetKey(entry)
+  if(!id) return null
+  const answers = Array.isArray(entry && entry.answers) ? entry.answers : []
+  return {
+    id: id,
+    title: String(entry && entry.checkSetTitle || id).trim() || id,
+    classIds: Array.isArray(entry && entry.classIds) ? entry.classIds.slice() : [],
+    questions: answers.map(function(answer, index){
+      const number = resolveSubmittedQuestionNumber(answer, index + 1)
+      return {
+        id: String(answer && (answer.questionId || answer.id) || ('q-' + number)).trim(),
+        number: number,
+        problemType: normalizeCheckProblemType(answer && (answer.problemType || answer.category)),
+        prompt: String(answer && answer.prompt || '').trim()
+      }
+    })
+  }
+}
+
+function getAdminAnalysisTargetSets(classFilteredRows){
+  const selectedSetId = String(portalState.adminCheckSetFilter || 'all').trim() || 'all'
+  const map = new Map()
+
+  getAdminScopedCheckSets().forEach(function(checkSet){
+    const id = getAdminCheckSetKey(checkSet)
+    if(id) map.set(id, checkSet)
+  })
+
+  ;(Array.isArray(classFilteredRows) ? classFilteredRows : []).forEach(function(entry){
+    const id = getAdminResponseSetKey(entry)
+    if(!id || map.has(id)) return
+    const syntheticSet = buildAdminSyntheticCheckSetFromResponse(entry)
+    if(syntheticSet) map.set(id, syntheticSet)
+  })
+
+  if(selectedSetId !== 'all'){
+    return map.has(selectedSetId) ? [map.get(selectedSetId)] : []
+  }
+
+  return Array.from(map.values()).sort(function(a, b){
+    return String(a && a.title || '').localeCompare(String(b && b.title || ''), 'ko')
+  })
+}
+
+function getAdminQuestionKey(setId, questionId, number){
+  const qid = String(questionId || '').trim() || ('number-' + normalizeCheckQuestionNumber(number, 1))
+  return String(setId || 'check-set').trim() + '::' + qid
+}
+
+function buildAdminQuestionItem(checkSet, question, index){
+  const setId = getAdminCheckSetKey(checkSet)
+  const number = normalizeCheckQuestionNumber(question && question.number, index + 1)
+  const questionId = String(question && (question.id || question.questionId) || ('q-' + number)).trim()
+  return {
+    key: getAdminQuestionKey(setId, questionId, number),
+    setId: setId,
+    setTitle: String(checkSet && checkSet.title || setId || 'CHECK 세트').trim() || 'CHECK 세트',
+    classIds: Array.isArray(checkSet && checkSet.classIds) ? checkSet.classIds.slice() : [],
+    questionId: questionId,
+    number: number,
+    problemType: normalizeCheckProblemType(question && (question.problemType || question.category)),
+    prompt: String(question && question.prompt || '').trim()
+  }
+}
+
+function buildAdminAnalysisQuestions(targetSets, rows){
+  const map = new Map()
+  ;(Array.isArray(targetSets) ? targetSets : []).forEach(function(checkSet){
+    ;(Array.isArray(checkSet && checkSet.questions) ? checkSet.questions : []).forEach(function(question, index){
+      const item = buildAdminQuestionItem(checkSet, question, index)
+      if(item.setId && !map.has(item.key)) map.set(item.key, item)
+    })
+  })
+
+  ;(Array.isArray(rows) ? rows : []).forEach(function(entry){
+    const setId = getAdminResponseSetKey(entry)
+    if(!setId) return
+    const setTitle = String(entry && entry.checkSetTitle || setId).trim() || setId
+    ;(Array.isArray(entry && entry.answers) ? entry.answers : []).forEach(function(answer, index){
+      const number = resolveSubmittedQuestionNumber(answer, index + 1)
+      const questionId = String(answer && (answer.questionId || answer.id) || ('q-' + number)).trim()
+      const key = getAdminQuestionKey(setId, questionId, number)
+      if(map.has(key)) return
+      map.set(key, {
+        key: key,
+        setId: setId,
+        setTitle: setTitle,
+        classIds: Array.isArray(entry && entry.classIds) ? entry.classIds.slice() : [],
+        questionId: questionId,
+        number: number,
+        problemType: normalizeCheckProblemType(answer && (answer.problemType || answer.category)),
+        prompt: String(answer && answer.prompt || '').trim()
+      })
+    })
+  })
+
+  return Array.from(map.values()).sort(function(a, b){
+    if(String(a.setTitle || '') !== String(b.setTitle || '')){
+      return String(a.setTitle || '').localeCompare(String(b.setTitle || ''), 'ko')
+    }
+    return Number(a.number || 0) - Number(b.number || 0)
+  })
+}
+
+function getAdminStudentProfileKey(entry){
+  return String(entry && (entry.uid || entry.id || entry.userId || entry.studentId || entry.email || entry.loginId || entry.name) || '').trim()
+}
+
+function getAdminStudentProfileLabel(entry){
+  const name = String(entry && entry.name || '').trim()
+  const studentId = String(entry && entry.studentId || entry.loginId || '').trim()
+  const email = String(entry && entry.email || '').trim()
+  if(name && studentId && name !== studentId) return name + ' · ' + studentId
+  if(name) return name
+  if(studentId) return studentId
+  if(email) return email
+  return '학생'
+}
+
+function getAdminAnalysisClassIds(targetSets){
+  if(portalState.adminClassFilter !== 'all') return [portalState.adminClassFilter]
+  const ids = new Set()
+  ;(Array.isArray(targetSets) ? targetSets : []).forEach(function(checkSet){
+    ;(Array.isArray(checkSet && checkSet.classIds) ? checkSet.classIds : []).forEach(function(classId){
+      const id = String(classId || '').trim()
+      if(id) ids.add(id)
+    })
+  })
+  if(ids.size) return Array.from(ids)
+  return isPortalAdmin() && !isPortalSuperAdmin() ? getProfileClassIds() : []
+}
+
+function hasAnyAdminClass(classIds, targetClassIds){
+  const sourceIds = Array.isArray(classIds) ? classIds : []
+  const targets = Array.isArray(targetClassIds) ? targetClassIds : []
+  if(!targets.length) return true
+  return sourceIds.some(function(classId){
+    return targets.indexOf(classId) >= 0
+  })
+}
+
+function buildAdminAnalysisStudents(studentProfiles, classFilteredRows, filteredRows, targetSets){
+  const targetClassIds = getAdminAnalysisClassIds(targetSets)
+  const map = new Map()
+
+  ;(Array.isArray(studentProfiles) ? studentProfiles : []).forEach(function(profile){
+    const id = getAdminStudentProfileKey(profile)
+    if(!id || String(profile && profile.role || 'student').trim().toLowerCase() === 'admin') return
+    if(!hasAnyAdminClass(profile.classIds, targetClassIds)) return
+    map.set(id, {
+      id: id,
+      label: getAdminStudentProfileLabel(profile),
+      studentId: String(profile && (profile.studentId || profile.loginId) || '').trim(),
+      classIds: Array.isArray(profile && profile.classIds) ? profile.classIds.slice() : []
+    })
+  })
+
+  ;(Array.isArray(classFilteredRows) ? classFilteredRows : []).concat(Array.isArray(filteredRows) ? filteredRows : []).forEach(function(entry){
+    const id = getAdminResponseStudentKey(entry)
+    if(!id || map.has(id)) return
+    if(!hasAnyAdminClass(entry && entry.classIds, targetClassIds)) return
+    map.set(id, {
+      id: id,
+      label: getAdminResponseStudentLabel(entry),
+      studentId: String(entry && entry.studentId || '').trim(),
+      classIds: Array.isArray(entry && entry.classIds) ? entry.classIds.slice() : []
+    })
+  })
+
+  return Array.from(map.values()).sort(function(a, b){
+    return String(a.label || '').localeCompare(String(b.label || ''), 'ko')
+  })
+}
+
+function buildAdminLatestResponseMap(rows){
+  const map = new Map()
+  ;(Array.isArray(rows) ? rows : []).forEach(function(entry){
+    const studentId = getAdminResponseStudentKey(entry)
+    const setId = getAdminResponseSetKey(entry)
+    if(!studentId || !setId) return
+    const key = studentId + '::' + setId
+    const current = map.get(key)
+    if(!current || String(entry && entry.submittedAt || '') > String(current && current.submittedAt || '')){
+      map.set(key, entry)
+    }
+  })
+  return map
+}
+
+function findAdminSubmittedAnswer(response, question){
+  const answers = Array.isArray(response && response.answers) ? response.answers : []
+  const questionId = String(question && question.questionId || '').trim()
+  const direct = answers.find(function(answer){
+    return questionId && String(answer && answer.questionId || '').trim() === questionId
+  }) || null
+  if(direct) return direct
+  return answers.find(function(answer, index){
+    return resolveSubmittedQuestionNumber(answer, index + 1) === Number(question && question.number || 0)
+  }) || null
+}
+
+function getAdminQuestionDisplayLabel(question, includeSet){
+  const numberText = String(question && question.number || '') + '번'
+  if(includeSet) return String(question && question.setTitle || 'CHECK 세트') + ' · ' + numberText
+  return numberText
+}
+
+function getAdminAnswerStatus(response, question){
+  if(!response) return { status: 'missing', text: '미제출', answer: null }
+  const answer = findAdminSubmittedAnswer(response, question)
+  if(!answer) return { status: 'missing', text: '미제출', answer: null }
+  if(answer.isCorrect === false){
+    const noteCompleted = isCheckWrongNoteCompleted(answer)
+    return {
+      status: 'wrong',
+      text: noteCompleted ? 'X(오답노트 완료)' : 'X(오답노트 미완료)',
+      answer: answer,
+      wrongNoteCompleted: noteCompleted
+    }
+  }
+  if(answer.isCorrect === true) return { status: 'correct', text: 'O', answer: answer }
+  return { status: 'submitted', text: '제출', answer: answer }
+}
+
+function isAdminStudentExpectedForQuestion(student, question){
+  return hasAnyAdminClass(student && student.classIds, question && question.classIds)
+}
+
+function buildAdminCheckAnalytics(filteredRows, studentProfiles, classFilteredRows){
+  const targetSets = getAdminAnalysisTargetSets(classFilteredRows)
+  const questionItems = buildAdminAnalysisQuestions(targetSets, filteredRows)
+  const students = buildAdminAnalysisStudents(studentProfiles, classFilteredRows, filteredRows, targetSets)
+  const responseMap = buildAdminLatestResponseMap(filteredRows)
+  const includeSetInLabel = portalState.adminCheckSetFilter === 'all'
+  const selectedSet = portalState.adminCheckSetFilter === 'all' ? null : findAdminCheckSetByKey(portalState.adminCheckSetFilter)
+
+  const questionRanks = questionItems.map(function(question){
+    const expectedStudents = students.filter(function(student){
+      return isAdminStudentExpectedForQuestion(student, question)
+    })
+    const wrongStudents = []
+    const wrongNoteCompletedStudents = []
+    const wrongNotePendingStudents = []
+    const missingStudents = []
+    let correctCount = 0
+    let submittedCount = 0
+
+    expectedStudents.forEach(function(student){
+      const response = responseMap.get(student.id + '::' + question.setId) || null
+      const result = getAdminAnswerStatus(response, question)
+      if(result.status === 'missing'){
+        missingStudents.push(student.label)
+        return
+      }
+      submittedCount += 1
+      if(result.status === 'wrong'){
+        wrongStudents.push(student.label)
+        if(result.wrongNoteCompleted){
+          wrongNoteCompletedStudents.push(student.label)
+        }else{
+          wrongNotePendingStudents.push(student.label)
+        }
+      }else{
+        correctCount += 1
+      }
+    })
+
+    return {
+      key: question.key,
+      setId: question.setId,
+      setTitle: question.setTitle,
+      number: question.number,
+      label: getAdminQuestionDisplayLabel(question, includeSetInLabel),
+      problemType: question.problemType || '기타',
+      prompt: question.prompt || '',
+      wrongCount: wrongStudents.length,
+      correctCount: correctCount,
+      submittedCount: submittedCount,
+      missingCount: missingStudents.length,
+      totalStudents: expectedStudents.length,
+      wrongRate: submittedCount ? Math.round((wrongStudents.length / submittedCount) * 100) : 0,
+      wrongNoteCompletedCount: wrongNoteCompletedStudents.length,
+      wrongNotePendingCount: wrongNotePendingStudents.length,
+      wrongNoteCompletionRate: wrongStudents.length ? Math.round((wrongNoteCompletedStudents.length / wrongStudents.length) * 100) : 0,
+      wrongStudents: wrongStudents,
+      wrongNoteCompletedStudents: wrongNoteCompletedStudents,
+      wrongNotePendingStudents: wrongNotePendingStudents,
+      missingStudents: missingStudents
+    }
+  }).sort(function(a, b){
+    if(b.wrongCount !== a.wrongCount) return b.wrongCount - a.wrongCount
+    if(b.wrongRate !== a.wrongRate) return b.wrongRate - a.wrongRate
+    if(b.missingCount !== a.missingCount) return b.missingCount - a.missingCount
+    return Number(a.number || 0) - Number(b.number || 0)
+  })
+
+  const studentRows = students.map(function(student){
+    const wrongLabels = []
+    const wrongNoteCompletedLabels = []
+    const wrongNotePendingLabels = []
+    const missingLabels = []
+    let correctCount = 0
+    let submittedCount = 0
+    let targetCount = 0
+    const cells = questionItems.map(function(question){
+      if(!isAdminStudentExpectedForQuestion(student, question)){
+        return {
+          questionKey: question.key,
+          label: getAdminQuestionDisplayLabel(question, includeSetInLabel),
+          status: 'not-assigned',
+          text: '-',
+          userAnswer: ''
+        }
+      }
+      targetCount += 1
+      const response = responseMap.get(student.id + '::' + question.setId) || null
+      const result = getAdminAnswerStatus(response, question)
+      const label = getAdminQuestionDisplayLabel(question, includeSetInLabel)
+      if(result.status === 'wrong'){
+        wrongLabels.push(label)
+        if(result.wrongNoteCompleted){
+          wrongNoteCompletedLabels.push(label)
+        }else{
+          wrongNotePendingLabels.push(label)
+        }
+      }
+      if(result.status === 'missing') missingLabels.push(label)
+      if(result.status !== 'missing') submittedCount += 1
+      if(result.status === 'correct') correctCount += 1
+      return {
+        questionKey: question.key,
+        label: label,
+        status: result.status,
+        text: result.text,
+        userAnswer: result.answer ? String(result.answer.userAnswer || '').trim() : ''
+      }
+    })
+    return {
+      id: student.id,
+      label: student.label,
+      studentId: student.studentId,
+      correctCount: correctCount,
+      submittedCount: submittedCount,
+      targetCount: targetCount,
+      wrongCount: wrongLabels.length,
+      wrongNoteCompletedCount: wrongNoteCompletedLabels.length,
+      wrongNotePendingCount: wrongNotePendingLabels.length,
+      missingCount: missingLabels.length,
+      wrongLabels: wrongLabels,
+      wrongNoteCompletedLabels: wrongNoteCompletedLabels,
+      wrongNotePendingLabels: wrongNotePendingLabels,
+      missingLabels: missingLabels,
+      cells: cells
+    }
+  }).sort(function(a, b){
+    if(b.wrongCount !== a.wrongCount) return b.wrongCount - a.wrongCount
+    if(b.missingCount !== a.missingCount) return b.missingCount - a.missingCount
+    return String(a.label || '').localeCompare(String(b.label || ''), 'ko')
+  })
+
+  const typeRanks = buildRankItems(
+    questionRanks.flatMap(function(item){
+      return Array.from({ length: item.wrongCount }).map(function(){
+        return { problemType: item.problemType || '기타' }
+      })
+    }),
+    function(entry){ return entry.problemType || '기타' }
+  )
+
+  return {
+    generatedAt: new Date().toISOString(),
+    selectedSetTitle: selectedSet ? String(selectedSet.title || '').trim() : '전체 세트',
+    targetSets: targetSets,
+    questions: questionItems,
+    students: students,
+    questionRanks: questionRanks,
+    studentRows: studentRows,
+    typeRanks: typeRanks,
+    includeSetInLabel: includeSetInLabel,
+    hasUserRoster: Array.isArray(studentProfiles) && studentProfiles.length > 0
+  }
+}
+
+function formatAdminNameList(list, maxCount){
+  const values = (Array.isArray(list) ? list : []).filter(Boolean)
+  const limit = Number(maxCount || 5)
+  if(!values.length) return ''
+  const head = values.slice(0, limit).join(', ')
+  return values.length > limit ? head + ' 외 ' + (values.length - limit) + '명' : head
+}
+
+function renderAdminQuestionRankList(analytics){
+  const countNode = document.getElementById('admin-question-rank-count')
+  const listNode = document.getElementById('admin-question-rank-list')
+  if(!countNode || !listNode) return
+  const rows = analytics && Array.isArray(analytics.questionRanks) ? analytics.questionRanks : []
+  const visibleRows = rows.filter(function(item){
+    return item.wrongCount > 0 || item.missingCount > 0
+  }).slice(0, 30)
+
+  countNode.textContent = String(rows.length)
+  listNode.innerHTML = visibleRows.length
+    ? visibleRows.map(function(item, index){
+        return '' +
+          '<div class="admin-item">' +
+            '<strong class="admin-item-title">' + (index + 1) + '위 · ' + escapeHtml(item.label) + '</strong>' +
+            '<span class="admin-item-meta">' + escapeHtml(item.problemType || '기타') + ' · 오답 ' + item.wrongCount + '명 · 제출 ' + item.submittedCount + '명 · 미제출 ' + item.missingCount + '명 · 오답률 ' + item.wrongRate + '%</span>' +
+            (item.wrongCount ? '<span class="admin-item-ok">오답노트 완료 ' + item.wrongNoteCompletedCount + '명 · 미완료 ' + item.wrongNotePendingCount + '명 · 완료율 ' + item.wrongNoteCompletionRate + '%</span>' : '') +
+            (item.wrongStudents.length ? '<span class="admin-item-warning">틀린 학생: ' + escapeHtml(formatAdminNameList(item.wrongStudents, 8)) + '</span>' : '') +
+            (item.wrongNotePendingStudents.length ? '<span class="admin-item-warning">오답노트 미완료: ' + escapeHtml(formatAdminNameList(item.wrongNotePendingStudents, 8)) + '</span>' : '') +
+            (item.missingStudents.length ? '<span class="admin-item-muted">미제출: ' + escapeHtml(formatAdminNameList(item.missingStudents, 8)) + '</span>' : '') +
+          '</div>'
+      }).join('')
+    : '<div class="empty-box">선택한 범위에서 오답 또는 미제출 문항이 없습니다.</div>'
+}
+
+function renderAdminStudentMatrixList(analytics){
+  const countNode = document.getElementById('admin-student-matrix-count')
+  const listNode = document.getElementById('admin-student-matrix-list')
+  if(!countNode || !listNode) return
+  const rows = analytics && Array.isArray(analytics.studentRows) ? analytics.studentRows : []
+  const filteredRows = portalState.adminStudentFilter
+    ? rows.filter(function(row){ return row.id === portalState.adminStudentFilter })
+    : rows
+  const visibleRows = filteredRows.slice(0, 40)
+
+  countNode.textContent = String(filteredRows.length)
+  listNode.innerHTML = visibleRows.length
+    ? visibleRows.map(function(row){
+        const wrongText = row.wrongLabels.length ? row.wrongLabels.join(', ') : '없음'
+        const noteCompletedText = row.wrongNoteCompletedLabels.length ? row.wrongNoteCompletedLabels.join(', ') : '없음'
+        const notePendingText = row.wrongNotePendingLabels.length ? row.wrongNotePendingLabels.join(', ') : '없음'
+        const missingText = row.missingLabels.length ? row.missingLabels.join(', ') : '없음'
+        return '' +
+          '<div class="admin-item">' +
+            '<strong class="admin-item-title">' + escapeHtml(row.label) + '</strong>' +
+            '<span class="admin-item-ok">정답 ' + row.correctCount + '개 · 제출 ' + row.submittedCount + ' / 대상 ' + row.targetCount + '</span>' +
+            '<span class="admin-item-warning">오답: ' + escapeHtml(wrongText) + '</span>' +
+            '<span class="admin-item-ok">오답노트 완료: ' + escapeHtml(noteCompletedText) + '</span>' +
+            '<span class="admin-item-warning">오답노트 미완료: ' + escapeHtml(notePendingText) + '</span>' +
+            '<span class="admin-item-muted">미제출: ' + escapeHtml(missingText) + '</span>' +
+          '</div>'
+      }).join('')
+    : '<div class="empty-box">선택한 범위에 표시할 학생이 없습니다.</div>'
+}
+
+function buildAdminExcelCell(value){
+  return '<td>' + escapeHtml(value == null ? '' : String(value)) + '</td>'
+}
+
+function buildAdminExcelHeader(values){
+  return '<tr>' + values.map(function(value){
+    return '<th>' + escapeHtml(value) + '</th>'
+  }).join('') + '</tr>'
+}
+
+function buildAdminAnalyticsExcelHtml(analytics){
+  const questionRows = (analytics.questionRanks || []).map(function(item, index){
+    return '<tr>' + [
+      index + 1,
+      item.setTitle,
+      item.number,
+      item.problemType,
+      item.wrongCount,
+      item.wrongNoteCompletedCount,
+      item.wrongNotePendingCount,
+      item.wrongNoteCompletionRate + '%',
+      item.submittedCount,
+      item.missingCount,
+      item.wrongRate + '%',
+      item.wrongStudents.join(', '),
+      item.wrongNoteCompletedStudents.join(', '),
+      item.wrongNotePendingStudents.join(', '),
+      item.missingStudents.join(', '),
+      item.prompt
+    ].map(buildAdminExcelCell).join('') + '</tr>'
+  }).join('')
+
+  const typeRows = (analytics.typeRanks || []).map(function(item, index){
+    return '<tr>' + [
+      index + 1,
+      item.label,
+      item.count
+    ].map(buildAdminExcelCell).join('') + '</tr>'
+  }).join('')
+
+  const questionHeaders = (analytics.questions || []).map(function(question){
+    return getAdminQuestionDisplayLabel(question, analytics.includeSetInLabel)
+  })
+  const studentRows = (analytics.studentRows || []).map(function(row){
+    return '<tr>' + [
+      row.label,
+      row.studentId,
+      row.targetCount,
+      row.wrongCount,
+      row.wrongNoteCompletedCount,
+      row.wrongNotePendingCount,
+      row.missingCount,
+      row.submittedCount,
+      row.wrongLabels.join(', '),
+      row.wrongNoteCompletedLabels.join(', '),
+      row.wrongNotePendingLabels.join(', '),
+      row.missingLabels.join(', ')
+    ].map(buildAdminExcelCell).join('') +
+      row.cells.map(function(cell){
+        return buildAdminExcelCell(cell.text)
+      }).join('') +
+    '</tr>'
+  }).join('')
+
+  return '' +
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<style>body{font-family:Malgun Gothic,Arial,sans-serif} table{border-collapse:collapse;margin-bottom:24px} th,td{border:1px solid #999;padding:6px 8px;mso-number-format:"\\@";vertical-align:top} th{background:#e9f3f1;font-weight:700}.title{font-size:18px;font-weight:800;margin:0 0 8px}.meta{color:#555;margin:0 0 18px}</style>' +
+    '</head><body>' +
+      '<div class="title">CHECK 오답 통계</div>' +
+      '<div class="meta">세트: ' + escapeHtml(analytics.selectedSetTitle || '전체 세트') + ' / 생성: ' + escapeHtml(formatAdminTime(analytics.generatedAt)) + '</div>' +
+      '<h2>문항별 오답 랭킹</h2>' +
+      '<table>' +
+        buildAdminExcelHeader(['순위', '세트', '문제번호', '유형', '오답 수', '오답노트 완료 수', '오답노트 미완료 수', '오답노트 완료율', '제출 수', '미제출 수', '오답률', '틀린 학생', '오답노트 완료 학생', '오답노트 미완료 학생', '미제출 학생', '문항']) +
+        (questionRows || '<tr><td colspan="16">데이터 없음</td></tr>') +
+      '</table>' +
+      '<h2>유형별 오답</h2>' +
+      '<table>' +
+        buildAdminExcelHeader(['순위', '유형', '오답 수']) +
+        (typeRows || '<tr><td colspan="3">데이터 없음</td></tr>') +
+      '</table>' +
+      '<h2>학생별 문항 현황</h2>' +
+      '<table>' +
+        buildAdminExcelHeader(['학생', 'ID', '대상 문항 수', '총 오답', '오답노트 완료 수', '오답노트 미완료 수', '미제출 수', '제출 수', '오답 번호', '오답노트 완료 번호', '오답노트 미완료 번호', '미제출 번호'].concat(questionHeaders)) +
+        (studentRows || '<tr><td colspan="' + (12 + questionHeaders.length) + '">데이터 없음</td></tr>') +
+      '</table>' +
+    '</body></html>'
+}
+
+function sanitizeAdminDownloadName(value){
+  return String(value || 'CHECK_오답통계')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80)
+}
+
+function downloadAdminTextFile(fileName, content, mimeType){
+  const blob = new Blob(['\ufeff', content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(function(){
+    URL.revokeObjectURL(url)
+  }, 1000)
+}
+
+window.downloadAdminCheckAnalytics = function(){
+  const analytics = portalState.adminCheckAnalytics
+  if(!analytics || !Array.isArray(analytics.questions) || !analytics.questions.length){
+    showToast('다운로드할 CHECK 통계가 없습니다.', 'var(--blue)')
+    return
+  }
+  const stamp = new Date().toISOString().slice(0, 10)
+  const baseName = sanitizeAdminDownloadName('CHECK_오답통계_' + (analytics.selectedSetTitle || '전체세트') + '_' + stamp)
+  const html = buildAdminAnalyticsExcelHtml(analytics)
+  downloadAdminTextFile(baseName + '.xls', html, 'application/vnd.ms-excel;charset=utf-8')
+  showToast('엑셀 파일을 다운로드했습니다.', 'var(--green)')
+}
+
 function filterAdminIssuesByState(rows){
   return rows.filter(function(entry){
     if(isPortalAdmin() && !isPortalSuperAdmin()){
@@ -2054,6 +2819,9 @@ function filterAdminIssuesByState(rows){
     if(portalState.adminClassFilter !== 'all'){
       const classIds = Array.isArray(entry && entry.classIds) ? entry.classIds : []
       if(classIds.indexOf(portalState.adminClassFilter) < 0) return false
+    }
+    if(portalState.adminCheckSetFilter !== 'all' && getAdminResponseSetKey(entry) !== portalState.adminCheckSetFilter){
+      return false
     }
     if(portalState.adminStudentFilter){
       return getAdminIssueStudentKey(entry) === portalState.adminStudentFilter

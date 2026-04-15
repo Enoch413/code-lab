@@ -1221,6 +1221,9 @@ body::before{
   .admin-grid{
     grid-template-columns:repeat(3,minmax(0,1fr));
   }
+  .admin-grid .admin-wide{
+    grid-column:1 / -1;
+  }
 }
 @media (max-width: 767px){
   .portal-user-card{
@@ -2015,6 +2018,24 @@ body::before{
   margin-left:auto;
 }
 
+.admin-filter-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+
+.admin-filter-actions .admin-filter-wrap{
+  margin-left:0;
+}
+
+.admin-check-analysis-bar{
+  margin-top:-10px;
+  margin-bottom:18px;
+}
+
 .admin-student-filter-wrap{
   width:100%;
   margin:8px 0 14px;
@@ -2052,6 +2073,20 @@ body::before{
   margin-top:6px;
   color:var(--ink2);
   font-weight:700;
+}
+
+.admin-item .admin-item-warning{
+  color:var(--red);
+  font-weight:800;
+}
+
+.admin-item .admin-item-ok{
+  color:var(--green);
+  font-weight:800;
+}
+
+.admin-item .admin-item-muted{
+  color:var(--muted);
 }
 
 .bottom-actions{
@@ -2101,6 +2136,16 @@ body::before{
   .admin-filter-wrap{
     width:100%;
     margin-left:0;
+  }
+
+  .admin-filter-actions{
+    width:100%;
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .admin-filter-actions .btn{
+    width:100%;
   }
 }
 

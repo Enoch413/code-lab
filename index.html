@@ -481,6 +481,21 @@
       </select>
     </div>
   </div>
+  <div class="class-bar admin-filter-bar admin-check-analysis-bar" style="display:flex">
+    <div class="class-bar-copy">
+      <div class="class-bar-label">CHECK 세트 분석</div>
+      <div class="class-bar-name" id="admin-set-filter-name">전체 세트</div>
+      <div class="class-bar-meta" id="admin-set-filter-meta">세트를 선택하면 문항별 오답/미제출 통계를 확인할 수 있습니다.</div>
+    </div>
+    <div class="admin-filter-actions">
+      <div class="admin-filter-wrap admin-set-filter-wrap">
+        <select id="admin-check-set-filter" class="admin-select" onchange="window.handleAdminCheckSetFilterChange && window.handleAdminCheckSetFilterChange(this.value)">
+          <option value="all">전체 세트</option>
+        </select>
+      </div>
+      <button class="btn btn-blue btn-sm" type="button" id="admin-check-export-btn" onclick="window.downloadAdminCheckAnalytics && window.downloadAdminCheckAnalytics()">엑셀 다운로드</button>
+    </div>
+  </div>
   <div class="stats" id="admin-stats"></div>
 
   <div class="admin-grid">
