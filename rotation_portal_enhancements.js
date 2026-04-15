@@ -2174,6 +2174,16 @@ function countReadyCheckEdits(submission){
   }, 0)
 }
 
+function countWrongCheckQuestions(submission){
+  return (submission && Array.isArray(submission.answers) ? submission.answers : []).filter(function(answer){
+    return answer && answer.isCorrect === false
+  }).length
+}
+
+function isCheckWrongNoteCompleted(submittedAnswer){
+  return !!(submittedAnswer && submittedAnswer.wrongNoteCompleted)
+}
+
 function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
   const existing = portalState.currentQuestionIssues.find(function(entry){
     return String(entry.questionId || '') === String(question.id || '')
@@ -2186,10 +2196,17 @@ function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
     : (canCheckAnswerBeEdited(submittedAnswer)
         ? '<button class="check-question-edit-btn" type="button" onclick="startCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">답 수정하기 (1회)</button>'
         : '<span class="check-edit-limit-badge">답 수정 1회 사용 완료</span>')
+  const wrongNoteDone = isCheckWrongNoteCompleted(submittedAnswer)
+  const wrongNoteTool = submittedAnswer && submittedAnswer.isCorrect === false && !isEditingAnswer
+    ? '<button class="check-wrong-note-btn' + (wrongNoteDone ? ' done' : '') + '" type="button" onclick="completeCheckWrongNote(\'' + escapeJs(question.id) + '\')" ' + (wrongNoteDone ? 'disabled' : '') + '>' +
+        (wrongNoteDone ? '오답노트 완료됨' : '오답노트 완료') +
+      '</button>'
+    : ''
 
   return '' +
     '<div class="check-result-tools">' +
       editTool +
+      wrongNoteTool +
       '<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')" ' + (existing ? 'disabled' : '') + '>' +
         escapeHtml(buttonText) +
       '</button>' +
@@ -2233,6 +2250,59 @@ window.cancelCheckAnswerEdit = function(questionId){
   renderCheckForm(checkSet, submission)
 }
 
+window.completeCheckWrongNote = function(questionId){
+  completeCheckWrongNoteImpl(questionId)
+}
+
+async function completeCheckWrongNoteImpl(questionId){
+  const checkSet = portalState.currentCheckSet
+  const submission = portalState.currentCheckSubmission
+  const targetId = String(questionId || '').trim()
+  if(!checkSet || !submission || !targetId) return
+
+  const answers = Array.isArray(submission.answers) ? submission.answers : []
+  const submittedAnswer = answers.find(function(entry){
+    return String(entry && entry.questionId || '') === targetId
+  }) || null
+  if(!submittedAnswer || submittedAnswer.isCorrect !== false) return
+  if(isCheckWrongNoteCompleted(submittedAnswer)){
+    showToast('이미 오답노트 완료로 표시된 문항입니다.', 'var(--blue)')
+    return
+  }
+
+  const completedAt = new Date().toISOString()
+  const nextAnswers = sortCheckSubmissionAnswers(answers.map(function(answer){
+    if(String(answer && answer.questionId || '') !== targetId) return answer
+    return Object.assign({}, answer, {
+      wrongNoteCompleted: true,
+      wrongNoteCompletedAt: completedAt
+    })
+  }))
+  const latestBatchIds = getLatestBatchQuestionIds(submission)
+  const latestBatch = submission.latestBatch
+    ? Object.assign({}, submission.latestBatch, {
+        summary: buildCheckSubmissionSummary(nextAnswers.filter(function(answer){
+          return latestBatchIds.includes(String(answer && answer.questionId || '').trim())
+        }))
+      })
+    : null
+  const nextSubmission = Object.assign({}, submission, {
+    summary: buildCheckSubmissionSummary(nextAnswers),
+    answers: nextAnswers,
+    latestBatch: latestBatch
+  })
+
+  try{
+    await saveCheckSubmission(checkSet, nextSubmission)
+    portalState.currentCheckSubmission = nextSubmission
+    renderCheckForm(checkSet, nextSubmission)
+    showToast('오답노트 완료로 표시했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('오답노트 완료 저장에 실패했습니다.', 'var(--red)')
+  }
+}
+
 function renderCheckForm(checkSet, submission){
   const form = document.getElementById('check-form')
   if(!form || !checkSet) return
@@ -2240,6 +2310,7 @@ function renderCheckForm(checkSet, submission){
   const answerMap = getSubmittedCheckAnswerMap(submission)
   const submittedCount = getSubmittedCheckCount(submission)
   const pendingCount = countPendingCheckQuestions(checkSet, submission)
+  const wrongCount = countWrongCheckQuestions(submission)
   const latestBatchIds = getLatestBatchQuestionIds(submission)
   const openEditCount = countOpenCheckEdits()
   const filterMode = resolveCheckFilterMode(checkSet, submission, portalState.currentCheckFilter)
@@ -2258,6 +2329,7 @@ function renderCheckForm(checkSet, submission){
           '<span class="check-progress-chip">전체 ' + checkSet.questions.length + '</span>' +
           '<span class="check-progress-chip">제출 ' + submittedCount + '</span>' +
           '<span class="check-progress-chip">남음 ' + pendingCount + '</span>' +
+          '<span class="check-progress-chip">오답 ' + wrongCount + '</span>' +
           (openEditCount ? '<span class="check-progress-chip">수정 중 ' + openEditCount + '</span>' : '') +
         '</div>' +
       '</div>' +
@@ -2269,13 +2341,14 @@ function renderCheckForm(checkSet, submission){
                 '<div class="check-progress-meta">방금 제출한 문항 ' + latestBatchIds.length + '개만 모아 보여줍니다.</div>' +
               '</div>'
             )
-          : (
-              '<div class="check-filter-bar">' +
-                renderCheckFilterButton('all', '전체', checkSet.questions.length, filterMode === 'all') +
-                renderCheckFilterButton('pending', '미제출/수정', pendingCount + openEditCount, filterMode === 'pending') +
-              '</div>'
-            )
+          : ''
       ) +
+      '<div class="check-filter-bar">' +
+        renderCheckFilterButton('all', '전체', checkSet.questions.length, filterMode === 'all') +
+        renderCheckFilterButton('pending', '미제출/수정', pendingCount + openEditCount, filterMode === 'pending', !(pendingCount + openEditCount)) +
+        renderCheckFilterButton('wrong', '틀린 문제', wrongCount, filterMode === 'wrong', !wrongCount) +
+        (latestBatchIds.length ? renderCheckFilterButton('latest', '이번 제출', latestBatchIds.length, filterMode === 'latest') : '') +
+      '</div>' +
     '</section>'
 
   const cardHtml = visibleQuestions.length ? visibleQuestions.map(function(question, index){
@@ -2468,12 +2541,14 @@ async function submitCurrentCheckSet(){
 function resolveCheckFilterMode(checkSet, submission, preferredMode){
   const mode = String(preferredMode || 'all').trim() || 'all'
   if(mode === 'pending' && !countPendingCheckQuestions(checkSet, submission) && !countOpenCheckEdits()) return 'all'
+  if(mode === 'wrong' && !countWrongCheckQuestions(submission)) return 'all'
   if(mode === 'latest' && !getLatestBatchQuestionIds(submission).length) return 'all'
-  return ['all', 'pending', 'latest'].includes(mode) ? mode : 'all'
+  return ['all', 'pending', 'wrong', 'latest'].includes(mode) ? mode : 'all'
 }
 
 function getVisibleCheckQuestions(checkSet, submission, filterMode){
   const questions = Array.isArray(checkSet && checkSet.questions) ? checkSet.questions : []
+  const answerMap = getSubmittedCheckAnswerMap(submission)
   const submittedIds = new Set((submission && Array.isArray(submission.answers) ? submission.answers : []).map(function(answer){
     return String(answer && answer.questionId || '').trim()
   }).filter(Boolean))
@@ -2482,6 +2557,12 @@ function getVisibleCheckQuestions(checkSet, submission, filterMode){
     return questions.filter(function(question){
       const questionId = String(question && question.id || '').trim()
       return !submittedIds.has(questionId) || isCheckAnswerEditing(questionId)
+    })
+  }
+  if(filterMode === 'wrong'){
+    return questions.filter(function(question){
+      const submittedAnswer = answerMap.get(String(question && question.id || '').trim()) || null
+      return submittedAnswer && submittedAnswer.isCorrect === false
     })
   }
   if(filterMode === 'latest'){
