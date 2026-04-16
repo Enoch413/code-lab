@@ -492,9 +492,14 @@ function getCheckSetTargetUserIds(checkSet){
 function getCheckSetTargetStudentIds(checkSet){
   return normalizeCheckAssignmentValues(
     normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentIds).concat(
-      normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentId)
+      normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentId),
+      normalizeCheckAssignmentValues(checkSet && checkSet.targetLoginIds)
     )
   )
+}
+
+function getCheckSetTargetLoginIds(checkSet){
+  return normalizeCheckAssignmentValues(checkSet && checkSet.targetLoginIds)
 }
 
 function getCheckSetTargetEmails(checkSet){
@@ -955,6 +960,7 @@ function normalizeCheckData(source){
           normalizeCheckAssignmentValues(entry && entry.targetStudentId)
         )
       )
+      const targetLoginIds = normalizeCheckAssignmentValues(entry && entry.targetLoginIds)
       const targetStudentNames = normalizeCheckAssignmentValues(
         normalizeCheckAssignmentValues(entry && entry.targetStudentNames).concat(
           normalizeCheckAssignmentValues(entry && entry.targetStudentName)
@@ -970,11 +976,14 @@ function normalizeCheckData(source){
         assignmentMode: normalizeCheckAssignmentMode(entry && entry.assignmentMode),
         targetUserIds: normalizeCheckAssignmentValues(entry && entry.targetUserIds),
         targetStudentIds: targetStudentIds,
+        targetLoginIds: targetLoginIds,
         targetStudentId: String(entry && entry.targetStudentId || '').trim(),
         targetEmails: normalizeCheckAssignmentValues(entry && entry.targetEmails),
         targetStudentNames: targetStudentNames,
         targetStudentName: String(entry && entry.targetStudentName || '').trim(),
         source: String(entry && entry.source || '').trim(),
+        sourceBatchId: String(entry && entry.sourceBatchId || '').trim(),
+        sourceSetId: String(entry && entry.sourceSetId || '').trim(),
         sourceRound: String(entry && entry.sourceRound || '').trim(),
         createdByLab: String(entry && entry.createdByLab || '').trim(),
         questions: (Array.isArray(entry && entry.questions) ? entry.questions : []).map(function(question, questionIndex){
