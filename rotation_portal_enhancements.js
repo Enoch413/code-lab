@@ -4454,6 +4454,22 @@ function canManagePortalCheckSetRecord(record){
   })
 }
 
+async function loadPortalManagedCheckSetSourceGroupDocs(source){
+  const currentDoc = normalizePortalSetDoc('check', source)
+  const sourceGroupKey = getPortalManagedCheckSetSourceGroupKey(currentDoc)
+  if(!sourceGroupKey) return [currentDoc]
+
+  const matchingDocs = (await loadCloudSetDocs('check')).filter(function(doc){
+    return canManagePortalCheckSetRecord(doc) && getPortalManagedCheckSetSourceGroupKey(doc) === sourceGroupKey
+  })
+  if(!matchingDocs.some(function(doc){
+    return String(doc && doc.docId || '').trim() === String(currentDoc && currentDoc.docId || '').trim()
+  })){
+    matchingDocs.unshift(currentDoc)
+  }
+  return matchingDocs
+}
+
 function buildPortalManagedCheckSetEditorQuestions(source){
   return (Array.isArray(source) ? source : []).map(function(question, index){
     const type = normalizeCheckQuestionType(question && question.type)
@@ -5129,37 +5145,55 @@ async function regradePortalManagedCheckSet(docId){
       return
     }
 
-    const checkSet = normalizeStoredCheckSet(currentDoc.payload)
-    if(!checkSet || !Array.isArray(checkSet.questions) || !checkSet.questions.length){
+    const targetDocs = await loadPortalManagedCheckSetSourceGroupDocs(currentDoc)
+    const targetSets = targetDocs.map(function(doc){
+      const checkSet = normalizeStoredCheckSet(doc && doc.payload)
+      return checkSet && Array.isArray(checkSet.questions) && checkSet.questions.length
+        ? { doc: doc, checkSet: checkSet }
+        : null
+    }).filter(Boolean)
+    if(!targetSets.length){
       showToast('재채점할 문항이 없는 세트입니다.', 'var(--red)')
       return
     }
 
-    const confirmMessage = '이 세트의 기존 학생 결과와 ADMIN 통계를 현재 정답 기준으로 다시 계산할까요?'
+    const isGrouped = targetSets.length > 1
+    const confirmMessage = isGrouped
+      ? ('같은 원본 CHECK 세트 ' + targetSets.length + '개의 기존 학생 결과와 ADMIN 통계를 현재 정답 기준으로 다시 계산할까요?')
+      : '이 세트의 기존 학생 결과와 ADMIN 통계를 현재 정답 기준으로 다시 계산할까요?'
     if(typeof window.confirm === 'function' && !window.confirm(confirmMessage)) return
 
     portalState.checkSetRegradeDocId = targetId
     syncPortalAdminSetPanels(getCurrentActiveScreenId())
 
-    const responses = await fetchCheckResponsesForSet(checkSet.id)
-    if(!responses.length){
-      showToast('이 세트에는 아직 제출된 학생 결과가 없습니다.', 'var(--blue)')
+    let totalResponseCount = 0
+    let changedCount = 0
+    const nextRows = []
+
+    for(let index = 0; index < targetSets.length; index += 1){
+      const entry = targetSets[index]
+      const responses = await fetchCheckResponsesForSet(entry.checkSet.id)
+      totalResponseCount += responses.length
+      responses.forEach(function(row){
+        const before = serializeCheckResponseForCompare(row)
+        const nextRow = buildRegradedCheckResponseRow(entry.checkSet, row)
+        const after = serializeCheckResponseForCompare(nextRow)
+        if(before !== after) changedCount += 1
+        nextRows.push(nextRow)
+      })
+    }
+
+    if(!nextRows.length){
+      showToast(isGrouped ? '같은 원본 세트들에는 아직 제출된 학생 결과가 없습니다.' : '이 세트에는 아직 제출된 학생 결과가 없습니다.', 'var(--blue)')
       return
     }
 
-    let changedCount = 0
-    const nextRows = responses.map(function(row){
-      const before = serializeCheckResponseForCompare(row)
-      const nextRow = buildRegradedCheckResponseRow(checkSet, row)
-      const after = serializeCheckResponseForCompare(nextRow)
-      if(before !== after) changedCount += 1
-      return nextRow
-    })
-
     await saveRegradedCheckResponses(nextRows)
 
-    if(getCurrentActiveScreenId() === 'check-set-screen' && portalState.currentCheckSet && portalState.currentCheckSet.id === checkSet.id){
-      await openCheckSetPortal(checkSet.id, { preserveHistory: true })
+    const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
+    const affectedSetIds = targetSets.map(function(entry){ return String(entry.checkSet && entry.checkSet.id || '').trim() }).filter(Boolean)
+    if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId && affectedSetIds.indexOf(currentSetId) >= 0){
+      await openCheckSetPortal(currentSetId, { preserveHistory: true })
     }else if(getCurrentActiveScreenId() === 'check-screen'){
       renderCheckScreen()
     }
@@ -5167,7 +5201,12 @@ async function regradePortalManagedCheckSet(docId){
       await renderAdminScreen()
     }
 
-    showToast('CHECK 세트 ' + responses.length + '건을 재채점했습니다. 변경 반영: ' + changedCount + '건', 'var(--green)')
+    showToast(
+      isGrouped
+        ? ('같은 원본 CHECK 세트 ' + targetSets.length + '개의 결과 ' + totalResponseCount + '건을 재채점했습니다. 변경 반영: ' + changedCount + '건')
+        : ('CHECK 세트 ' + totalResponseCount + '건을 재채점했습니다. 변경 반영: ' + changedCount + '건'),
+      'var(--green)'
+    )
   }catch(error){
     console.error(error)
     showToast('CHECK 세트 재채점 중 오류가 발생했습니다.', 'var(--red)')
@@ -5307,14 +5346,20 @@ async function renamePortalManagedSet(kind, docId){
       return
     }
 
-    const nextPayload = clonePlainData(currentDoc.payload) || {}
-    nextPayload.title = nextTitle
     const targetClass = getPortalUploadTargetClass(kind)
+    const targetDocs = kind === 'check'
+      ? await loadPortalManagedCheckSetSourceGroupDocs(currentDoc)
+      : [normalizePortalSetDoc(kind, currentDoc)]
 
-    await saveCloudSetDoc(kind, currentDoc.docId, Object.assign({}, currentDoc, {
-      title: nextTitle,
-      payload: nextPayload
-    }))
+    for(let index = 0; index < targetDocs.length; index += 1){
+      const targetDoc = targetDocs[index]
+      const nextPayload = clonePlainData(targetDoc.payload) || {}
+      nextPayload.title = nextTitle
+      await saveCloudSetDoc(kind, targetDoc.docId, Object.assign({}, targetDoc, {
+        title: nextTitle,
+        payload: nextPayload
+      }))
+    }
 
     if(kind === 'prep'){
       await syncPrepContentAfterLogin(true)
@@ -5324,11 +5369,22 @@ async function renamePortalManagedSet(kind, docId){
       showHome()
     }else{
       await ensureCheckData(true)
-      renderCheckScreen()
+      const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
+      const affectedSetIds = targetDocs.map(function(targetDoc){ return String(targetDoc && targetDoc.docId || '').trim() }).filter(Boolean)
+      if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId && affectedSetIds.indexOf(currentSetId) >= 0){
+        await openCheckSetPortal(currentSetId, { preserveHistory: true })
+      }else{
+        renderCheckScreen()
+      }
       syncPortalAdminSetPanels('check-screen')
     }
 
-    showToast('세트 이름을 변경했습니다.', 'var(--green)')
+    showToast(
+      kind === 'check' && targetDocs.length > 1
+        ? ('같은 원본 CHECK 세트 ' + targetDocs.length + '개의 이름을 변경했습니다.')
+        : '세트 이름을 변경했습니다.',
+      'var(--green)'
+    )
   }catch(error){
     console.error(error)
     showToast('세트 이름 변경 중 오류가 발생했습니다.', 'var(--red)')
@@ -5402,13 +5458,19 @@ async function changePortalManagedSetDates(kind, docId){
       return
     }
 
-    const nextPayload = clonePlainData(currentDoc.payload) || {}
     const targetClass = getPortalUploadTargetClass(kind)
-    applyPortalManagedSetDateValues(kind, nextPayload, startDate, endDate)
+    const targetDocs = kind === 'check'
+      ? await loadPortalManagedCheckSetSourceGroupDocs(currentDoc)
+      : [normalizePortalSetDoc(kind, currentDoc)]
 
-    await saveCloudSetDoc(kind, currentDoc.docId, Object.assign({}, currentDoc, {
-      payload: nextPayload
-    }))
+    for(let index = 0; index < targetDocs.length; index += 1){
+      const targetDoc = targetDocs[index]
+      const nextPayload = clonePlainData(targetDoc.payload) || {}
+      applyPortalManagedSetDateValues(kind, nextPayload, startDate, endDate)
+      await saveCloudSetDoc(kind, targetDoc.docId, Object.assign({}, targetDoc, {
+        payload: nextPayload
+      }))
+    }
 
     if(kind === 'prep'){
       await syncPrepContentAfterLogin(true)
@@ -5418,11 +5480,22 @@ async function changePortalManagedSetDates(kind, docId){
       showHome()
     }else{
       await ensureCheckData(true)
-      renderCheckScreen()
+      const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
+      const affectedSetIds = targetDocs.map(function(targetDoc){ return String(targetDoc && targetDoc.docId || '').trim() }).filter(Boolean)
+      if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId && affectedSetIds.indexOf(currentSetId) >= 0){
+        await openCheckSetPortal(currentSetId, { preserveHistory: true })
+      }else{
+        renderCheckScreen()
+      }
       syncPortalAdminSetPanels('check-screen')
     }
 
-    showToast('세트 기간을 변경했습니다.', 'var(--green)')
+    showToast(
+      kind === 'check' && targetDocs.length > 1
+        ? ('같은 원본 CHECK 세트 ' + targetDocs.length + '개의 기간을 변경했습니다.')
+        : '세트 기간을 변경했습니다.',
+      'var(--green)'
+    )
   }catch(error){
     console.error(error)
     showToast('세트 기간 변경 중 오류가 발생했습니다.', 'var(--red)')
