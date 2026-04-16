@@ -470,6 +470,114 @@ function getProfileClassIds(){
     : []
 }
 
+function normalizeCheckAssignmentValues(value){
+  const values = Array.isArray(value) ? value : (value == null || value === '' ? [] : [value])
+  return Array.from(new Set(values.map(function(entry){
+    return String(entry || '').trim()
+  }).filter(Boolean)))
+}
+
+function normalizeCheckAssignmentMode(value){
+  return String(value || '').trim().toLowerCase()
+}
+
+function normalizeCheckAssignmentEmail(value){
+  return String(value || '').trim().toLowerCase()
+}
+
+function getCheckSetTargetUserIds(checkSet){
+  return normalizeCheckAssignmentValues(checkSet && checkSet.targetUserIds)
+}
+
+function getCheckSetTargetStudentIds(checkSet){
+  return normalizeCheckAssignmentValues(
+    normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentIds).concat(
+      normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentId),
+      normalizeCheckAssignmentValues(checkSet && checkSet.targetLoginIds)
+    )
+  )
+}
+
+function getCheckSetTargetLoginIds(checkSet){
+  return normalizeCheckAssignmentValues(checkSet && checkSet.targetLoginIds)
+}
+
+function getCheckSetTargetEmails(checkSet){
+  return normalizeCheckAssignmentValues(checkSet && checkSet.targetEmails)
+}
+
+function getCheckSetTargetStudentNames(checkSet){
+  return normalizeCheckAssignmentValues(
+    normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentNames).concat(
+      normalizeCheckAssignmentValues(checkSet && checkSet.targetStudentName)
+    )
+  )
+}
+
+function isPersonalCheckSet(checkSet){
+  const mode = normalizeCheckAssignmentMode(checkSet && checkSet.assignmentMode)
+  return mode === 'student' ||
+    mode === 'personal' ||
+    getCheckSetTargetUserIds(checkSet).length > 0 ||
+    getCheckSetTargetStudentIds(checkSet).length > 0 ||
+    getCheckSetTargetEmails(checkSet).length > 0 ||
+    getCheckSetTargetStudentNames(checkSet).length > 0
+}
+
+function hasStrongCheckSetTargets(checkSet){
+  return getCheckSetTargetUserIds(checkSet).length > 0 ||
+    getCheckSetTargetStudentIds(checkSet).length > 0 ||
+    getCheckSetTargetEmails(checkSet).length > 0
+}
+
+function getCurrentCheckAssignmentIdentity(){
+  const profile = portalState.currentProfile || {}
+  const user = portalState.currentUser || {}
+  return {
+    userIds: normalizeCheckAssignmentValues([user.uid, profile.uid, profile.id]),
+    studentIds: normalizeCheckAssignmentValues([profile.studentId, profile.loginId, user.loginId]),
+    emails: normalizeCheckAssignmentValues([profile.email, user.email]).map(normalizeCheckAssignmentEmail).filter(Boolean),
+    names: normalizeCheckAssignmentValues([profile.name])
+  }
+}
+
+function checkAssignmentListContains(values, targets, normalizer){
+  const normalize = typeof normalizer === 'function'
+    ? normalizer
+    : function(value){ return String(value || '').trim().toLowerCase() }
+  const valueSet = new Set(normalizeCheckAssignmentValues(values).map(normalize).filter(Boolean))
+  return normalizeCheckAssignmentValues(targets).some(function(target){
+    return valueSet.has(normalize(target))
+  })
+}
+
+function isCheckSetAssignedToCurrentStudent(checkSet){
+  if(!isPersonalCheckSet(checkSet)) return true
+  const identity = getCurrentCheckAssignmentIdentity()
+  if(checkAssignmentListContains(identity.userIds, getCheckSetTargetUserIds(checkSet))) return true
+  if(checkAssignmentListContains(identity.studentIds, getCheckSetTargetStudentIds(checkSet))) return true
+  if(checkAssignmentListContains(identity.emails, getCheckSetTargetEmails(checkSet), normalizeCheckAssignmentEmail)) return true
+
+  if(!hasStrongCheckSetTargets(checkSet)){
+    return checkAssignmentListContains(identity.names, getCheckSetTargetStudentNames(checkSet))
+  }
+  return false
+}
+
+function buildCheckSetAssignmentMetaText(checkSet){
+  if(!isPersonalCheckSet(checkSet)) return ''
+  const labels = getCheckSetTargetStudentNames(checkSet)
+    .concat(getCheckSetTargetStudentIds(checkSet))
+    .concat(getCheckSetTargetEmails(checkSet))
+    .concat(getCheckSetTargetUserIds(checkSet))
+  const uniqueLabels = Array.from(new Set(labels.map(function(value){
+    return String(value || '').trim()
+  }).filter(Boolean)))
+  return uniqueLabels.length
+    ? ('개인지정 · ' + uniqueLabels.slice(0, 3).join(', ') + (uniqueLabels.length > 3 ? ' 외 ' + (uniqueLabels.length - 3) + '명' : ''))
+    : '개인지정'
+}
+
 function getPortalRole(){
   return String(portalState.currentProfile && portalState.currentProfile.role || 'student').trim().toLowerCase() || 'student'
 }
@@ -847,6 +955,17 @@ function normalizeCheckData(source){
       return entry.id
     }),
     checkSets: (Array.isArray(source && source.checkSets) ? source.checkSets : []).map(function(entry, index){
+      const targetStudentIds = normalizeCheckAssignmentValues(
+        normalizeCheckAssignmentValues(entry && entry.targetStudentIds).concat(
+          normalizeCheckAssignmentValues(entry && entry.targetStudentId)
+        )
+      )
+      const targetLoginIds = normalizeCheckAssignmentValues(entry && entry.targetLoginIds)
+      const targetStudentNames = normalizeCheckAssignmentValues(
+        normalizeCheckAssignmentValues(entry && entry.targetStudentNames).concat(
+          normalizeCheckAssignmentValues(entry && entry.targetStudentName)
+        )
+      )
       return {
         id: String(entry && entry.id || ('check-set-' + (index + 1))).trim(),
         title: String(entry && entry.title || ('CHECK 세트 ' + (index + 1))).trim(),
@@ -854,6 +973,19 @@ function normalizeCheckData(source){
         classIds: Array.isArray(entry && entry.classIds) ? entry.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean) : [],
         availableFrom: String(entry && entry.availableFrom || '').trim(),
         availableTo: String(entry && entry.availableTo || '').trim(),
+        assignmentMode: normalizeCheckAssignmentMode(entry && entry.assignmentMode),
+        targetUserIds: normalizeCheckAssignmentValues(entry && entry.targetUserIds),
+        targetStudentIds: targetStudentIds,
+        targetLoginIds: targetLoginIds,
+        targetStudentId: String(entry && entry.targetStudentId || '').trim(),
+        targetEmails: normalizeCheckAssignmentValues(entry && entry.targetEmails),
+        targetStudentNames: targetStudentNames,
+        targetStudentName: String(entry && entry.targetStudentName || '').trim(),
+        source: String(entry && entry.source || '').trim(),
+        sourceBatchId: String(entry && entry.sourceBatchId || '').trim(),
+        sourceSetId: String(entry && entry.sourceSetId || '').trim(),
+        sourceRound: String(entry && entry.sourceRound || '').trim(),
+        createdByLab: String(entry && entry.createdByLab || '').trim(),
         questions: (Array.isArray(entry && entry.questions) ? entry.questions : []).map(function(question, questionIndex){
           const type = normalizeCheckQuestionType(question && question.type)
           const number = normalizeCheckQuestionNumber(question && question.number, questionIndex + 1)
@@ -920,7 +1052,9 @@ function renderCheckScreen(){
 
   list.innerHTML = checkSets.map(function(entry, index){
     const disabledClass = entry.isAccessible ? '' : ' disabled'
+    const assignmentText = isPortalAdmin() ? buildCheckSetAssignmentMetaText(entry) : ''
     const metaBits = [entry.questions.length + '문항', getCheckSetDateText(entry)]
+    if(assignmentText) metaBits.push(assignmentText)
     return '' +
       '<div class="set-item' + disabledClass + '"' + (entry.isAccessible ? ' onclick="openCheckSetPortal(\'' + escapeJs(entry.id) + '\')"' : '') + '>' +
         '<div class="set-num">' + (index + 1) + '</div>' +
@@ -946,10 +1080,19 @@ function getVisibleCheckSets(){
     : []
 
   return allSets.filter(function(entry){
-    if(!scopedClassIds.length) return false
-    return entry.classIds.some(function(classId){
+    const classIds = Array.isArray(entry && entry.classIds) ? entry.classIds : []
+    const hasClassScope = classIds.some(function(classId){
       return scopedClassIds.indexOf(classId) >= 0
     })
+    if(isPortalAdmin()){
+      if(!scopedClassIds.length) return false
+      return hasClassScope
+    }
+    if(isPersonalCheckSet(entry)){
+      return isCheckSetAssignedToCurrentStudent(entry) && (!classIds.length || hasClassScope)
+    }
+    if(!scopedClassIds.length) return false
+    return hasClassScope
   }).map(function(entry){
     const isAccessible =
       (!entry.availableFrom || today >= entry.availableFrom) &&
