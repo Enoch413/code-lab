@@ -1,5 +1,5 @@
 const APP_CONFIG = {
-  defaultTitle: 'ROTATION PREP',
+  defaultTitle: 'CODE LAB',
   remoteSessionUrl: 'session.json'
 }
 
@@ -20,6 +20,14 @@ let unlockedClassIds = {}
 let pageTitle = APP_CONFIG.defaultTitle
 let globalPassword = ''
 let isUnlocked = true
+
+function normalizeAppPageTitle(title){
+  const text = String(title || '').trim()
+  if(!text) return APP_CONFIG.defaultTitle
+  if(/rotation/i.test(text)) return APP_CONFIG.defaultTitle
+  if(text.toLowerCase() === 'code lab prep') return APP_CONFIG.defaultTitle
+  return text
+}
 
 document.addEventListener('DOMContentLoaded', initApp)
 
@@ -216,7 +224,7 @@ function formatUpdatedText(source){
 }
 
 function applyPageTitle(title){
-  pageTitle = String(title || '').trim() || APP_CONFIG.defaultTitle
+  pageTitle = normalizeAppPageTitle(title)
   document.title = pageTitle
   const homeSubtitle = document.getElementById('home-subtitle')
   const classSubtitle = document.getElementById('class-subtitle')
