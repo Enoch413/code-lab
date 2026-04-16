@@ -12,7 +12,8 @@ const PORTAL_CLASS_CATALOG_DOC = 'prep-classes'
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
-  issues: 'rotation_portal_question_issues_v1'
+  issues: 'rotation_portal_question_issues_v1',
+  issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_'
 }
 
 const PREP_SCREEN_IDS = [
@@ -2003,17 +2004,59 @@ function writeLocalQuestionIssues(rows){
   localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.issues, JSON.stringify(rows))
 }
 
+function getAdminQuestionIssueHiddenStorageKey(){
+  const identity = String(
+    portalState.currentUser && portalState.currentUser.uid
+      || portalState.currentProfile && (portalState.currentProfile.loginId || portalState.currentProfile.studentId)
+      || 'anonymous'
+  ).trim() || 'anonymous'
+  return PORTAL_ENHANCEMENT_KEYS.issueHiddenPrefix + identity
+}
+
+function readAdminHiddenQuestionIssues(){
+  try{
+    const raw = localStorage.getItem(getAdminQuestionIssueHiddenStorageKey())
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  }catch(error){
+    console.error(error)
+    return {}
+  }
+}
+
+function writeAdminHiddenQuestionIssues(map){
+  localStorage.setItem(getAdminQuestionIssueHiddenStorageKey(), JSON.stringify(map && typeof map === 'object' ? map : {}))
+}
+
+function hideAdminQuestionIssueLocally(issueId, issueCreatedAt){
+  const targetId = String(issueId || '').trim()
+  if(!targetId) return false
+  const hiddenMap = readAdminHiddenQuestionIssues()
+  hiddenMap[targetId] = String(issueCreatedAt || '').trim() || new Date().toISOString()
+  writeAdminHiddenQuestionIssues(hiddenMap)
+  return true
+}
+
+function isAdminQuestionIssueHidden(entry){
+  const targetId = String(entry && entry.id || '').trim()
+  if(!targetId) return false
+  const hiddenMap = readAdminHiddenQuestionIssues()
+  const hiddenCreatedAt = String(hiddenMap[targetId] || '').trim()
+  if(!hiddenCreatedAt) return false
+  return hiddenCreatedAt === String(entry && entry.createdAt || '').trim()
+}
+
 function normalizeQuestionIssueStatus(entry){
   const raw = String(entry && entry.status || '').trim().toLowerCase()
   if(raw === 'resolved' || raw === 'done' || raw === 'closed') return 'resolved'
   return 'open'
 }
 
-window.resolveAdminQuestionIssue = function(issueId){
-  resolveAdminQuestionIssueImpl(issueId)
+window.resolveAdminQuestionIssue = function(issueId, issueCreatedAt){
+  resolveAdminQuestionIssueImpl(issueId, issueCreatedAt)
 }
 
-async function resolveAdminQuestionIssueImpl(issueId){
+async function resolveAdminQuestionIssueImpl(issueId, issueCreatedAt){
   const targetId = String(issueId || '').trim()
   if(!targetId) return
 
@@ -2028,12 +2071,17 @@ async function resolveAdminQuestionIssueImpl(issueId){
   })
 
   if(!didSave){
+    if(hideAdminQuestionIssueLocally(targetId, issueCreatedAt)){
+      await renderAdminScreen()
+      showToast('질문을 목록에서 숨겼습니다.', 'var(--green)')
+      return
+    }
     showToast('질문 처리 상태 저장에 실패했습니다.', 'var(--red)')
     return
   }
 
   await renderAdminScreen()
-  showToast('처리한 질문을 목록에서 숨겼습니다.', 'var(--green)')
+  showToast('질문을 목록에서 숨겼습니다.', 'var(--green)')
 }
 
 function syncAdminCollapsibleSectionState(section){
@@ -2950,6 +2998,7 @@ window.downloadAdminCheckAnalytics = function(){
 
 function filterAdminIssuesByState(rows){
   return rows.filter(function(entry){
+    if(isAdminQuestionIssueHidden(entry)) return false
     if(normalizeQuestionIssueStatus(entry) !== 'open') return false
     if(isPortalAdmin() && !isPortalSuperAdmin()){
       const allowedClassIds = getProfileClassIds()
@@ -2985,7 +3034,7 @@ function buildAdminIssueItems(entry){
       '<span class="admin-item-numbers">내 답: ' + escapeHtml(entry.userAnswer || '미제출') + '</span>' +
       '<span class="admin-item-meta">' + escapeHtml(formatAdminTime(entry.createdAt)) + '</span>' +
       '<div class="admin-item-actions">' +
-        '<button class="btn btn-ghost btn-sm" type="button" onclick="resolveAdminQuestionIssue(\'' + escapeJs(entry.id) + '\')">처리 완료</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" onclick="resolveAdminQuestionIssue(\'' + escapeJs(entry.id) + '\', \'' + escapeJs(entry.createdAt || '') + '\')">처리 완료</button>' +
       '</div>' +
     '</div>'
 }
