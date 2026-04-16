@@ -1899,6 +1899,35 @@ async function fetchAllQuestionIssues(){
   return readLocalQuestionIssues()
 }
 
+async function updateQuestionIssueRecord(issueId, updates){
+  const targetId = String(issueId || '').trim()
+  if(!targetId || !updates || typeof updates !== 'object') return false
+
+  if(portalState.firebaseEnabled){
+    try{
+      await portalState.db.collection('questionIssues').doc(targetId).set(updates, { merge: true })
+      return true
+    }catch(error){
+      console.warn('questionIssues update fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  const rows = readLocalQuestionIssues()
+  const nextRows = []
+  let found = false
+  rows.forEach(function(entry){
+    if(String(entry && entry.id || '').trim() !== targetId){
+      nextRows.push(entry)
+      return
+    }
+    found = true
+    nextRows.push(Object.assign({}, entry, updates, { id: targetId }))
+  })
+  if(!found) return false
+  writeLocalQuestionIssues(nextRows)
+  return true
+}
+
 window.submitCheckQuestionIssue = function(questionId){
   submitCheckQuestionIssueImpl(questionId)
 }
@@ -1974,7 +2003,121 @@ function writeLocalQuestionIssues(rows){
   localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.issues, JSON.stringify(rows))
 }
 
+function normalizeQuestionIssueStatus(entry){
+  const raw = String(entry && entry.status || '').trim().toLowerCase()
+  if(raw === 'resolved' || raw === 'done' || raw === 'closed') return 'resolved'
+  return 'open'
+}
+
+window.resolveAdminQuestionIssue = function(issueId){
+  resolveAdminQuestionIssueImpl(issueId)
+}
+
+async function resolveAdminQuestionIssueImpl(issueId){
+  const targetId = String(issueId || '').trim()
+  if(!targetId) return
+
+  const processedAt = new Date().toISOString()
+  const processedBy = portalState.currentProfile && (portalState.currentProfile.name || portalState.currentProfile.loginId)
+    ? (portalState.currentProfile.name || portalState.currentProfile.loginId)
+    : (portalState.currentUser && portalState.currentUser.email || '')
+  const didSave = await updateQuestionIssueRecord(targetId, {
+    status: 'resolved',
+    resolvedAt: processedAt,
+    resolvedBy: processedBy
+  })
+
+  if(!didSave){
+    showToast('질문 처리 상태 저장에 실패했습니다.', 'var(--red)')
+    return
+  }
+
+  await renderAdminScreen()
+  showToast('처리한 질문을 목록에서 숨겼습니다.', 'var(--green)')
+}
+
+function syncAdminCollapsibleSectionState(section){
+  if(!section) return
+  const body = section.querySelector('.admin-collapsible-body')
+  const button = section.querySelector('.group-toggle-btn')
+  const isCollapsed = section.classList.contains('is-collapsed')
+  if(body) body.hidden = isCollapsed
+  if(button){
+    button.textContent = isCollapsed ? '펼치기' : '접기'
+    button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true')
+  }
+}
+
+function ensureAdminCollapsibleSections(){
+  ;[
+    { groupId: 'admin-type-group', listId: 'admin-type-list', bodyId: 'admin-type-body' },
+    { groupId: 'admin-student-group', listId: 'admin-student-list', bodyId: 'admin-student-body' },
+    { groupId: 'admin-response-group', listId: 'admin-response-list', bodyId: 'admin-response-body' }
+  ].forEach(function(config){
+    const listNode = document.getElementById(config.listId)
+    if(!listNode) return
+
+    const section = listNode.closest('.group')
+    if(!section) return
+    section.id = config.groupId
+    section.classList.add('admin-collapsible')
+
+    const title = section.querySelector('.group-title')
+    if(!title) return
+
+    let body = section.querySelector('.admin-collapsible-body')
+    if(!body){
+      body = document.createElement('div')
+      body.className = 'admin-collapsible-body'
+      body.id = config.bodyId
+      while(title.nextSibling){
+        body.appendChild(title.nextSibling)
+      }
+      section.appendChild(body)
+    }else if(!body.id){
+      body.id = config.bodyId
+    }
+
+    let actions = title.querySelector('.group-title-actions')
+    const countNode = title.querySelector('.group-count')
+    if(!actions){
+      actions = document.createElement('div')
+      actions.className = 'group-title-actions'
+      if(countNode) actions.appendChild(countNode)
+      title.appendChild(actions)
+    }else if(countNode && countNode.parentElement !== actions){
+      actions.insertBefore(countNode, actions.firstChild)
+    }
+
+    let toggleButton = title.querySelector('.group-toggle-btn')
+    if(!toggleButton){
+      toggleButton = document.createElement('button')
+      toggleButton.className = 'btn btn-ghost btn-sm group-toggle-btn'
+      toggleButton.type = 'button'
+      toggleButton.addEventListener('click', function(){
+        window.toggleAdminSection && window.toggleAdminSection(section.id)
+      })
+      actions.appendChild(toggleButton)
+    }
+
+    toggleButton.setAttribute('aria-controls', body.id)
+    if(!section.dataset.collapsibleInitialized){
+      section.classList.add('is-collapsed')
+      section.dataset.collapsibleInitialized = 'true'
+    }
+    syncAdminCollapsibleSectionState(section)
+  })
+}
+
+window.toggleAdminSection = function(sectionId){
+  const section = document.getElementById(sectionId)
+  if(!section) return
+  section.classList.toggle('is-collapsed')
+  syncAdminCollapsibleSectionState(section)
+}
+
 async function renderAdminScreen(){
+  ensureAdminCollapsibleSections()
   const responses = await fetchAllCheckResponses()
   const studentProfiles = await fetchAdminStudentProfiles()
   const studentResponses = responses.filter(function(entry){
@@ -2807,6 +2950,7 @@ window.downloadAdminCheckAnalytics = function(){
 
 function filterAdminIssuesByState(rows){
   return rows.filter(function(entry){
+    if(normalizeQuestionIssueStatus(entry) !== 'open') return false
     if(isPortalAdmin() && !isPortalSuperAdmin()){
       const allowedClassIds = getProfileClassIds()
       const classIds = Array.isArray(entry && entry.classIds) ? entry.classIds : []
@@ -2840,6 +2984,9 @@ function buildAdminIssueItems(entry){
       '<span class="admin-item-meta">' + escapeHtml(entry.checkSetTitle || 'CHECK 세트') + ' · ' + escapeHtml(String(entry.questionNumber || '')) + '번 · ' + escapeHtml(entry.problemType || '기타') + '</span>' +
       '<span class="admin-item-numbers">내 답: ' + escapeHtml(entry.userAnswer || '미제출') + '</span>' +
       '<span class="admin-item-meta">' + escapeHtml(formatAdminTime(entry.createdAt)) + '</span>' +
+      '<div class="admin-item-actions">' +
+        '<button class="btn btn-ghost btn-sm" type="button" onclick="resolveAdminQuestionIssue(\'' + escapeJs(entry.id) + '\')">처리 완료</button>' +
+      '</div>' +
     '</div>'
 }
 
