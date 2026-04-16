@@ -3690,6 +3690,26 @@ function normalizePortalSetDoc(kind, source){
   const payload = source && source.payload && typeof source.payload === 'object'
     ? clonePlainData(source.payload)
     : null
+  if(kind === 'check' && payload){
+    if((!Array.isArray(payload.classIds) || !payload.classIds.length) && Array.isArray(source && source.classIds)){
+      payload.classIds = source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+    }
+    ;[
+      'assignmentMode',
+      'targetUserIds',
+      'targetStudentIds',
+      'targetEmails',
+      'targetStudentNames',
+      'targetStudentName',
+      'targetStudentId',
+      'source',
+      'sourceRound',
+      'createdByLab'
+    ].forEach(function(field){
+      if(payload[field] != null || !source || source[field] == null) return
+      payload[field] = clonePlainData(source[field])
+    })
+  }
   const classIds = Array.isArray(source && source.classIds)
     ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
     : derivePortalSetClassIds(kind, payload)
@@ -3942,7 +3962,10 @@ function summarizePortalCheckSet(checkSet){
       : [],
     questionCount: Array.isArray(checkSet && checkSet.questions) ? checkSet.questions.length : 0,
     startDate: String(checkSet && checkSet.availableFrom || '').trim(),
-    endDate: String(checkSet && checkSet.availableTo || '').trim()
+    endDate: String(checkSet && checkSet.availableTo || '').trim(),
+    assignmentLabel: typeof buildCheckSetAssignmentMetaText === 'function'
+      ? buildCheckSetAssignmentMetaText(checkSet)
+      : ''
   }
 }
 
@@ -4300,6 +4323,9 @@ function buildPortalManagedSetMetaText(kind, record){
     parts.push(record.endDate + '까지')
   }else{
     parts.push('상시 노출')
+  }
+  if(kind === 'check' && record && record.assignmentLabel){
+    parts.push(record.assignmentLabel)
   }
   if(record && record.updatedAt){
     parts.push('업데이트 ' + formatAdminTime(record.updatedAt))
