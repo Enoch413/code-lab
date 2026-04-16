@@ -580,6 +580,14 @@ body::before{
   gap:8px;
   margin-bottom:12px;
 }
+.group-title-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  margin-left:auto;
+  flex-wrap:wrap;
+}
 .group-title h3{
   font-size:.92rem;
   font-weight:800;
@@ -1135,6 +1143,25 @@ body::before{
 .admin-list{
   display:grid;
   gap:10px;
+}
+.admin-collapsible .group-title{
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
+.admin-collapsible .group-title h3{
+  flex:1 1 140px;
+}
+.admin-collapsible.is-collapsed .group-title{
+  margin-bottom:0;
+}
+.admin-collapsible-body[hidden]{
+  display:none !important;
+}
+.group-toggle-btn{
+  min-height:32px;
+  padding:6px 12px;
+  border-radius:999px;
+  white-space:nowrap;
 }
 .admin-item{
   padding:12px 14px;
@@ -2087,6 +2114,12 @@ body::before{
 
 .admin-item .admin-item-muted{
   color:var(--muted);
+}
+
+.admin-item-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
 }
 
 .bottom-actions{
