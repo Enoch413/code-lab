@@ -3870,7 +3870,8 @@ function normalizePortalPrepConfig(){
   const next = {
     pageTitle: APP_CONFIG.defaultTitle,
     globalPassword: '',
-    generatedAt: ''
+    generatedAt: '',
+    examKey: ''
   }
   Array.from(arguments).forEach(function(source){
     if(!source || typeof source !== 'object') return
@@ -3882,6 +3883,9 @@ function normalizePortalPrepConfig(){
     }
     if(typeof source.generatedAt === 'string' && source.generatedAt.trim()){
       next.generatedAt = source.generatedAt.trim()
+    }
+    if(typeof source.examKey === 'string' && source.examKey.trim()){
+      next.examKey = source.examKey.trim()
     }
   })
   return next
@@ -5662,4 +5666,1409 @@ async function submitPasswordChange(){
   }catch(error){
     setPasswordError(getPasswordChangeErrorMessage(error))
   }
+}
+
+const PORTAL_EXAM_STATE_DOC = 'exam-state'
+const SUPERADMIN_DEFAULT_PASSWORD = 'pass1234'
+const SUPERADMIN_CLASS_ADMIN_HEADERS = ['classId', 'className', 'managerUid', 'managerLoginId', 'managerName', 'managerEmail', 'managerScope']
+const SUPERADMIN_STUDENT_HEADERS = ['uid', 'status', 'loginId', 'name', 'studentId', 'email', 'classId', 'className']
+
+function normalizeUserProfile(source){
+  const classIds = Array.isArray(source && source.classIds)
+    ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+    : []
+  const role = String(source && source.role || 'student').trim() || 'student'
+  const passwordResetRequired = typeof (source && source.passwordResetRequired) === 'boolean'
+    ? !!source.passwordResetRequired
+    : false
+  const loginDisabled = typeof (source && source.loginDisabled) === 'boolean'
+    ? !!source.loginDisabled
+    : false
+  return {
+    uid: String(source && (source.uid || source.id) || '').trim(),
+    loginId: derivePortalLoginId(source),
+    email: String(source && source.email || '').trim().toLowerCase(),
+    name: String(source && source.name || '').trim(),
+    studentId: String(source && source.studentId || '').trim(),
+    classIds: classIds,
+    role: role,
+    adminScope: role === 'admin'
+      ? normalizeAdminScopeValue(source && source.adminScope)
+      : 'assigned',
+    loginDisabled: loginDisabled,
+    passwordResetRequired: passwordResetRequired,
+    createdAt: String(source && source.createdAt || '').trim(),
+    updatedAt: String(source && source.updatedAt || '').trim()
+  }
+}
+
+function normalizeUserProfileLocal(source){
+  const loginId = derivePortalLoginId(source)
+  const password = String(source && source.password || '').trim()
+  const role = String(source && source.role || 'student').trim() || 'student'
+  const resetRequired = typeof (source && source.passwordResetRequired) === 'boolean'
+    ? !!source.passwordResetRequired
+    : (password === SUPERADMIN_DEFAULT_PASSWORD)
+  return {
+    id: String(source && source.id || '').trim(),
+    loginId: loginId,
+    email: String(source && source.email || toPortalLoginEmail(loginId) || '').trim().toLowerCase(),
+    password: password,
+    name: String(source && source.name || '').trim(),
+    studentId: String(source && source.studentId || '').trim(),
+    classIds: Array.isArray(source && source.classIds)
+      ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+      : [],
+    role: role,
+    adminScope: role === 'admin'
+      ? normalizeAdminScopeValue(source && source.adminScope || 'all')
+      : 'assigned',
+    loginDisabled: !!(source && source.loginDisabled),
+    passwordResetRequired: resetRequired,
+    createdAt: String(source && source.createdAt || '').trim(),
+    updatedAt: String(source && source.updatedAt || '').trim()
+  }
+}
+
+function ensurePortalExamCenterState(){
+  if(!portalState.examCenter || typeof portalState.examCenter !== 'object'){
+    portalState.examCenter = {}
+  }
+  return portalState.examCenter
+}
+
+function normalizePortalExamState(source){
+  return {
+    examName: String(source && source.examName || '').trim(),
+    examKey: String(source && source.examKey || '').trim(),
+    lastArchiveAt: String(source && source.lastArchiveAt || '').trim(),
+    lastArchiveExamName: String(source && source.lastArchiveExamName || '').trim(),
+    lastArchiveBy: String(source && source.lastArchiveBy || '').trim(),
+    lastArchiveByName: String(source && source.lastArchiveByName || '').trim(),
+    lastResetAt: String(source && source.lastResetAt || '').trim(),
+    lastResetBy: String(source && source.lastResetBy || '').trim(),
+    lastResetByName: String(source && source.lastResetByName || '').trim(),
+    pdfLabResetToken: String(source && source.pdfLabResetToken || '').trim(),
+    previousExamName: String(source && source.previousExamName || '').trim(),
+    previousExamKey: String(source && source.previousExamKey || '').trim(),
+    updatedAt: String(source && source.updatedAt || '').trim()
+  }
+}
+
+function applyPortalExamState(state){
+  const normalized = normalizePortalExamState(state)
+  portalState.examState = normalized
+  window.ROTATION_PORTAL_EXAM_KEY = normalized.examKey || ''
+  return normalized
+}
+
+async function loadPortalExamState(forceReload){
+  if(portalState.examState && !forceReload) return portalState.examState
+  if(portalState.examStatePromise && !forceReload) return portalState.examStatePromise
+
+  portalState.examStatePromise = loadCloudContentDoc(PORTAL_EXAM_STATE_DOC).then(function(doc){
+    const payload = doc && doc.payload && typeof doc.payload === 'object'
+      ? doc.payload
+      : {}
+    return applyPortalExamState(payload)
+  }).catch(function(error){
+    console.warn('exam-state read failed:', error && error.message ? error.message : error)
+    return applyPortalExamState({})
+  }).finally(function(){
+    portalState.examStatePromise = null
+  })
+
+  return portalState.examStatePromise
+}
+
+async function savePortalExamState(partial){
+  const current = await loadPortalExamState(false)
+  const now = new Date().toISOString()
+  const nextState = normalizePortalExamState(Object.assign({}, current || {}, partial || {}, {
+    updatedAt: now
+  }))
+  await saveCloudContentDoc(PORTAL_EXAM_STATE_DOC, nextState, 'exam-state.json')
+  applyPortalExamState(nextState)
+  return nextState
+}
+
+function buildPortalExamKey(seedName){
+  const seed = sanitizeId(String(seedName || 'exam').trim() || 'exam')
+  return 'exam-' + seed + '-' + Date.now()
+}
+
+function buildPdfLabResetToken(){
+  return 'pdf-lab-reset-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+}
+
+function getPortalDisplayIdentity(){
+  return String(
+    portalState.currentProfile && (portalState.currentProfile.name || portalState.currentProfile.loginId || portalState.currentProfile.studentId)
+      || portalState.currentUser && (portalState.currentUser.loginId || portalState.currentUser.email)
+      || ''
+  ).trim()
+}
+
+function getPortalExamCenterNode(id){
+  return document.getElementById(id)
+}
+
+function setPortalExamCenterStatus(id, text, kind){
+  const node = getPortalExamCenterNode(id)
+  if(!node) return
+  node.textContent = String(text || '').trim()
+  node.classList.remove('is-error', 'is-success', 'is-working')
+  if(kind) node.classList.add('is-' + kind)
+}
+
+function formatPortalDateTime(value){
+  const raw = String(value || '').trim()
+  if(!raw) return ''
+  const date = new Date(raw)
+  if(Number.isNaN(date.getTime())) return raw
+  return date.toLocaleString('ko-KR', { hour12: false })
+}
+
+function buildPortalCsvCell(value){
+  const text = String(value == null ? '' : value)
+  return /[",\r\n]/.test(text)
+    ? ('"' + text.replace(/"/g, '""') + '"')
+    : text
+}
+
+function buildPortalCsvText(headers, rows){
+  const headerRow = headers.map(buildPortalCsvCell).join(',')
+  const dataRows = (Array.isArray(rows) ? rows : []).map(function(row){
+    return headers.map(function(header){
+      return buildPortalCsvCell(row && row[header] != null ? row[header] : '')
+    }).join(',')
+  })
+  return [headerRow].concat(dataRows).join('\r\n')
+}
+
+function normalizePortalCsvHeaderKey(value){
+  return String(value || '')
+    .replace(/^\ufeff/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
+
+function parsePortalCsvText(text){
+  const source = String(text || '').replace(/\r\n/g, '\n')
+  const rows = []
+  let row = []
+  let cell = ''
+  let inQuotes = false
+
+  for(let index = 0; index < source.length; index += 1){
+    const char = source[index]
+    const nextChar = source[index + 1]
+
+    if(inQuotes){
+      if(char === '"' && nextChar === '"'){
+        cell += '"'
+        index += 1
+        continue
+      }
+      if(char === '"'){
+        inQuotes = false
+        continue
+      }
+      cell += char
+      continue
+    }
+
+    if(char === '"'){
+      inQuotes = true
+      continue
+    }
+    if(char === ','){
+      row.push(cell)
+      cell = ''
+      continue
+    }
+    if(char === '\n'){
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+      continue
+    }
+    cell += char
+  }
+
+  row.push(cell)
+  if(row.length > 1 || row[0]){
+    rows.push(row)
+  }
+
+  if(!rows.length) return []
+  const headers = rows[0].map(function(header, index){
+    return normalizePortalCsvHeaderKey(header) || ('column' + (index + 1))
+  })
+
+  return rows.slice(1).map(function(cells){
+    const mapped = {}
+    headers.forEach(function(header, index){
+      mapped[header] = String(cells[index] || '').trim()
+    })
+    return mapped
+  }).filter(function(entry){
+    return Object.keys(entry).some(function(key){
+      return String(entry[key] || '').trim()
+    })
+  })
+}
+
+function readPortalTextFileFromBrowser(file){
+  return new Promise(function(resolve, reject){
+    const reader = new FileReader()
+    reader.onload = function(){ resolve(String(reader.result || '')) }
+    reader.onerror = function(){ reject(reader.error || new Error('File read failed.')) }
+    reader.readAsText(file, 'utf-8')
+  })
+}
+
+async function fetchAllPortalUsersForSuperAdmin(){
+  let rows = []
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection('users').get()
+      rows = snapshot.docs.map(function(doc){
+        return normalizeUserProfile(Object.assign({ uid: doc.id }, doc.data() || {}))
+      })
+    }catch(error){
+      console.warn('users superadmin read failed:', error && error.message ? error.message : error)
+    }
+  }
+
+  if(!rows.length && typeof readLocalUsers === 'function'){
+    rows = readLocalUsers().map(function(entry){
+      return normalizeUserProfile(Object.assign({}, entry, {
+        uid: entry && (entry.uid || entry.id)
+      }))
+    })
+  }
+
+  return rows
+}
+
+function buildPortalUserLookup(users){
+  const byUid = new Map()
+  const byLoginId = new Map()
+  const byEmail = new Map()
+
+  ;(Array.isArray(users) ? users : []).forEach(function(user){
+    const uid = String(user && user.uid || user && user.id || '').trim()
+    const loginId = derivePortalLoginId(user)
+    const email = String(user && user.email || '').trim().toLowerCase()
+    if(uid) byUid.set(uid, user)
+    if(loginId) byLoginId.set(loginId, user)
+    if(email) byEmail.set(email, user)
+  })
+
+  return {
+    byUid: byUid,
+    byLoginId: byLoginId,
+    byEmail: byEmail
+  }
+}
+
+function resolvePortalUserFromLookup(lookup, identifiers){
+  const uid = String(identifiers && identifiers.uid || '').trim()
+  const loginId = derivePortalLoginId({ loginId: identifiers && identifiers.loginId, email: identifiers && identifiers.email })
+  const email = String(identifiers && identifiers.email || '').trim().toLowerCase()
+  if(uid && lookup.byUid.has(uid)) return lookup.byUid.get(uid)
+  if(loginId && lookup.byLoginId.has(loginId)) return lookup.byLoginId.get(loginId)
+  if(email && lookup.byEmail.has(email)) return lookup.byEmail.get(email)
+  return null
+}
+
+function normalizePortalRosterStatus(value){
+  const raw = String(value || 'active').trim().toLowerCase()
+  if(raw === 'disabled' || raw === 'disable' || raw === 'withdrawn' || raw === 'inactive' || raw === '탈퇴'){
+    return 'disabled'
+  }
+  return 'active'
+}
+
+function summarizePortalCounts(rows, predicate){
+  return (Array.isArray(rows) ? rows : []).filter(function(entry){
+    return predicate ? predicate(entry) : true
+  }).length
+}
+
+function buildPortalHtmlTable(headers, rows){
+  const thead = '<tr>' + headers.map(function(header){
+    return '<th>' + escapeHtml(header) + '</th>'
+  }).join('') + '</tr>'
+  const tbody = (Array.isArray(rows) && rows.length)
+    ? rows.map(function(row){
+        return '<tr>' + row.map(function(cell){
+          return '<td>' + escapeHtml(cell == null ? '' : cell) + '</td>'
+        }).join('') + '</tr>'
+      }).join('')
+    : '<tr><td colspan="' + headers.length + '">데이터 없음</td></tr>'
+  return '<table border="1"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>'
+}
+
+function buildPortalExamArchiveFileBaseName(examName){
+  const base = sanitizeId(String(examName || '').trim() || 'code-lab-exam')
+  const stamp = new Date().toISOString().slice(0, 10)
+  return base + '-' + stamp
+}
+
+function getPortalCurrentExamName(){
+  return String(
+    portalState.examState && portalState.examState.examName
+      || getPortalExamCenterNode('superadmin-archive-exam-name') && getPortalExamCenterNode('superadmin-archive-exam-name').value
+      || ''
+  ).trim()
+}
+
+async function buildPortalExamArchiveSnapshot(examName){
+  const [examState, users, responses, issues, prepSets, checkSets, prepSessionDoc, checkDataDoc, classCatalogDoc] = await Promise.all([
+    loadPortalExamState(false),
+    fetchAllPortalUsersForSuperAdmin(),
+    fetchAllCheckResponses(),
+    fetchAllQuestionIssues(),
+    loadCloudSetDocs('prep'),
+    loadCloudSetDocs('check'),
+    loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep),
+    loadCloudContentDoc(PORTAL_CLOUD_DOCS.check),
+    loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
+  ])
+
+  const classList = normalizePortalPrepClassList(
+    classCatalogDoc && classCatalogDoc.payload && Array.isArray(classCatalogDoc.payload.classes)
+      ? classCatalogDoc.payload.classes
+      : prepClasses
+  )
+
+  return {
+    kind: 'code-lab-exam-archive',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    exportedBy: portalState.currentUser ? portalState.currentUser.uid : '',
+    exportedByName: getPortalDisplayIdentity(),
+    examName: String(examName || examState.examName || '').trim(),
+    examState: clonePlainData(examState) || {},
+    prepClasses: clonePlainData(classList) || [],
+    users: clonePlainData(users) || [],
+    checkResponses: clonePlainData(responses) || [],
+    questionIssues: clonePlainData(issues) || [],
+    portalPrepSets: clonePlainData(prepSets) || [],
+    portalCheckSets: clonePlainData(checkSets) || [],
+    portalContent: {
+      prepSession: clonePlainData(prepSessionDoc) || null,
+      checkData: clonePlainData(checkDataDoc) || null,
+      prepClasses: clonePlainData(classCatalogDoc) || null
+    }
+  }
+}
+
+function buildPortalExamArchiveExcelHtml(snapshot){
+  const users = Array.isArray(snapshot && snapshot.users) ? snapshot.users : []
+  const prepSets = Array.isArray(snapshot && snapshot.portalPrepSets) ? snapshot.portalPrepSets : []
+  const checkSets = Array.isArray(snapshot && snapshot.portalCheckSets) ? snapshot.portalCheckSets : []
+  const responses = Array.isArray(snapshot && snapshot.checkResponses) ? snapshot.checkResponses : []
+  const issues = Array.isArray(snapshot && snapshot.questionIssues) ? snapshot.questionIssues : []
+  const classes = Array.isArray(snapshot && snapshot.prepClasses) ? snapshot.prepClasses : []
+
+  const summaryRows = [
+    ['시험명', snapshot && snapshot.examName || ''],
+    ['내보낸 시각', formatPortalDateTime(snapshot && snapshot.exportedAt || '')],
+    ['현재 examKey', snapshot && snapshot.examState && snapshot.examState.examKey || ''],
+    ['반 수', String(classes.length)],
+    ['학생 수', String(summarizePortalCounts(users, function(user){ return String(user && user.role || '').trim() !== 'admin' }))],
+    ['비활성 학생 수', String(summarizePortalCounts(users, function(user){ return String(user && user.role || '').trim() !== 'admin' && !!(user && user.loginDisabled) }))],
+    ['관리자 수', String(summarizePortalCounts(users, function(user){ return String(user && user.role || '').trim() === 'admin' }))],
+    ['CHECK 제출 수', String(responses.length)],
+    ['질문 수', String(issues.length)],
+    ['PREP 세트 수', String(prepSets.length)],
+    ['CHECK 세트 수', String(checkSets.length)]
+  ]
+
+  const classRows = classes.map(function(classInfo){
+    return [
+      String(classInfo && classInfo.id || '').trim(),
+      String(classInfo && classInfo.name || '').trim(),
+      String(classInfo && classInfo.password ? '설정됨' : '').trim()
+    ]
+  })
+
+  const userRows = users.map(function(user){
+    return [
+      String(user && user.role || '').trim(),
+      String(user && user.adminScope || '').trim(),
+      String(user && user.loginDisabled ? 'disabled' : 'active'),
+      String(user && user.loginId || '').trim(),
+      String(user && user.name || '').trim(),
+      String(user && user.studentId || '').trim(),
+      String(user && user.email || '').trim(),
+      Array.isArray(user && user.classIds) ? user.classIds.join(', ') : ''
+    ]
+  })
+
+  const responseRows = responses.map(function(entry){
+    return [
+      String(entry && entry.checkSetTitle || entry && entry.checkSetId || '').trim(),
+      String(entry && entry.name || '').trim(),
+      String(entry && entry.studentId || '').trim(),
+      Array.isArray(entry && entry.classIds) ? entry.classIds.join(', ') : '',
+      String(entry && entry.submittedAt || '').trim(),
+      String(entry && entry.summary && entry.summary.total || 0),
+      String(entry && entry.summary && entry.summary.correct || 0),
+      String(entry && entry.summary && entry.summary.wrong || 0)
+    ]
+  })
+
+  const issueRows = issues.map(function(entry){
+    return [
+      String(entry && entry.checkSetTitle || '').trim(),
+      String(entry && entry.questionNumber || '').trim(),
+      String(entry && entry.problemType || '').trim(),
+      String(entry && entry.name || '').trim(),
+      String(entry && entry.studentId || '').trim(),
+      String(entry && entry.status || '').trim(),
+      String(entry && entry.createdAt || '').trim(),
+      String(entry && entry.prompt || '').trim(),
+      String(entry && entry.userAnswer || '').trim()
+    ]
+  })
+
+  const prepSetRows = prepSets.map(function(entry){
+    const payload = entry && entry.payload ? entry.payload : {}
+    return [
+      String(entry && entry.docId || '').trim(),
+      String(entry && entry.title || '').trim(),
+      Array.isArray(entry && entry.classIds) ? entry.classIds.join(', ') : '',
+      String(entry && entry.updatedAt || '').trim(),
+      String(Array.isArray(payload && payload.passages) ? payload.passages.length : 0)
+    ]
+  })
+
+  const checkSetRows = checkSets.map(function(entry){
+    const payload = entry && entry.payload ? entry.payload : {}
+    return [
+      String(entry && entry.docId || '').trim(),
+      String(entry && entry.title || '').trim(),
+      Array.isArray(entry && entry.classIds) ? entry.classIds.join(', ') : '',
+      String(payload && payload.assignmentMode || '').trim(),
+      String((Array.isArray(payload && payload.targetStudentNames) ? payload.targetStudentNames.join(', ') : payload && payload.targetStudentName) || '').trim(),
+      String(payload && payload.sourceSetId || '').trim(),
+      String(payload && payload.sourceRound || '').trim(),
+      String(entry && entry.updatedAt || '').trim(),
+      String(Array.isArray(payload && payload.questions) ? payload.questions.length : 0)
+    ]
+  })
+
+  return '' +
+    '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">' +
+      '<head>' +
+        '<meta charset="utf-8">' +
+        '<style>body{font-family:Malgun Gothic,sans-serif;padding:24px}h1,h2{margin:18px 0 8px}table{border-collapse:collapse;margin-bottom:18px}th,td{padding:6px 8px;white-space:pre-wrap}th{background:#eef4f1}</style>' +
+      '</head>' +
+      '<body>' +
+        '<h1>' + escapeHtml((snapshot && snapshot.examName || '시험 종료') + ' 아카이브') + '</h1>' +
+        '<h2>요약</h2>' + buildPortalHtmlTable(['항목', '값'], summaryRows) +
+        '<h2>반 목록</h2>' + buildPortalHtmlTable(['classId', 'className', 'password'], classRows) +
+        '<h2>사용자</h2>' + buildPortalHtmlTable(['role', 'adminScope', 'status', 'loginId', 'name', 'studentId', 'email', 'classIds'], userRows) +
+        '<h2>CHECK 제출</h2>' + buildPortalHtmlTable(['setTitle', 'name', 'studentId', 'classIds', 'submittedAt', 'total', 'correct', 'wrong'], responseRows) +
+        '<h2>질문있어요</h2>' + buildPortalHtmlTable(['setTitle', 'questionNumber', 'problemType', 'name', 'studentId', 'status', 'createdAt', 'prompt', 'userAnswer'], issueRows) +
+        '<h2>PREP 세트</h2>' + buildPortalHtmlTable(['docId', 'title', 'classIds', 'updatedAt', 'passageCount'], prepSetRows) +
+        '<h2>CHECK 세트</h2>' + buildPortalHtmlTable(['docId', 'title', 'classIds', 'assignmentMode', 'targets', 'sourceSetId', 'sourceRound', 'updatedAt', 'questionCount'], checkSetRows) +
+      '</body>' +
+    '</html>'
+}
+
+async function downloadPortalExamArchive(examName, mode){
+  if(!isPortalSuperAdmin()){
+    showToast('최고 관리자만 시험 종료 백업을 실행할 수 있습니다.', 'var(--red)')
+    return null
+  }
+
+  const trimmedExamName = String(examName || '').trim() || getPortalCurrentExamName()
+  if(!trimmedExamName){
+    throw new Error('시험명을 먼저 입력해 주세요.')
+  }
+
+  const snapshot = await buildPortalExamArchiveSnapshot(trimmedExamName)
+  const baseName = buildPortalExamArchiveFileBaseName(trimmedExamName)
+
+  if(mode === 'excel' || mode === 'all'){
+    downloadAdminTextFile(baseName + '.xls', buildPortalExamArchiveExcelHtml(snapshot), 'application/vnd.ms-excel;charset=utf-8')
+  }
+  if(mode === 'json' || mode === 'all'){
+    downloadAdminTextFile(baseName + '.json', JSON.stringify(snapshot, null, 2), 'application/json;charset=utf-8')
+  }
+
+  await savePortalExamState({
+    examName: trimmedExamName,
+    lastArchiveAt: snapshot.exportedAt,
+    lastArchiveExamName: trimmedExamName,
+    lastArchiveBy: snapshot.exportedBy,
+    lastArchiveByName: snapshot.exportedByName
+  })
+
+  return snapshot
+}
+
+function buildSuperAdminClassAdminTemplateRows(users, classes){
+  const adminUsers = (Array.isArray(users) ? users : []).filter(function(user){
+    return String(user && user.role || '').trim() === 'admin' && normalizeAdminScopeValue(user && user.adminScope) !== 'all'
+  })
+  const rows = []
+
+  ;(Array.isArray(classes) ? classes : []).forEach(function(classInfo){
+    const matchingAdmins = adminUsers.filter(function(user){
+      return Array.isArray(user && user.classIds) && user.classIds.indexOf(String(classInfo && classInfo.id || '').trim()) >= 0
+    })
+
+    if(!matchingAdmins.length){
+      rows.push({
+        classId: String(classInfo && classInfo.id || '').trim(),
+        className: String(classInfo && classInfo.name || '').trim(),
+        managerUid: '',
+        managerLoginId: '',
+        managerName: '',
+        managerEmail: '',
+        managerScope: 'assigned'
+      })
+      return
+    }
+
+    matchingAdmins.forEach(function(admin){
+      rows.push({
+        classId: String(classInfo && classInfo.id || '').trim(),
+        className: String(classInfo && classInfo.name || '').trim(),
+        managerUid: String(admin && admin.uid || '').trim(),
+        managerLoginId: String(admin && admin.loginId || '').trim(),
+        managerName: String(admin && admin.name || '').trim(),
+        managerEmail: String(admin && admin.email || '').trim(),
+        managerScope: normalizeAdminScopeValue(admin && admin.adminScope)
+      })
+    })
+  })
+
+  return rows
+}
+
+function buildSuperAdminStudentTemplateRows(users, classes){
+  const classMap = new Map((Array.isArray(classes) ? classes : []).map(function(classInfo){
+    return [String(classInfo && classInfo.id || '').trim(), String(classInfo && classInfo.name || '').trim()]
+  }))
+
+  return (Array.isArray(users) ? users : []).filter(function(user){
+    return String(user && user.role || '').trim() !== 'admin'
+  }).map(function(user){
+    const classId = Array.isArray(user && user.classIds) && user.classIds.length ? String(user.classIds[0] || '').trim() : ''
+    return {
+      uid: String(user && user.uid || '').trim(),
+      status: user && user.loginDisabled ? 'disabled' : 'active',
+      loginId: String(user && user.loginId || '').trim(),
+      name: String(user && user.name || '').trim(),
+      studentId: String(user && user.studentId || '').trim(),
+      email: String(user && user.email || '').trim(),
+      classId: classId,
+      className: classMap.get(classId) || ''
+    }
+  }).sort(function(left, right){
+    return String(left.classId || '').localeCompare(String(right.classId || ''), 'ko')
+      || String(left.name || '').localeCompare(String(right.name || ''), 'ko')
+  })
+}
+
+async function downloadSuperAdminClassAdminTemplate(){
+  const users = await fetchAllPortalUsersForSuperAdmin()
+  const classes = normalizePortalPrepClassList(prepClasses)
+  const rows = buildSuperAdminClassAdminTemplateRows(users, classes)
+  downloadAdminTextFile('class-admin-template.csv', buildPortalCsvText(SUPERADMIN_CLASS_ADMIN_HEADERS, rows), 'text/csv;charset=utf-8')
+  setPortalExamCenterStatus('superadmin-class-admin-status', '반/관리자 템플릿 CSV를 내려받았습니다.', 'success')
+}
+
+async function downloadSuperAdminStudentTemplate(){
+  const users = await fetchAllPortalUsersForSuperAdmin()
+  const classes = normalizePortalPrepClassList(prepClasses)
+  const rows = buildSuperAdminStudentTemplateRows(users, classes)
+  downloadAdminTextFile('student-roster-template.csv', buildPortalCsvText(SUPERADMIN_STUDENT_HEADERS, rows), 'text/csv;charset=utf-8')
+  setPortalExamCenterStatus('superadmin-student-status', '학생 변동 템플릿 CSV를 내려받았습니다.', 'success')
+}
+
+function normalizeSuperAdminClassAdminRows(rows){
+  const classNameById = new Map(normalizePortalPrepClassList(prepClasses).map(function(classInfo){
+    return [String(classInfo && classInfo.id || '').trim(), String(classInfo && classInfo.name || '').trim()]
+  }))
+
+  return (Array.isArray(rows) ? rows : []).map(function(row){
+    const classId = sanitizeId(String(row && row.classid || '').trim() || ('class-' + String(row && row.classname || '').trim()))
+    const className = String(row && row.classname || classNameById.get(classId) || '').trim()
+    return {
+      classId: classId,
+      className: className,
+      managerUid: String(row && row.manageruid || '').trim(),
+      managerLoginId: derivePortalLoginId({ loginId: row && row.managerloginid, email: row && row.manageremail }),
+      managerName: String(row && row.managername || '').trim(),
+      managerEmail: String(row && row.manageremail || '').trim().toLowerCase(),
+      managerScope: normalizeAdminScopeValue(row && row.managerscope)
+    }
+  }).filter(function(entry){
+    return entry.classId || entry.className || entry.managerUid || entry.managerLoginId || entry.managerEmail
+  })
+}
+
+function normalizeSuperAdminStudentRows(rows){
+  const classNameById = new Map(normalizePortalPrepClassList(prepClasses).map(function(classInfo){
+    return [String(classInfo && classInfo.id || '').trim(), String(classInfo && classInfo.name || '').trim()]
+  }))
+
+  return (Array.isArray(rows) ? rows : []).map(function(row){
+    const loginId = derivePortalLoginId({ loginId: row && row.loginid, email: row && row.email })
+    const classId = sanitizeId(String(row && row.classid || '').trim())
+    return {
+      uid: String(row && row.uid || '').trim(),
+      status: normalizePortalRosterStatus(row && row.status),
+      loginId: loginId,
+      name: String(row && row.name || '').trim(),
+      studentId: String(row && row.studentid || loginId || '').trim(),
+      email: String(row && row.email || toPortalLoginEmail(loginId) || '').trim().toLowerCase(),
+      classId: classId,
+      className: String(row && row.classname || classNameById.get(classId) || '').trim()
+    }
+  }).filter(function(entry){
+    return entry.uid || entry.loginId || entry.email || entry.name || entry.studentId
+  })
+}
+
+function savePortalUsersLocally(users){
+  writeLocalUsers((Array.isArray(users) ? users : []).map(function(entry){
+    return normalizeUserProfileLocal(entry)
+  }))
+}
+
+async function createPortalStudentProfileByAdmin(record){
+  if(!portalState.firebaseEnabled || !window.firebase || !window.ROTATION_FIREBASE_CONFIG){
+    const users = readLocalUsers()
+    const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+    users.push(normalizeUserProfileLocal({
+      id: localId,
+      loginId: record.loginId,
+      email: record.email,
+      password: SUPERADMIN_DEFAULT_PASSWORD,
+      name: record.name,
+      studentId: record.studentId,
+      classIds: record.classIds,
+      role: 'student',
+      loginDisabled: !!record.loginDisabled,
+      passwordResetRequired: true,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    }))
+    savePortalUsersLocally(users)
+    return { uid: localId }
+  }
+
+  const appName = 'portal-superadmin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+  const secondaryApp = firebase.initializeApp(window.ROTATION_FIREBASE_CONFIG, appName)
+  try{
+    const secondaryAuth = secondaryApp.auth()
+    const secondaryDb = secondaryApp.firestore()
+    const credential = await secondaryAuth.createUserWithEmailAndPassword(record.email, SUPERADMIN_DEFAULT_PASSWORD)
+    const user = credential && credential.user ? credential.user : secondaryAuth.currentUser
+    if(!user) throw new Error('학생 계정을 생성하지 못했습니다.')
+    if(record.name){
+      try{
+        await user.updateProfile({ displayName: record.name })
+      }catch(error){}
+    }
+    await secondaryDb.collection('users').doc(user.uid).set(Object.assign({}, record, {
+      uid: user.uid
+    }), { merge: true })
+    await secondaryAuth.signOut()
+    return { uid: user.uid }
+  }finally{
+    try{
+      await secondaryApp.delete()
+    }catch(error){}
+  }
+}
+
+async function persistPortalUserProfileUpdate(uid, payload){
+  if(portalState.firebaseEnabled && portalState.db){
+    await saveFirebaseUserProfile(uid, payload)
+    return
+  }
+
+  const users = readLocalUsers()
+  const targetIndex = users.findIndex(function(entry){
+    return String(entry && (entry.id || entry.uid) || '').trim() === String(uid || '').trim()
+  })
+  if(targetIndex < 0) return
+  users[targetIndex] = normalizeUserProfileLocal(Object.assign({}, users[targetIndex], payload, {
+    id: uid
+  }))
+  savePortalUsersLocally(users)
+}
+
+async function saveSuperAdminClassCatalogList(classes, examState){
+  const existingClasses = normalizePortalPrepClassList(prepClasses)
+  const existingPasswordMap = new Map(existingClasses.map(function(classInfo){
+    return [String(classInfo && classInfo.id || '').trim(), String(classInfo && classInfo.password || '').trim()]
+  }))
+  const normalizedClasses = normalizePortalPrepClassList((Array.isArray(classes) ? classes : []).map(function(classInfo){
+    const classId = String(classInfo && classInfo.id || '').trim()
+    return {
+      id: classId,
+      name: String(classInfo && classInfo.name || '').trim(),
+      password: String(classInfo && classInfo.password || existingPasswordMap.get(classId) || '').trim()
+    }
+  }))
+  const now = new Date().toISOString()
+  const payload = {
+    prepConfig: normalizePortalPrepConfig(bundleData && bundleData.prepConfig, {
+      generatedAt: now,
+      examKey: examState && examState.examKey || ''
+    }),
+    classes: normalizedClasses
+  }
+  await saveCloudContentDoc(PORTAL_CLASS_CATALOG_DOC, payload, 'prep-classes.json')
+  return normalizedClasses
+}
+
+async function applySuperAdminClassAdminRows(){
+  if(!isPortalSuperAdmin()){
+    showToast('최고 관리자만 반/관리자 재배정을 할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const state = ensurePortalExamCenterState()
+  const uploadedRows = normalizeSuperAdminClassAdminRows(state.classAdminRows)
+  if(!uploadedRows.length){
+    throw new Error('먼저 반/관리자 CSV를 업로드해 주세요.')
+  }
+  if(typeof window.confirm === 'function' && !window.confirm('반 목록과 관리자 담당 반을 업로드 내용으로 반영할까요?')) return
+
+  const users = await fetchAllPortalUsersForSuperAdmin()
+  const adminUsers = users.filter(function(user){
+    return String(user && user.role || '').trim() === 'admin'
+  })
+  const lookup = buildPortalUserLookup(adminUsers)
+  const errors = []
+  const classRows = []
+  const seenClassIds = new Set()
+  const assignmentMap = new Map()
+
+  uploadedRows.forEach(function(row){
+    if(!row.classId || !row.className){
+      errors.push('반 정보가 비어 있는 행이 있습니다.')
+      return
+    }
+    if(seenClassIds.has(row.classId)){
+      const existingRow = classRows.find(function(entry){ return entry.id === row.classId })
+      if(existingRow && existingRow.name !== row.className){
+        errors.push(row.classId + ' 반의 이름이 여러 값으로 들어 있습니다.')
+      }
+    }else{
+      seenClassIds.add(row.classId)
+      classRows.push({ id: row.classId, name: row.className })
+    }
+
+    if(!row.managerUid && !row.managerLoginId && !row.managerEmail) return
+    const manager = resolvePortalUserFromLookup(lookup, {
+      uid: row.managerUid,
+      loginId: row.managerLoginId,
+      email: row.managerEmail
+    })
+    if(!manager){
+      errors.push((row.className || row.classId) + ' 반 관리자 계정을 찾지 못했습니다: ' + (row.managerLoginId || row.managerEmail || row.managerUid))
+      return
+    }
+    if(isPortalSuperAdmin() && normalizeAdminScopeValue(manager && manager.adminScope) === 'all'){
+      return
+    }
+    const entry = assignmentMap.get(manager.uid) || {
+      user: manager,
+      classIds: new Set(),
+      adminScope: 'assigned'
+    }
+    entry.classIds.add(row.classId)
+    if(row.managerScope === 'all') entry.adminScope = 'all'
+    assignmentMap.set(manager.uid, entry)
+  })
+
+  if(errors.length){
+    throw new Error(errors.slice(0, 5).join('\n'))
+  }
+
+  const examState = await loadPortalExamState(false)
+  await saveSuperAdminClassCatalogList(classRows, examState)
+
+  for(let index = 0; index < adminUsers.length; index += 1){
+    const admin = adminUsers[index]
+    if(normalizeAdminScopeValue(admin && admin.adminScope) === 'all') continue
+    const assignment = assignmentMap.get(admin.uid)
+    const nextClassIds = assignment
+      ? Array.from(assignment.classIds)
+      : []
+    const nextScope = assignment ? assignment.adminScope : 'assigned'
+    await persistPortalUserProfileUpdate(admin.uid, {
+      classIds: nextScope === 'all'
+        ? classRows.map(function(classInfo){ return classInfo.id })
+        : nextClassIds,
+      adminScope: nextScope,
+      updatedAt: new Date().toISOString()
+    })
+  }
+
+  state.classAdminRows = uploadedRows
+  await syncPrepContentAfterLogin(true)
+  await ensureCheckData(true)
+}
+
+async function applySuperAdminStudentRows(){
+  if(!isPortalSuperAdmin()){
+    showToast('최고 관리자만 학생 변동 반영을 실행할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const state = ensurePortalExamCenterState()
+  const uploadedRows = normalizeSuperAdminStudentRows(state.studentRows)
+  if(!uploadedRows.length){
+    throw new Error('먼저 학생 변동 CSV를 업로드해 주세요.')
+  }
+  if(typeof window.confirm === 'function' && !window.confirm('학생 변동 내용을 Firebase에 반영할까요?')) return
+
+  const users = await fetchAllPortalUsersForSuperAdmin()
+  const students = users.filter(function(user){
+    return String(user && user.role || '').trim() !== 'admin'
+  })
+  const studentLookup = buildPortalUserLookup(students)
+  const validClassIds = new Set(normalizePortalPrepClassList(prepClasses).map(function(classInfo){
+    return String(classInfo && classInfo.id || '').trim()
+  }))
+  const errors = []
+
+  for(let index = 0; index < uploadedRows.length; index += 1){
+    const row = uploadedRows[index]
+    const existing = resolvePortalUserFromLookup(studentLookup, row)
+    if(row.status === 'active' && !row.classId){
+      errors.push((row.name || row.loginId || row.uid || ('행 ' + (index + 2))) + ': classId가 필요합니다.')
+      continue
+    }
+    if(row.status === 'active' && row.classId && !validClassIds.has(row.classId)){
+      errors.push((row.name || row.loginId || row.uid || ('행 ' + (index + 2))) + ': 존재하지 않는 classId입니다.')
+      continue
+    }
+    if(existing && String(existing && existing.role || '').trim() === 'admin'){
+      errors.push((row.loginId || row.email || row.uid) + ': 관리자 계정과 충돌합니다.')
+      continue
+    }
+    if(row.status === 'disabled' && !existing){
+      errors.push((row.loginId || row.email || row.uid || ('행 ' + (index + 2))) + ': 비활성 처리할 기존 학생을 찾지 못했습니다.')
+      continue
+    }
+    if(existing){
+      const existingLoginId = derivePortalLoginId(existing)
+      const nextLoginId = derivePortalLoginId(row)
+      const existingEmail = String(existing && existing.email || '').trim().toLowerCase()
+      const nextEmail = String(row && row.email || '').trim().toLowerCase()
+      if(nextLoginId && existingLoginId && nextLoginId !== existingLoginId){
+        errors.push((row.name || existing.name || nextLoginId) + ': 기존 학생의 loginId 변경은 이 화면에서 지원하지 않습니다.')
+      }
+      if(nextEmail && existingEmail && nextEmail !== existingEmail){
+        errors.push((row.name || existing.name || nextLoginId || existingLoginId) + ': 기존 학생의 email 변경은 이 화면에서 지원하지 않습니다.')
+      }
+    }else if(row.status === 'active'){
+      if(!row.loginId || !row.name){
+        errors.push('신규 학생은 loginId와 이름이 필요합니다.')
+      }
+    }
+  }
+
+  if(errors.length){
+    throw new Error(errors.slice(0, 6).join('\n'))
+  }
+
+  let createdCount = 0
+  let updatedCount = 0
+  let disabledCount = 0
+
+  for(let index = 0; index < uploadedRows.length; index += 1){
+    const row = uploadedRows[index]
+    const existing = resolvePortalUserFromLookup(studentLookup, row)
+    const now = new Date().toISOString()
+
+    if(existing){
+      const nextPayload = {
+        loginId: existing.loginId,
+        email: existing.email,
+        name: row.name || existing.name || '',
+        studentId: row.studentId || existing.studentId || existing.loginId || '',
+        classIds: row.status === 'disabled' ? [] : [row.classId],
+        role: 'student',
+        loginDisabled: row.status === 'disabled',
+        updatedAt: now
+      }
+      await persistPortalUserProfileUpdate(existing.uid, nextPayload)
+      if(row.status === 'disabled'){
+        disabledCount += 1
+      }else{
+        updatedCount += 1
+      }
+      continue
+    }
+
+    const profile = {
+      loginId: row.loginId,
+      email: row.email || toPortalLoginEmail(row.loginId),
+      name: row.name,
+      studentId: row.studentId || row.loginId,
+      classIds: [row.classId],
+      role: 'student',
+      loginDisabled: false,
+      passwordResetRequired: true,
+      createdAt: now,
+      updatedAt: now
+    }
+    await createPortalStudentProfileByAdmin(profile)
+    createdCount += 1
+  }
+
+  state.studentRows = uploadedRows
+  if(portalState.firebaseEnabled && portalState.currentUser){
+    const refreshed = await fetchOrCreateUserProfile(portalState.currentUser)
+    portalState.currentProfile = refreshed
+    updatePortalUserCard()
+  }
+
+  return {
+    createdCount: createdCount,
+    updatedCount: updatedCount,
+    disabledCount: disabledCount
+  }
+}
+
+async function deletePortalCollectionDocuments(collectionName){
+  if(portalState.firebaseEnabled && portalState.db){
+    const snapshot = await portalState.db.collection(collectionName).get()
+    for(let index = 0; index < snapshot.docs.length; index += 1){
+      await snapshot.docs[index].ref.delete()
+    }
+    return snapshot.docs.length
+  }
+
+  if(collectionName === 'checkResponses'){
+    const count = readLocalResponses().length
+    writeLocalResponses([])
+    return count
+  }
+  if(collectionName === 'questionIssues'){
+    const count = readLocalQuestionIssues().length
+    writeLocalQuestionIssues([])
+    return count
+  }
+  if(collectionName === 'portalPrepSets' || collectionName === 'portalCheckSets'){
+    const kind = collectionName === 'portalPrepSets' ? 'prep' : 'check'
+    const count = readLocalPortalSetDocs(kind).length
+    writeLocalPortalSetDocs(kind, [])
+    return count
+  }
+  return 0
+}
+
+async function resetSuperAdminExamCycle(){
+  if(!isPortalSuperAdmin()){
+    showToast('최고 관리자만 새 시험 초기화를 실행할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const nextExamNameInput = getPortalExamCenterNode('superadmin-next-exam-name')
+  const confirmInput = getPortalExamCenterNode('superadmin-reset-confirm-text')
+  const nextExamName = String(nextExamNameInput && nextExamNameInput.value || '').trim()
+  const confirmText = String(confirmInput && confirmInput.value || '').trim()
+
+  if(!nextExamName){
+    throw new Error('다음 시험명을 입력해 주세요.')
+  }
+  if(confirmText !== '새 시험 시작'){
+    throw new Error('확인 문구로 "새 시험 시작"을 정확히 입력해 주세요.')
+  }
+  if(typeof window.confirm === 'function' && !window.confirm('현재 시험의 운영 데이터를 초기화하고 새 시험을 시작할까요?')) return
+
+  const currentExamState = await loadPortalExamState(false)
+  const nextExamKey = buildPortalExamKey(nextExamName)
+  const pdfLabResetToken = buildPdfLabResetToken()
+  const now = new Date().toISOString()
+
+  const deletedResponses = await deletePortalCollectionDocuments('checkResponses')
+  const deletedIssues = await deletePortalCollectionDocuments('questionIssues')
+  const deletedPrepSets = await deletePortalCollectionDocuments('portalPrepSets')
+  const deletedCheckSets = await deletePortalCollectionDocuments('portalCheckSets')
+
+  const classCatalogDoc = await loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
+  const classCatalogPayload = classCatalogDoc && classCatalogDoc.payload && typeof classCatalogDoc.payload === 'object'
+    ? classCatalogDoc.payload
+    : { classes: normalizePortalPrepClassList(prepClasses) }
+
+  await saveCloudContentDoc(PORTAL_CLOUD_DOCS.prep, {
+    version: 2,
+    prepConfig: normalizePortalPrepConfig(classCatalogPayload.prepConfig, {
+      pageTitle: APP_CONFIG.defaultTitle,
+      generatedAt: now,
+      examKey: nextExamKey
+    }),
+    classes: normalizePortalPrepClassList(classCatalogPayload.classes),
+    studySets: []
+  }, 'session.json')
+
+  await saveCloudContentDoc(PORTAL_CLOUD_DOCS.check, {
+    updatedAt: now,
+    classes: normalizePortalCheckClassList(normalizePortalPrepClassList(classCatalogPayload.classes).map(function(classInfo){
+      return { id: classInfo.id, name: classInfo.name }
+    })),
+    checkSets: []
+  }, 'check_data.json')
+
+  await saveCloudContentDoc(PORTAL_CLASS_CATALOG_DOC, {
+    prepConfig: normalizePortalPrepConfig(classCatalogPayload.prepConfig, {
+      generatedAt: now,
+      examKey: nextExamKey
+    }),
+    classes: normalizePortalPrepClassList(classCatalogPayload.classes)
+  }, 'prep-classes.json')
+
+  await savePortalExamState({
+    examName: nextExamName,
+    examKey: nextExamKey,
+    previousExamName: currentExamState.examName || currentExamState.lastArchiveExamName || '',
+    previousExamKey: currentExamState.examKey || '',
+    lastResetAt: now,
+    lastResetBy: portalState.currentUser ? portalState.currentUser.uid : '',
+    lastResetByName: getPortalDisplayIdentity(),
+    pdfLabResetToken: pdfLabResetToken
+  })
+
+  portalState.checkData = null
+  portalState.currentCheckSet = null
+  portalState.currentCheckSubmission = null
+  portalState.currentQuestionIssues = []
+  portalState.currentCheckDraftAnswers = {}
+  portalState.currentCheckEditTargets = {}
+  portalState.adminCheckAnalytics = null
+
+  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.issues){
+    try{
+      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.issues)
+    }catch(error){}
+  }
+  try{
+    localStorage.removeItem(getAdminQuestionIssueHiddenStorageKey())
+  }catch(error){}
+
+  await syncPrepContentAfterLogin(true)
+  await ensureCheckData(true)
+  if(getCurrentActiveScreenId() === 'admin-screen'){
+    await renderAdminScreen()
+  }
+
+  return {
+    deletedResponses: deletedResponses,
+    deletedIssues: deletedIssues,
+    deletedPrepSets: deletedPrepSets,
+    deletedCheckSets: deletedCheckSets,
+    nextExamKey: nextExamKey,
+    pdfLabResetToken: pdfLabResetToken
+  }
+}
+
+async function handleSuperAdminArchive(mode){
+  try{
+    const examName = String(getPortalExamCenterNode('superadmin-archive-exam-name') && getPortalExamCenterNode('superadmin-archive-exam-name').value || '').trim()
+    setPortalExamCenterStatus('superadmin-archive-status', '시험 종료 백업을 준비하고 있습니다...', 'working')
+    const snapshot = await downloadPortalExamArchive(examName, mode)
+    const label = mode === 'all' ? '엑셀 + JSON' : (mode === 'excel' ? '엑셀' : 'JSON')
+    setPortalExamCenterStatus('superadmin-archive-status', label + ' 백업을 다운로드했습니다. (' + (snapshot && snapshot.examName || '') + ')', 'success')
+    await renderSuperAdminExamCenter()
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-archive-status', String(error && error.message || '시험 종료 백업에 실패했습니다.'), 'error')
+  }
+}
+
+async function handleSuperAdminClassAdminUpload(file){
+  try{
+    const text = await readPortalTextFileFromBrowser(file)
+    const rows = normalizeSuperAdminClassAdminRows(parsePortalCsvText(text))
+    ensurePortalExamCenterState().classAdminRows = rows
+    setPortalExamCenterStatus('superadmin-class-admin-status', '반/관리자 CSV ' + rows.length + '행을 불러왔습니다. 적용을 누르면 Firebase 반영이 시작됩니다.', 'success')
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-class-admin-status', 'CSV를 읽지 못했습니다.', 'error')
+  }
+}
+
+async function handleSuperAdminStudentUpload(file){
+  try{
+    const text = await readPortalTextFileFromBrowser(file)
+    const rows = normalizeSuperAdminStudentRows(parsePortalCsvText(text))
+    ensurePortalExamCenterState().studentRows = rows
+    setPortalExamCenterStatus('superadmin-student-status', '학생 변동 CSV ' + rows.length + '행을 불러왔습니다. 적용을 누르면 Firebase 반영이 시작됩니다.', 'success')
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-student-status', 'CSV를 읽지 못했습니다.', 'error')
+  }
+}
+
+async function handleSuperAdminApplyClassAdmin(){
+  try{
+    setPortalExamCenterStatus('superadmin-class-admin-status', '반/관리자 재배정을 반영하고 있습니다...', 'working')
+    await applySuperAdminClassAdminRows()
+    setPortalExamCenterStatus('superadmin-class-admin-status', '반 목록과 관리자 담당 반을 반영했습니다.', 'success')
+    await renderSuperAdminExamCenter()
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-class-admin-status', String(error && error.message || '반/관리자 반영에 실패했습니다.'), 'error')
+  }
+}
+
+async function handleSuperAdminApplyStudents(){
+  try{
+    setPortalExamCenterStatus('superadmin-student-status', '학생 변동 내용을 반영하고 있습니다...', 'working')
+    const result = await applySuperAdminStudentRows()
+    setPortalExamCenterStatus(
+      'superadmin-student-status',
+      '학생 변동 반영 완료: 신규 ' + result.createdCount + '명, 수정 ' + result.updatedCount + '명, 비활성 ' + result.disabledCount + '명',
+      'success'
+    )
+    await renderSuperAdminExamCenter()
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-student-status', String(error && error.message || '학생 변동 반영에 실패했습니다.'), 'error')
+  }
+}
+
+async function handleSuperAdminResetCycle(){
+  try{
+    setPortalExamCenterStatus('superadmin-reset-status', '새 시험 초기화를 진행하고 있습니다...', 'working')
+    const result = await resetSuperAdminExamCycle()
+    setPortalExamCenterStatus(
+      'superadmin-reset-status',
+      '초기화 완료: CHECK 제출 ' + result.deletedResponses + '건, 질문 ' + result.deletedIssues + '건, PREP 세트 ' + result.deletedPrepSets + '건, CHECK 세트 ' + result.deletedCheckSets + '건 삭제',
+      'success'
+    )
+    if(getPortalExamCenterNode('superadmin-reset-confirm-text')) getPortalExamCenterNode('superadmin-reset-confirm-text').value = ''
+    await renderSuperAdminExamCenter()
+  }catch(error){
+    console.error(error)
+    setPortalExamCenterStatus('superadmin-reset-status', String(error && error.message || '새 시험 초기화에 실패했습니다.'), 'error')
+  }
+}
+
+function ensureSuperAdminExamCenterBindings(){
+  const section = getPortalExamCenterNode('superadmin-exam-center')
+  if(!section || section.dataset.bound === 'true') return
+  section.dataset.bound = 'true'
+
+  const bindClick = function(id, handler){
+    const node = getPortalExamCenterNode(id)
+    if(node) node.addEventListener('click', handler)
+  }
+  const bindUpload = function(buttonId, inputId, handler){
+    const button = getPortalExamCenterNode(buttonId)
+    const input = getPortalExamCenterNode(inputId)
+    if(button && input){
+      button.addEventListener('click', function(){ input.click() })
+      input.addEventListener('change', function(event){
+        const file = event.target && event.target.files && event.target.files[0]
+        if(file) handler(file)
+        event.target.value = ''
+      })
+    }
+  }
+
+  bindClick('superadmin-archive-all-btn', function(){ handleSuperAdminArchive('all') })
+  bindClick('superadmin-archive-excel-btn', function(){ handleSuperAdminArchive('excel') })
+  bindClick('superadmin-archive-json-btn', function(){ handleSuperAdminArchive('json') })
+  bindClick('superadmin-download-class-admin-template-btn', downloadSuperAdminClassAdminTemplate)
+  bindClick('superadmin-apply-class-admin-btn', handleSuperAdminApplyClassAdmin)
+  bindClick('superadmin-download-student-template-btn', downloadSuperAdminStudentTemplate)
+  bindClick('superadmin-apply-student-btn', handleSuperAdminApplyStudents)
+  bindClick('superadmin-reset-cycle-btn', handleSuperAdminResetCycle)
+
+  bindUpload('superadmin-upload-class-admin-btn', 'superadmin-class-admin-upload-input', handleSuperAdminClassAdminUpload)
+  bindUpload('superadmin-upload-student-btn', 'superadmin-student-upload-input', handleSuperAdminStudentUpload)
+}
+
+async function renderSuperAdminExamCenter(){
+  const section = getPortalExamCenterNode('superadmin-exam-center')
+  if(!section) return
+  ensureSuperAdminExamCenterBindings()
+
+  if(!isPortalSuperAdmin()){
+    section.classList.add('hidden')
+    return
+  }
+
+  section.classList.remove('hidden')
+  const [examState, users, responses, issues, prepSets, checkSets] = await Promise.all([
+    loadPortalExamState(false),
+    fetchAllPortalUsersForSuperAdmin(),
+    fetchAllCheckResponses(),
+    fetchAllQuestionIssues(),
+    loadCloudSetDocs('prep'),
+    loadCloudSetDocs('check')
+  ])
+
+  const activeStudents = summarizePortalCounts(users, function(user){
+    return String(user && user.role || '').trim() !== 'admin' && !(user && user.loginDisabled)
+  })
+  const disabledStudents = summarizePortalCounts(users, function(user){
+    return String(user && user.role || '').trim() !== 'admin' && !!(user && user.loginDisabled)
+  })
+  const assignedAdmins = summarizePortalCounts(users, function(user){
+    return String(user && user.role || '').trim() === 'admin' && normalizeAdminScopeValue(user && user.adminScope) !== 'all'
+  })
+
+  const metaNode = getPortalExamCenterNode('superadmin-exam-center-meta')
+  const overviewNode = getPortalExamCenterNode('superadmin-exam-overview')
+  const archiveNameInput = getPortalExamCenterNode('superadmin-archive-exam-name')
+  const nextExamNameInput = getPortalExamCenterNode('superadmin-next-exam-name')
+  const resetConfirmInput = getPortalExamCenterNode('superadmin-reset-confirm-text')
+
+  if(metaNode){
+    const metaBits = [
+      examState.examName ? ('현재 시험: ' + examState.examName) : '현재 시험명 미설정',
+      examState.examKey ? ('examKey: ' + examState.examKey) : 'examKey 미설정',
+      examState.lastArchiveAt ? ('마지막 백업: ' + formatPortalDateTime(examState.lastArchiveAt)) : '백업 기록 없음',
+      examState.lastResetAt ? ('마지막 초기화: ' + formatPortalDateTime(examState.lastResetAt)) : '초기화 기록 없음'
+    ]
+    metaNode.textContent = metaBits.join(' · ')
+  }
+
+  if(overviewNode){
+    overviewNode.innerHTML = [
+      '<div class="superadmin-exam-overview-card"><strong>반 / 관리자</strong><span>반 ' + prepClasses.length + '개 · 담당 관리자 ' + assignedAdmins + '명</span></div>',
+      '<div class="superadmin-exam-overview-card"><strong>학생 현황</strong><span>재원 ' + activeStudents + '명 · 비활성 ' + disabledStudents + '명</span></div>',
+      '<div class="superadmin-exam-overview-card"><strong>운영 데이터</strong><span>CHECK 제출 ' + responses.length + '건 · 질문 ' + issues.length + '건 · PREP 세트 ' + prepSets.length + '개 · CHECK 세트 ' + checkSets.length + '개</span></div>'
+    ].join('')
+  }
+
+  if(archiveNameInput && !archiveNameInput.value.trim()){
+    archiveNameInput.value = examState.examName || ''
+  }
+  if(nextExamNameInput && !nextExamNameInput.value.trim() && examState.examName){
+    nextExamNameInput.value = examState.examName
+  }
+  if(resetConfirmInput){
+    resetConfirmInput.placeholder = '확인 문구: 새 시험 시작'
+  }
+}
+
+const originalLoadPortalPrepBundleFromSourcesForExamCenter = loadPortalPrepBundleFromSources
+loadPortalPrepBundleFromSources = async function(){
+  const bundle = await originalLoadPortalPrepBundleFromSourcesForExamCenter()
+  const examState = await loadPortalExamState(false)
+  if(bundle){
+    bundle.prepConfig = normalizePortalPrepConfig(bundle.prepConfig, {
+      examKey: examState.examKey || ''
+    })
+  }
+  return bundle
+}
+
+async function handleResolvedAuthUser(user){
+  portalState.authResolved = true
+  portalState.currentUser = user
+  portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
+
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
+    try{
+      if(portalState.auth && portalState.auth.currentUser){
+        await portalState.auth.signOut()
+      }
+    }catch(error){}
+    portalState.currentUser = null
+    portalState.currentProfile = null
+    setAuthError('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+  }
+
+  routePortalAfterState()
+}
+
+async function fetchOrCreateUserProfile(user){
+  const snapshot = await getFirebaseUserProfileSnapshot(user.uid)
+  if(snapshot.exists){
+    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
+  }
+
+  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
+  const loginId = derivePortalLoginId({ email: user.email || '' })
+  const profile = {
+    uid: user.uid,
+    loginId: loginId,
+    email: user.email || '',
+    name: user.displayName || '',
+    studentId: loginId,
+    classIds: fallbackClassId ? [fallbackClassId] : [],
+    role: 'student',
+    adminScope: 'assigned',
+    loginDisabled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  await saveFirebaseUserProfile(user.uid, profile)
+  return normalizeUserProfile(profile)
+}
+
+async function loginPortalUser(loginId, password){
+  if(portalState.firebaseEnabled){
+    const credential = await portalState.auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
+    const user = credential && credential.user ? credential.user : portalState.auth.currentUser
+    portalState.authResolved = true
+    portalState.currentUser = user || null
+    portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
+    if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
+      await portalState.auth.signOut()
+      portalState.currentUser = null
+      portalState.currentProfile = null
+      throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+    }
+    routePortalAfterState()
+    return
+  }
+
+  const user = findLocalPortalUser(loginId, password)
+  if(!user) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.')
+  if(user.loginDisabled) throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+
+  localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
+  portalState.currentUser = buildLocalAuthUser(user)
+  portalState.currentProfile = user
+  routePortalAfterState()
+}
+
+const originalRoutePortalAfterStateForExamCenter = routePortalAfterState
+routePortalAfterState = function(){
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
+    try{
+      if(portalState.firebaseEnabled && portalState.auth && portalState.auth.currentUser){
+        portalState.auth.signOut()
+      }
+    }catch(error){}
+    try{
+      localStorage.removeItem(PORTAL_STORAGE_KEYS.currentUserId)
+    }catch(error){}
+    portalState.currentUser = null
+    portalState.currentProfile = null
+    showAuthScreen('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+    return
+  }
+  return originalRoutePortalAfterStateForExamCenter()
+}
+
+const originalRenderAdminScreenForExamCenter = renderAdminScreen
+renderAdminScreen = async function(){
+  await originalRenderAdminScreenForExamCenter()
+  await renderSuperAdminExamCenter()
 }
