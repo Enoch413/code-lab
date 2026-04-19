@@ -26,7 +26,6 @@ const portalState = {
   firebaseEnabled: false,
   auth: null,
   db: null,
-  storage: null,
   currentUser: null,
   currentProfile: null,
   checkData: null,
@@ -212,7 +211,6 @@ function initFirebasePortal(){
     portalState.authProvider = 'firebase'
     portalState.auth = firebase.auth()
     portalState.db = firebase.firestore()
-    portalState.storage = typeof firebase.storage === 'function' ? firebase.storage() : null
     setAuthMeta('Firebase 인증과 Firestore 저장이 연결되었습니다.')
     setTimeout(function(){
       if(portalState.authResolved) return
@@ -852,7 +850,7 @@ function openPrepPortal(){
       showPortalScreen()
       return
     }
-    showPassageScreen()
+    showHome()
     return
   }
 
@@ -861,7 +859,7 @@ function openPrepPortal(){
     showPortalScreen()
     return
   }
-  showPassageScreen()
+  showHome()
 }
 
 function handlePortalHashRoute(){
@@ -2457,7 +2455,6 @@ function initLocalPortal(){
   portalState.firebaseEnabled = false
   portalState.authProvider = 'local'
   portalState.authResolved = true
-  portalState.storage = null
 
   const previewResult = ensureLocalPreviewUsers()
   const currentUserId = localStorage.getItem(PORTAL_STORAGE_KEYS.currentUserId) || ''
@@ -2650,13 +2647,6 @@ window.handlePrepBackToPortal = function(){
 window.handlePortalClassSelectionComplete = function(){
   const targetScreen = portalState.classSelectionReturnScreen || ''
   portalState.classSelectionReturnScreen = ''
-  if(targetScreen === 'passage-screen'){
-    showPassageScreen()
-    if(typeof syncPortalAdminSetPanels === 'function'){
-      syncPortalAdminSetPanels('passage-screen')
-    }
-    return true
-  }
   if(targetScreen === 'check-screen'){
     renderCheckScreen()
     activatePortalScreen('check-screen')
