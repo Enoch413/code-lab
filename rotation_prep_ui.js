@@ -574,6 +574,34 @@ function renderPassageVideoPlayer(passage){
   return '<div class="empty-box video-empty-box">등록된 영상이 없습니다.</div>'
 }
 
+function stopActivePrepVideoPlayback(){
+  const studyScreen = document.getElementById('study-screen')
+  if(!studyScreen) return
+
+  Array.from(studyScreen.querySelectorAll('video')).forEach(function(video){
+    try{
+      video.pause()
+      video.removeAttribute('src')
+      Array.from(video.querySelectorAll('source')).forEach(function(source){
+        source.removeAttribute('src')
+      })
+      video.load()
+    }catch(error){
+      console.warn('video stop skipped:', error && error.message ? error.message : error)
+    }
+  })
+
+  Array.from(studyScreen.querySelectorAll('iframe.video-embed-frame')).forEach(function(frame){
+    try{
+      frame.setAttribute('src', 'about:blank')
+    }catch(error){
+      console.warn('iframe stop skipped:', error && error.message ? error.message : error)
+    }
+  })
+}
+
+window.stopActivePrepVideoPlayback = stopActivePrepVideoPlayback
+
 function groupItems(items){
   const configs = [
     { id: 'big-picture', title: '주제' },
@@ -753,6 +781,14 @@ function renderStageActions(){
     ''
 }
 
+function syncCurrentPassageProgressUi(isDone){
+  const statusNode = document.querySelector('#study-screen .video-panel-status')
+  if(statusNode){
+    statusNode.innerHTML = renderProgressChip(!!isDone)
+  }
+  renderStageActions()
+}
+
 function markPassageDone(){
   if(currentPassage < 0) return
   if(!progress.done || typeof progress.done !== 'object') progress.done = {}
@@ -760,8 +796,7 @@ function markPassageDone(){
   const nextDone = !progress.done[storageKey]
   progress.done[storageKey] = nextDone
   saveProgress()
-  renderStudy()
-  renderPassageScreen()
+  syncCurrentPassageProgressUi(nextDone)
   showToast(nextDone ? '영상을 완료로 표시했습니다.' : '영상 완료 표시를 취소했습니다.', 'var(--green)')
 }
 

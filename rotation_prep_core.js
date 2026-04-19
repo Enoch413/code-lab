@@ -300,6 +300,7 @@ function routeAfterUnlock(){
 }
 
 function activateScreen(targetId){
+  stopPrepVideoPlaybackBeforeScreenChange(targetId)
   SCREEN_IDS.forEach(function(id){
     const element = document.getElementById(id)
     if(element) element.classList.remove('active')
@@ -310,6 +311,14 @@ function activateScreen(targetId){
     window.onAppScreenActivated(targetId)
   }
   resetViewportPosition()
+}
+
+function stopPrepVideoPlaybackBeforeScreenChange(targetId){
+  const activeScreen = document.querySelector('.screen.active')
+  if(!activeScreen || activeScreen.id !== 'study-screen' || targetId === 'study-screen') return
+  if(typeof window.stopActivePrepVideoPlayback === 'function'){
+    window.stopActivePrepVideoPlayback()
+  }
 }
 
 function resetViewportPosition(){
