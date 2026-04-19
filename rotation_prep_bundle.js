@@ -3,7 +3,8 @@ function normalizeBundleData(data){
   const prepConfig = {
     pageTitle: String((source.prepConfig && source.prepConfig.pageTitle) || source.pageTitle || APP_CONFIG.defaultTitle).trim() || APP_CONFIG.defaultTitle,
     globalPassword: String((source.prepConfig && source.prepConfig.globalPassword) || source.password || '').trim(),
-    generatedAt: String((source.prepConfig && source.prepConfig.generatedAt) || source.savedAt || source.updatedAt || '').trim()
+    generatedAt: String((source.prepConfig && source.prepConfig.generatedAt) || source.savedAt || source.updatedAt || '').trim(),
+    examKey: String((source.prepConfig && source.prepConfig.examKey) || source.examKey || '').trim()
   }
 
   if(Array.isArray(source.studySets)){

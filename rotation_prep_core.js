@@ -141,6 +141,7 @@ function loadData(data, options){
   progressKey = ''
   progress = { done: {} }
   baseProgressKey = 'rotation_prep_progress_v8_' + simpleHash(JSON.stringify({
+    examKey: String(normalized.prepConfig && normalized.prepConfig.examKey || window.ROTATION_PORTAL_EXAM_KEY || '').trim(),
     classes: prepClasses,
     sets: studySets.map(function(studySet){
       return {
