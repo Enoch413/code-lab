@@ -738,6 +738,9 @@ window.onAppScreenActivated = function(screenId){
 }
 
 function activatePortalScreen(screenId){
+  if(typeof stopPrepVideoPlaybackBeforeScreenChange === 'function'){
+    stopPrepVideoPlaybackBeforeScreenChange(screenId)
+  }
   document.querySelectorAll('.screen').forEach(function(screen){
     screen.classList.remove('active')
   })
