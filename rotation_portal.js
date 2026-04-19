@@ -615,6 +615,9 @@ function unlockAllPrepClasses(){
 }
 
 function activatePortalScreen(screenId){
+  if(typeof stopPrepVideoPlaybackBeforeScreenChange === 'function'){
+    stopPrepVideoPlaybackBeforeScreenChange(screenId)
+  }
   document.querySelectorAll('.screen').forEach(function(screen){
     screen.classList.remove('active')
   })
@@ -834,6 +837,9 @@ function ensureScopedAdminPrepSelection(){
 }
 
 function hideAllScreensBeforePrep(){
+  if(typeof stopPrepVideoPlaybackBeforeScreenChange === 'function'){
+    stopPrepVideoPlaybackBeforeScreenChange('prep-route')
+  }
   document.querySelectorAll('.screen').forEach(function(screen){
     screen.classList.remove('active')
   })
