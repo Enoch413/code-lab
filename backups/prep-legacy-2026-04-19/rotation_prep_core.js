@@ -47,16 +47,6 @@ function bindEvents(){
   document.getElementById('class-auth-submit-btn').addEventListener('click', confirmClassPassword)
   document.getElementById('class-auth-back-btn').addEventListener('click', backToClassSelection)
   document.getElementById('change-class-btn').addEventListener('click', showClassScreen)
-  const passageChangeClassBtn = document.getElementById('passage-change-class-btn')
-  if(passageChangeClassBtn){
-    passageChangeClassBtn.addEventListener('click', function(){
-      if(typeof window.openPrepClassPicker === 'function'){
-        window.openPrepClassPicker()
-        return
-      }
-      showClassScreen()
-    })
-  }
   document.getElementById('set-back-btn').addEventListener('click', goBackFromSetScreen)
   document.getElementById('passage-back-btn').addEventListener('click', goHome)
   document.getElementById('passage-home-btn').addEventListener('click', goHome)
@@ -292,10 +282,6 @@ function routeAfterUnlock(){
     showClassScreen()
     return
   }
-  if(typeof shouldUseDirectPrepPassageFlow === 'function' && shouldUseDirectPrepPassageFlow()){
-    showPassageScreen()
-    return
-  }
   showHome()
 }
 
@@ -413,12 +399,13 @@ function ensureCurrentSetSelection(){
 
 function updateSetProgressContext(){
   const currentClass = getCurrentClass()
-  if(!currentClass){
+  const currentSet = getCurrentStudySet()
+  if(!currentClass || !currentSet){
     progressKey = ''
     progress = { done: {} }
     return
   }
-  progressKey = baseProgressKey + '_' + sanitizeId(currentClass.id)
+  progressKey = baseProgressKey + '_' + sanitizeId(currentClass.id) + '_' + sanitizeId(currentSet.id)
   loadProgress()
 }
 
@@ -466,17 +453,6 @@ function getCurrentClass(){
 
 function getCurrentStudySet(){
   return currentSetIndex >= 0 ? studySets[currentSetIndex] : null
-}
-
-function getPassageProgressStorageKey(setIndex, passageIndex){
-  const studySet = studySets[setIndex]
-  const passage = studySet && studySet.passages ? studySet.passages[passageIndex] : null
-  const setId = sanitizeId(studySet && studySet.id || ('set-' + setIndex))
-  const passageId = sanitizeId(
-    passage && (passage.id || passage.title) ||
-    ('passage-' + passageIndex)
-  )
-  return setId + '::' + passageId + '::' + String(passageIndex)
 }
 
 function getCurrentClassAssignments(studySet){
@@ -530,7 +506,6 @@ window.restorePrepNavigationState = function(route){
   if(typeof state.currentPassage === 'number') currentPassage = state.currentPassage
   currentStudySectionId = String(state.currentStudySectionId || '').trim()
   if(typeof state.pendingClassIndex === 'number') pendingClassIndex = state.pendingClassIndex
-  if(currentClassIndex >= 0) updateSetProgressContext()
 
   switch(state.screenId){
     case 'class-screen':
@@ -546,13 +521,8 @@ window.restorePrepNavigationState = function(route){
       return
     case 'home-screen':
       renderClassSummary()
-      if(typeof shouldUseDirectPrepPassageFlow === 'function' && shouldUseDirectPrepPassageFlow()){
-        renderPassageScreen()
-        activateScreen('passage-screen')
-      }else{
-        renderSetScreen()
-        activateScreen('home-screen')
-      }
+      renderSetScreen()
+      activateScreen('home-screen')
       return
     case 'passage-screen':
       renderClassSummary()
@@ -561,7 +531,8 @@ window.restorePrepNavigationState = function(route){
       return
     case 'study-menu-screen':
       renderClassSummary()
-      showPassageScreen()
+      renderStudyMenu()
+      activateScreen('study-menu-screen')
       return
     case 'study-screen':
       renderClassSummary()

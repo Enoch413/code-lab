@@ -3,25 +3,16 @@ function buildPassageState(source, index){
   const textLines = splitLines(text)
   const translationText = buildTranslationText(source, textLines)
   const title = getPassageTitle(source, index)
-  const video = normalizePassageVideo(source, title)
   const selectedLines = mapSelectedLines(source, textLines)
   const grammarSelections = normalizeGrammarSelections(source)
   const vocabRows = normalizeVocabRows(source)
   const questionAnswers = normalizeQuestionAnswers(source && source.questionAnswers || {})
 
   return {
-    id: String(source && source.id || ('passage-' + (index + 1))).trim() || ('passage-' + (index + 1)),
     index: index,
     title: title,
     text: text,
     textLines: textLines,
-    videoUrl: video.url,
-    videoEmbedUrl: video.embedUrl,
-    videoPoster: video.poster,
-    videoTitle: video.title,
-    videoDescription: video.description,
-    videoProvider: video.provider,
-    hasVideo: video.hasVideo,
     translationText: translationText,
     translationLines: splitLines(translationText),
     selectedLines: selectedLines,
@@ -37,112 +28,6 @@ function buildPassageState(source, index){
       questionAnswers: questionAnswers
     })
   }
-}
-
-function normalizePassageVideo(source, fallbackTitle){
-  const rawVideo = source && typeof source.video === 'object' ? source.video : {}
-  const rawUrl = String(
-    rawVideo.url ||
-    rawVideo.src ||
-    rawVideo.fileUrl ||
-    source && (source.videoUrl || source.videoSrc || source.videoFileUrl || source.videoFile || source.videoLink) ||
-    ''
-  ).trim()
-  const rawEmbedUrl = String(
-    rawVideo.embedUrl ||
-    rawVideo.iframeUrl ||
-    source && (source.videoEmbedUrl || source.videoIframeUrl) ||
-    ''
-  ).trim()
-
-  const embedUrl = normalizePassageVideoEmbedUrl(rawEmbedUrl || rawUrl)
-  const provider = inferPassageVideoProvider(embedUrl || rawUrl)
-
-  return {
-    url: rawUrl,
-    embedUrl: embedUrl,
-    poster: String(
-      rawVideo.poster ||
-      rawVideo.thumbnail ||
-      source && (source.videoPoster || source.videoThumbnail || source.thumbnailUrl) ||
-      ''
-    ).trim(),
-    title: String(
-      rawVideo.title ||
-      source && (source.videoTitle || source.videoName) ||
-      fallbackTitle ||
-      ''
-    ).trim() || String(fallbackTitle || '').trim(),
-    description: String(
-      rawVideo.description ||
-      source && (source.videoDescription || source.description || source.summary) ||
-      ''
-    ).trim(),
-    provider: provider,
-    hasVideo: !!(embedUrl || rawUrl)
-  }
-}
-
-function normalizePassageVideoEmbedUrl(rawUrl){
-  const text = String(rawUrl || '').trim()
-  if(!text) return ''
-  if(/\/embed\//i.test(text)) return text
-
-  const parsed = parsePassageVideoUrl(text)
-  if(!parsed) return ''
-
-  if(parsed.provider === 'youtube' && parsed.id){
-    return 'https://www.youtube.com/embed/' + parsed.id
-  }
-
-  if(parsed.provider === 'vimeo' && parsed.id){
-    return 'https://player.vimeo.com/video/' + parsed.id
-  }
-
-  return ''
-}
-
-function parsePassageVideoUrl(rawUrl){
-  const text = String(rawUrl || '').trim()
-  if(!text) return null
-
-  try{
-    const url = new URL(text)
-    const host = String(url.hostname || '').toLowerCase()
-
-    if(host.indexOf('youtu.be') >= 0){
-      const id = url.pathname.replace(/\//g, '').trim()
-      return id ? { provider: 'youtube', id: id } : null
-    }
-
-    if(host.indexOf('youtube.com') >= 0){
-      const shortsMatch = url.pathname.match(/\/shorts\/([^/?#]+)/i)
-      if(shortsMatch && shortsMatch[1]) return { provider: 'youtube', id: shortsMatch[1] }
-
-      const embedMatch = url.pathname.match(/\/embed\/([^/?#]+)/i)
-      if(embedMatch && embedMatch[1]) return { provider: 'youtube', id: embedMatch[1] }
-
-      const watchId = url.searchParams.get('v')
-      if(watchId) return { provider: 'youtube', id: watchId }
-    }
-
-    if(host.indexOf('vimeo.com') >= 0){
-      const match = url.pathname.match(/\/(\d+)/)
-      if(match && match[1]) return { provider: 'vimeo', id: match[1] }
-    }
-  }catch(error){
-    return null
-  }
-
-  return null
-}
-
-function inferPassageVideoProvider(rawUrl){
-  const text = String(rawUrl || '').trim()
-  if(!text) return ''
-  const parsed = parsePassageVideoUrl(text)
-  if(parsed && parsed.provider) return parsed.provider
-  return 'file'
 }
 
 function splitLines(text){

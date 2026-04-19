@@ -96,19 +96,6 @@ portalState.prepSyncPromise = null
 portalState.prepSetInventory = portalState.prepSetInventory || []
 portalState.checkSetInventory = portalState.checkSetInventory || []
 portalState.checkSetRegradeDocId = portalState.checkSetRegradeDocId || ''
-portalState.prepVideoManager = portalState.prepVideoManager || {
-  open: false,
-  isSaving: false,
-  docId: '',
-  title: '',
-  currentDoc: null,
-  status: '업로드할 지문을 선택해 주세요.',
-  pendingPassageIndex: -1
-}
-portalState.prepVideoManager.isSaving = !!portalState.prepVideoManager.isSaving
-if(!portalState.prepVideoManager.open){
-  portalState.prepVideoManager.status = '유튜브 링크를 입력해 주세요.'
-}
 portalState.checkSetEditor = portalState.checkSetEditor || {
   open: false,
   isSaving: false,
@@ -249,9 +236,10 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
-  bindClick('prep-admin-upload-btn', createPortalPrepVideoByPrompt)
-  bindClick('prep-passage-admin-upload-btn', createPortalPrepVideoByPrompt)
-  bindClick('prep-passage-admin-class-btn', openPrepClassPicker)
+  bindClick('prep-admin-upload-btn', function(){
+    const input = document.getElementById('prep-set-upload-input')
+    if(input) input.click()
+  })
   bindClick('check-admin-upload-btn', function(){
     const input = document.getElementById('check-set-upload-input')
     if(input) input.click()
@@ -293,22 +281,6 @@ function bindPortalEnhancementEvents(){
     })
   }
 
-  bindClick('prep-video-manager-backdrop', function(){
-    closePortalPrepVideoManager()
-  })
-  bindClick('prep-video-manager-close-btn', function(){
-    closePortalPrepVideoManager()
-  })
-  bindClick('prep-video-manager-cancel-btn', function(){
-    closePortalPrepVideoManager()
-  })
-
-  const prepVideoManagerList = document.getElementById('prep-video-manager-list')
-  if(prepVideoManagerList && prepVideoManagerList.dataset.bound !== 'true'){
-    prepVideoManagerList.dataset.bound = 'true'
-    prepVideoManagerList.addEventListener('keydown', handlePortalPrepVideoManagerKeydown)
-  }
-
   bindClick('check-set-editor-backdrop', function(){
     closePortalManagedCheckSetEditor()
   })
@@ -338,18 +310,6 @@ function bindPortalEnhancementEvents(){
 function bindClick(id, handler){
   const node = document.getElementById(id)
   if(node) node.addEventListener('click', handler)
-}
-
-function handlePortalPrepVideoManagerKeydown(event){
-  const target = event && event.target
-  if(!target || !target.classList || !target.classList.contains('prep-video-manager-input')) return
-  if(event.key !== 'Enter') return
-  event.preventDefault()
-
-  const passageIndex = Number(target.getAttribute('data-passage-index'))
-  if(Number.isInteger(passageIndex) && passageIndex >= 0){
-    savePortalPrepPassageVideoUrl(passageIndex)
-  }
 }
 
 function ensurePortalManagedCheckSetEditorGroupSaveButton(){
@@ -382,13 +342,6 @@ function closeAppDrawer(){
   if(drawer) drawer.classList.remove('open')
   if(drawer) drawer.setAttribute('aria-hidden', 'true')
   if(backdrop) backdrop.classList.add('hidden')
-}
-
-function openPrepClassPicker(){
-  if(portalState.currentUser){
-    portalState.classSelectionReturnScreen = 'passage-screen'
-  }
-  showClassScreen()
 }
 
 function runDrawerAction(action){
@@ -973,31 +926,32 @@ async function openPrepPortal(){
 
   hideAllScreensBeforePrep()
   if(!bundleData){
-    if(isPortalAdmin()){
-      activateScreen('passage-screen')
-      renderClassSummary()
-      renderPassageScreen()
-      syncPortalAdminSetPanels('passage-screen')
-    }else{
-      showNoSessionState()
-    }
+    showNoSessionState()
     updateAppChrome(getCurrentActiveScreenId())
     return
   }
 
   if(isPortalAdmin()){
-    if(typeof ensureScopedAdminPrepSelection === 'function'){
-      ensureScopedAdminPrepSelection()
+    if(!prepClasses.length){
+      showToast('연결된 PREP 반 정보가 없습니다.', 'var(--red)')
+      showPortalScreen()
+      return
     }
-    showPassageScreen()
-    syncPortalAdminSetPanels('passage-screen')
+    if(typeof ensureScopedAdminPrepSelection === 'function' && !ensureScopedAdminPrepSelection()){
+      showToast('로그인 계정과 연결된 PREP 반 정보가 없습니다.', 'var(--red)')
+      showPortalScreen()
+      return
+    }
+    showHome()
     return
   }
 
-  if(typeof ensureStudentPrepSelection === 'function'){
-    ensureStudentPrepSelection()
+  if(!ensureStudentPrepSelection()){
+    showToast('로그인 계정과 연결된 반 정보가 없습니다.', 'var(--red)')
+    showPortalScreen()
+    return
   }
-  showPassageScreen()
+  showHome()
 }
 
 async function ensureCheckData(forceReload){
@@ -3972,7 +3926,6 @@ function buildPortalPrepSetInventory(legacySets, setDocs, classes){
   ;(Array.isArray(legacySets) ? legacySets : []).forEach(function(studySet){
     inventory.push(Object.assign(summarizePortalPrepSet(studySet), {
       docId: '',
-      legacyIndex: inventory.length,
       isManaged: false,
       updatedAt: '',
       fileName: ''
@@ -3983,7 +3936,6 @@ function buildPortalPrepSetInventory(legacySets, setDocs, classes){
     if(!studySet) return
     inventory.push(Object.assign(summarizePortalPrepSet(studySet), {
       docId: doc.docId,
-      isDirectVideo: isPortalDirectPrepVideoPayload(doc.payload),
       isManaged: true,
       updatedAt: doc.updatedAt,
       fileName: doc.fileName
@@ -4288,18 +4240,6 @@ function buildPrepUploadRecords(raw, fileName, classInfo){
   })
 }
 
-function isPortalDirectPrepVideoPayload(payload){
-  return !!(
-    payload &&
-    (
-      payload.kind === 'prep-video' ||
-      payload.source === 'direct-video' ||
-      payload.createdByLab === 'code-lab-video' ||
-      payload.isDirectVideo === true
-    )
-  )
-}
-
 function buildCheckUploadRecords(raw, fileName, classInfo){
   let normalized = null
   if(Array.isArray(raw && raw.checkSets) || Array.isArray(raw && raw.classes)){
@@ -4379,8 +4319,7 @@ async function handlePortalSetUpload(kind, event){
       if(!restorePortalPrepClassSelection(classInfo.id) && typeof ensureScopedAdminPrepSelection === 'function'){
         ensureScopedAdminPrepSelection()
       }
-      showPassageScreen()
-      syncPortalAdminSetPanels('passage-screen')
+      showHome()
     }else{
       await ensureCheckData(true)
       renderCheckScreen()
@@ -4391,690 +4330,6 @@ async function handlePortalSetUpload(kind, event){
   }catch(error){
     console.error(error)
     showToast(String(error && error.message || 'Set upload failed.'), 'var(--red)')
-  }
-}
-
-function getPortalPrepVideoInputValue(passageIndex){
-  const input = document.getElementById('prep-video-url-input-' + String(passageIndex))
-  return String(input && input.value || '').trim()
-}
-
-function normalizePortalPrepYouTubeUrl(value){
-  const rawValue = String(value || '').trim()
-  if(!rawValue) return null
-
-  const parsed = typeof parsePassageVideoUrl === 'function' ? parsePassageVideoUrl(rawValue) : null
-  if(!parsed || parsed.provider !== 'youtube' || !parsed.id) return null
-
-  const videoId = String(parsed.id || '').trim()
-  if(!videoId) return null
-
-  return {
-    videoId: videoId,
-    url: 'https://www.youtube.com/watch?v=' + videoId,
-    embedUrl: 'https://www.youtube.com/embed/' + videoId
-  }
-}
-
-function getPortalPrepVideoUploadTargetClass(){
-  let classInfo = getPortalUploadTargetClass('prep')
-  if((!classInfo || !classInfo.id) && typeof ensureScopedAdminPrepSelection === 'function'){
-    ensureScopedAdminPrepSelection()
-    classInfo = getPortalUploadTargetClass('prep')
-  }
-  if(!classInfo || !classInfo.id){
-    const visibleEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
-      ? window.getVisiblePortalPrepClassEntries()
-      : []
-    if(visibleEntries[0] && visibleEntries[0].classInfo){
-      classInfo = visibleEntries[0].classInfo
-    }
-  }
-  if(!classInfo || !classInfo.id){
-    const profileClassIds = typeof getProfileClassIds === 'function' ? getProfileClassIds() : []
-    const fallbackId = String(profileClassIds[0] || '').trim()
-    if(fallbackId){
-      classInfo = { id: fallbackId, name: fallbackId, password: '' }
-    }
-  }
-  return classInfo
-}
-
-function buildPortalPrepVideoRecord(title, normalizedUrl, classInfo){
-  const now = new Date().toISOString()
-  const docId = createPortalManagedSetId('prep-video')
-  const videoTitle = String(title || '').trim()
-  const passage = {
-    id: 'video-1',
-    title: videoTitle,
-    text: '',
-    videoUrl: normalizedUrl.url,
-    videoEmbedUrl: normalizedUrl.embedUrl,
-    videoTitle: videoTitle,
-    videoProvider: 'youtube',
-    videoUpdatedAt: now,
-    video: {
-      url: normalizedUrl.url,
-      embedUrl: normalizedUrl.embedUrl,
-      title: videoTitle,
-      provider: 'youtube',
-      updatedAt: now
-    }
-  }
-
-  return {
-    docId: docId,
-    title: videoTitle,
-    classIds: [classInfo.id],
-    fileName: 'direct-video-link',
-    sortOrder: Date.now(),
-    payload: {
-      kind: 'prep-video',
-      id: docId,
-      title: videoTitle,
-      source: 'direct-video',
-      sourceName: '직접 영상 업로드',
-      createdByLab: 'code-lab-video',
-      isDirectVideo: true,
-      startDate: '',
-      endDate: '',
-      savedAt: now,
-      questionCounts: {},
-      passages: [passage],
-      classAssignments: [{
-        classId: classInfo.id,
-        passageIndexes: [0]
-      }]
-    }
-  }
-}
-
-async function createPortalPrepVideoByPrompt(){
-  if(!isPortalAdmin()){
-    showToast('관리자만 PREP 영상을 업로드할 수 있습니다.', 'var(--red)')
-    return
-  }
-
-  const classInfo = getPortalPrepVideoUploadTargetClass()
-  if(!classInfo || !classInfo.id){
-    showToast('먼저 반을 선택해 주세요.', 'var(--red)')
-    return
-  }
-  if(!canManagePortalClass(classInfo)){
-    showToast('현재 계정으로 관리할 수 없는 반입니다.', 'var(--red)')
-    return
-  }
-
-  const titleRaw = typeof window.prompt === 'function'
-    ? window.prompt('PREP 영상 제목을 입력해 주세요.')
-    : ''
-  if(titleRaw == null) return
-  const title = String(titleRaw || '').trim()
-  if(!title){
-    showToast('영상 제목을 입력해 주세요.', 'var(--red)')
-    return
-  }
-
-  const urlRaw = typeof window.prompt === 'function'
-    ? window.prompt('유튜브 링크를 붙여넣어 주세요.', 'https://www.youtube.com/watch?v=')
-    : ''
-  if(urlRaw == null) return
-  const normalizedUrl = normalizePortalPrepYouTubeUrl(urlRaw)
-  if(!normalizedUrl){
-    showToast('유튜브 링크 형식을 확인해 주세요.', 'var(--red)')
-    return
-  }
-
-  try{
-    const record = buildPortalPrepVideoRecord(title, normalizedUrl, classInfo)
-    await savePrepClassCatalog(classInfo)
-    await saveCloudSetDoc('prep', record.docId, record)
-    await syncPrepContentAfterLogin(true)
-    restorePortalPrepClassSelection(classInfo.id)
-    showPassageScreen()
-    syncPortalAdminSetPanels('passage-screen')
-    showToast('PREP 영상을 업로드했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    showToast('PREP 영상 업로드 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-function canUsePortalCloudStorage(){
-  return !!(portalState.storage && typeof portalState.storage.ref === 'function')
-}
-
-function buildPortalPrepVideoManagerPassages(currentDoc){
-  const rawPassages = Array.isArray(currentDoc && currentDoc.payload && currentDoc.payload.passages)
-    ? currentDoc.payload.passages
-    : []
-
-  return rawPassages.map(function(passage, index){
-    const normalized = buildPassageState(passage, index)
-    const nestedVideo = passage && passage.video && typeof passage.video === 'object' ? passage.video : {}
-    return {
-      index: index,
-      id: String(passage && passage.id || normalized.id || ('passage-' + (index + 1))).trim(),
-      title: normalized.title,
-      preview: normalized.videoDescription || normalized.textLines[0] || String(normalized.text || '').slice(0, 120),
-      hasVideo: !!normalized.hasVideo,
-      videoUrl: String(normalized.videoUrl || '').trim(),
-      videoEmbedUrl: String(normalized.videoEmbedUrl || '').trim(),
-      videoProvider: String(normalized.videoProvider || '').trim(),
-      videoTitle: String(normalized.videoTitle || normalized.title || '').trim(),
-      videoFileName: String(passage && passage.videoFileName || nestedVideo.fileName || '').trim(),
-      videoStoragePath: String(passage && passage.videoStoragePath || nestedVideo.storagePath || '').trim(),
-      videoUpdatedAt: String(passage && passage.videoUpdatedAt || nestedVideo.updatedAt || '').trim()
-    }
-  })
-}
-
-function renderPortalPrepVideoManager(){
-  const modal = document.getElementById('prep-video-manager-modal')
-  const titleNode = document.getElementById('prep-video-manager-title')
-  const metaNode = document.getElementById('prep-video-manager-meta')
-  const noteNode = document.getElementById('prep-video-manager-note')
-  const listNode = document.getElementById('prep-video-manager-list')
-  const statusNode = document.getElementById('prep-video-manager-status')
-  if(!modal || !titleNode || !metaNode || !listNode || !statusNode) return
-
-  const manager = portalState.prepVideoManager || {}
-  manager.isUploading = !!manager.isSaving
-  if(!manager.open){
-    modal.classList.add('hidden')
-    modal.setAttribute('aria-hidden', 'true')
-    document.body.classList.remove('modal-open')
-    listNode.innerHTML = ''
-    if(noteNode) noteNode.textContent = '지문마다 유튜브 링크를 붙여넣어 저장할 수 있습니다. 저장이 끝나면 학생 화면에서 바로 재생됩니다.'
-    statusNode.textContent = '유튜브 링크를 입력해 주세요.'
-    statusNode.textContent = '업로드할 지문을 선택해 주세요.'
-    return
-  }
-
-  const passages = buildPortalPrepVideoManagerPassages(manager.currentDoc)
-  titleNode.textContent = manager.title || 'PREP 지문 영상 관리'
-  metaNode.textContent = String(passages.length) + '개 지문 · 영상 파일을 올리면 학생 화면에 바로 반영됩니다.'
-  statusNode.textContent = String(manager.status || '업로드할 지문을 선택해 주세요.')
-  titleNode.textContent = manager.title || 'PREP 지문 영상 관리'
-  metaNode.textContent = String(passages.length) + '개 지문에 유튜브 영상을 연결할 수 있습니다.'
-  if(noteNode) noteNode.textContent = '공개 또는 일부공개 유튜브 링크를 붙여넣어 저장해 주세요. watch, youtu.be, embed 링크를 모두 인식합니다.'
-  statusNode.textContent = String(manager.status || '유튜브 링크를 입력해 주세요.')
-  listNode.innerHTML = passages.length
-    ? passages.map(function(passage){
-        const isSaving = !!manager.isSaving && Number(manager.pendingPassageIndex) === Number(passage.index)
-        const isUploading = isSaving
-        let currentVideoMeta = passage.hasVideo
-          ? [
-              passage.videoFileName || '업로드된 영상',
-              passage.videoUpdatedAt ? ('업데이트 ' + formatAdminTime(passage.videoUpdatedAt)) : ''
-            ].filter(Boolean).join(' · ')
-          : '등록된 영상이 없습니다.'
-
-        currentVideoMeta = passage.hasVideo
-          ? [
-              passage.videoProvider === 'youtube' ? '유튜브 연결됨' : '영상 연결됨',
-              passage.videoUpdatedAt ? ('업데이트 ' + formatAdminTime(passage.videoUpdatedAt)) : ''
-            ].filter(Boolean).join(' · ')
-          : '등록된 영상이 없습니다.'
-
-        return '' +
-          '<div class="prep-video-manager-item">' +
-            '<div class="prep-video-manager-item-head">' +
-              '<div>' +
-                '<div class="prep-video-manager-item-title">' + escapeHtml(String(passage.index + 1) + '. ' + passage.title) + '</div>' +
-                '<div class="prep-video-manager-item-meta">' +
-                  '<span class="admin-content-chip ' + (passage.hasVideo ? 'live' : 'legacy') + '">' + escapeHtml(passage.hasVideo ? '영상 있음' : '영상 없음') + '</span>' +
-                  (passage.videoUrl ? '<a class="prep-video-manager-link" href="' + escapeHtml(passage.videoUrl) + '" target="_blank" rel="noopener">새 탭 열기</a>' : '') +
-                '</div>' +
-              '</div>' +
-              '<div class="prep-video-manager-item-actions">' +
-                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.savePortalPrepPassageVideoUrl(' + passage.index + ')"' + (manager.isUploading ? ' disabled' : '') + '>' + (isUploading ? '저장 중...' : '링크 저장') + '</button>' +
-                '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalPrepPassageVideo(' + passage.index + ')"' + (!passage.hasVideo || manager.isUploading ? ' disabled' : '') + '>영상 삭제</button>' +
-              '</div>' +
-            '</div>' +
-            '<div class="prep-video-manager-item-copy">' + escapeHtml(passage.preview || '지문 미리보기가 없습니다.') + '</div>' +
-            '<div class="prep-video-manager-item-status">' + escapeHtml(currentVideoMeta) + '</div>' +
-          '</div>'
-      }).join('')
-    : '<div class="empty-box">이 PREP 세트에는 지문이 없습니다.</div>'
-
-  if(passages.length){
-    Array.from(listNode.querySelectorAll('.prep-video-manager-item')).forEach(function(itemNode, itemIndex){
-      const passage = passages[itemIndex]
-      if(!passage) return
-
-      const actionButtons = itemNode.querySelectorAll('.prep-video-manager-item-actions .btn')
-      const saveButton = actionButtons[0] || null
-      const deleteButton = actionButtons[1] || null
-      const statusLabel = itemNode.querySelector('.prep-video-manager-item-status')
-      const metaChip = itemNode.querySelector('.admin-content-chip')
-      const externalLink = itemNode.querySelector('.prep-video-manager-link')
-      const copyNode = itemNode.querySelector('.prep-video-manager-item-copy')
-      const isSaving = !!manager.isSaving && Number(manager.pendingPassageIndex) === Number(passage.index)
-      const normalizedVideoStatus = passage.hasVideo
-        ? [
-            passage.videoProvider === 'youtube' ? '유튜브 연결됨' : '영상 연결됨',
-            passage.videoUpdatedAt ? ('업데이트 ' + formatAdminTime(passage.videoUpdatedAt)) : ''
-          ].filter(Boolean).join(' · ')
-        : '등록된 영상이 없습니다.'
-      let currentVideoMeta = normalizedVideoStatus
-
-      if(metaChip) metaChip.textContent = passage.hasVideo ? '영상 있음' : '영상 없음'
-      if(externalLink) externalLink.textContent = '새 탭 열기'
-      if(copyNode && !copyNode.textContent.trim()) copyNode.textContent = '지문 미리보기가 없습니다.'
-      if(statusLabel) statusLabel.textContent = currentVideoMeta = passage.hasVideo
-        ? [
-            passage.videoProvider === 'youtube' ? '유튜브 연결됨' : '영상 연결됨',
-            passage.videoUpdatedAt ? ('업데이트 ' + formatAdminTime(passage.videoUpdatedAt)) : ''
-          ].filter(Boolean).join(' · ')
-        : '등록된 영상이 없습니다.'
-
-      if(statusLabel) statusLabel.textContent = normalizedVideoStatus
-
-      if(saveButton){
-        saveButton.textContent = isSaving ? '저장 중...' : '링크 저장'
-        saveButton.disabled = !!manager.isSaving
-        saveButton.setAttribute('onclick', 'window.savePortalPrepPassageVideoUrl(' + passage.index + ')')
-      }
-
-      if(deleteButton){
-        deleteButton.textContent = '영상 삭제'
-        deleteButton.disabled = !passage.hasVideo || !!manager.isSaving
-      }
-
-      let fieldNode = itemNode.querySelector('.prep-video-manager-field')
-      if(!fieldNode){
-        fieldNode = document.createElement('label')
-        fieldNode.className = 'prep-video-manager-field'
-        fieldNode.innerHTML = '' +
-          '<span class="prep-video-manager-field-label">유튜브 링크</span>' +
-          '<input class="prep-video-manager-input" type="url">' +
-          '<span class="prep-video-manager-help">watch, youtu.be, embed 링크를 붙여넣으면 학생 화면에서 바로 재생됩니다.</span>'
-        const anchorNode = itemNode.querySelector('.prep-video-manager-item-status')
-        if(anchorNode){
-          itemNode.insertBefore(fieldNode, anchorNode)
-        }else{
-          itemNode.appendChild(fieldNode)
-        }
-      }
-
-      const inputNode = fieldNode.querySelector('.prep-video-manager-input')
-      if(inputNode){
-        inputNode.id = 'prep-video-url-input-' + passage.index
-        inputNode.setAttribute('data-passage-index', String(passage.index))
-        inputNode.placeholder = 'https://www.youtube.com/watch?v=...'
-        inputNode.value = passage.videoUrl || ''
-        inputNode.disabled = !!manager.isSaving
-      }
-    })
-  }else{
-    const emptyNode = listNode.querySelector('.empty-box')
-    if(emptyNode) emptyNode.textContent = '이 PREP 세트에는 지문이 없습니다.'
-  }
-
-  modal.classList.remove('hidden')
-  modal.setAttribute('aria-hidden', 'false')
-  document.body.classList.add('modal-open')
-}
-
-function closePortalPrepVideoManager(options){
-  const settings = options || {}
-  const manager = portalState.prepVideoManager || {}
-  if(!manager.open) return true
-  if(manager.isSaving && !settings.force) return false
-
-  portalState.prepVideoManager = {
-    open: false,
-    isSaving: false,
-    docId: '',
-    title: '',
-    currentDoc: null,
-    status: '업로드할 지문을 선택해 주세요.',
-    pendingPassageIndex: -1
-  }
-  renderPortalPrepVideoManager()
-  return true
-}
-
-async function openPortalPrepVideoManager(docId){
-  if(!isPortalAdmin()){
-    showToast('관리자만 PREP 영상을 관리할 수 있습니다.', 'var(--red)')
-    return
-  }
-
-  if(portalState.prepVideoManager && portalState.prepVideoManager.open){
-    const currentId = String(portalState.prepVideoManager.docId || '').trim()
-    if(currentId === String(docId || '').trim()) return
-    if(!closePortalPrepVideoManager()) return
-  }
-
-  try{
-    const currentDoc = await getCloudSetDoc('prep', docId)
-    if(!currentDoc || !currentDoc.payload){
-      showToast('영상 업로드할 PREP 세트를 찾지 못했습니다.', 'var(--red)')
-      return
-    }
-    if(!Array.isArray(currentDoc.payload.passages) || !currentDoc.payload.passages.length){
-      showToast('이 PREP 세트에는 지문이 없습니다.', 'var(--red)')
-      return
-    }
-    portalState.prepVideoManager = {
-      open: true,
-      isSaving: false,
-      docId: String(currentDoc.docId || '').trim(),
-      title: String(currentDoc.title || currentDoc.payload.title || 'PREP 지문 영상 관리').trim(),
-      currentDoc: clonePlainData(currentDoc),
-      status: '유튜브 링크를 입력한 뒤 저장해 주세요.',
-      pendingPassageIndex: -1
-    }
-    renderPortalPrepVideoManager()
-    return
-    if(!canUsePortalCloudStorage()){
-      showToast('Firebase Storage 연결이 필요합니다. 클라우드 로그인 상태를 확인해 주세요.', 'var(--red)')
-      return
-    }
-
-    portalState.prepVideoManager = {
-      open: true,
-      isUploading: false,
-      docId: String(currentDoc.docId || '').trim(),
-      title: String(currentDoc.title || currentDoc.payload.title || 'PREP 지문 영상 관리').trim(),
-      currentDoc: clonePlainData(currentDoc),
-      status: '업로드할 지문을 선택해 주세요.',
-      pendingPassageIndex: -1
-    }
-    renderPortalPrepVideoManager()
-  }catch(error){
-    console.error(error)
-    showToast('PREP 영상 관리 화면을 여는 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-function requestPortalPrepVideoUpload(passageIndex){
-  const manager = portalState.prepVideoManager || {}
-  if(!manager.open || manager.isUploading) return
-  manager.pendingPassageIndex = Number(passageIndex)
-  const input = document.getElementById('prep-video-upload-input')
-  if(input) input.click()
-}
-
-async function handlePortalPrepVideoUploadChange(event){
-  const file = event && event.target && event.target.files ? event.target.files[0] : null
-  if(event && event.target) event.target.value = ''
-  if(!file) return
-
-  const manager = portalState.prepVideoManager || {}
-  const passageIndex = Number(manager.pendingPassageIndex)
-  if(!manager.open || !manager.currentDoc || !Number.isInteger(passageIndex) || passageIndex < 0){
-    showToast('영상 업로드 대상을 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-  if(!canUsePortalCloudStorage()){
-    showToast('Firebase Storage 연결이 필요합니다.', 'var(--red)')
-    return
-  }
-
-  const rawPassages = Array.isArray(manager.currentDoc.payload && manager.currentDoc.payload.passages)
-    ? manager.currentDoc.payload.passages
-    : []
-  const rawPassage = rawPassages[passageIndex]
-  if(!rawPassage){
-    showToast('선택한 지문 정보를 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-
-  const normalizedPassage = buildPassageState(rawPassage, passageIndex)
-  const classId = Array.isArray(manager.currentDoc.classIds) && manager.currentDoc.classIds.length
-    ? manager.currentDoc.classIds[0]
-    : 'shared'
-  const oldStoragePath = String(rawPassage && rawPassage.videoStoragePath || rawPassage && rawPassage.video && rawPassage.video.storagePath || '').trim()
-  const fileName = sanitizePortalStoragePathPart(file.name || ('video-' + (passageIndex + 1)))
-  const storagePath = [
-    'prep-videos',
-    sanitizePortalStoragePathPart(classId),
-    sanitizePortalStoragePathPart(manager.docId),
-    'passage-' + String(passageIndex + 1).padStart(2, '0') + '-' + Date.now() + '-' + fileName
-  ].join('/')
-
-  manager.isSaving = true
-  manager.status = '"' + (normalizedPassage.title || ('지문 ' + (passageIndex + 1))) + '" 영상 업로드 중...'
-  renderPortalPrepVideoManager()
-
-  try{
-    const storageRef = portalState.storage.ref().child(storagePath)
-    const snapshot = await storageRef.put(file, {
-      contentType: file.type || 'video/mp4',
-      customMetadata: {
-        setId: manager.docId,
-        passageId: String(rawPassage && rawPassage.id || normalizedPassage.id || ''),
-        classId: classId
-      }
-    })
-    const downloadUrl = await snapshot.ref.getDownloadURL()
-    const now = new Date().toISOString()
-    const nextDoc = clonePlainData(manager.currentDoc) || {}
-    const nextPayload = clonePlainData(nextDoc.payload) || {}
-    const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
-    const nextPassage = Object.assign({}, nextPassages[passageIndex] || {})
-    const nextVideoTitle = String(nextPassage.videoTitle || nextPassage.title || normalizedPassage.title || ('지문 ' + (passageIndex + 1))).trim()
-
-    nextPassage.videoUrl = downloadUrl
-    nextPassage.videoEmbedUrl = ''
-    nextPassage.videoTitle = nextVideoTitle
-    nextPassage.videoFileName = String(file.name || '').trim()
-    nextPassage.videoStoragePath = storagePath
-    nextPassage.videoUpdatedAt = now
-    nextPassage.video = Object.assign({}, nextPassage.video && typeof nextPassage.video === 'object' ? nextPassage.video : {}, {
-      url: downloadUrl,
-      embedUrl: '',
-      title: nextVideoTitle,
-      fileName: String(file.name || '').trim(),
-      storagePath: storagePath,
-      updatedAt: now
-    })
-    nextPassages[passageIndex] = nextPassage
-    nextPayload.passages = nextPassages
-
-    await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
-      payload: nextPayload
-    }))
-
-    if(oldStoragePath && oldStoragePath !== storagePath){
-      deletePortalStorageFileByPath(oldStoragePath)
-    }
-
-    await syncPrepContentAfterLogin(true)
-    const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
-    portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
-    portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || manager.title || '').trim()
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (passageIndex + 1))) + '" 영상 업로드가 완료되었습니다.'
-
-    const targetClass = getPortalUploadTargetClass('prep')
-    if(targetClass && targetClass.id){
-      restorePortalPrepClassSelection(targetClass.id)
-    }
-    syncPortalAdminSetPanels(getCurrentActiveScreenId())
-    renderPortalPrepVideoManager()
-    showToast('PREP 지문 영상을 업로드했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '영상 업로드 중 오류가 발생했습니다.'
-    renderPortalPrepVideoManager()
-    showToast('PREP 영상 업로드 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-async function savePortalPrepPassageVideoUrl(passageIndex){
-  const manager = portalState.prepVideoManager || {}
-  if(!manager.open || manager.isSaving || !manager.currentDoc) return
-
-  const normalizedUrl = normalizePortalPrepYouTubeUrl(getPortalPrepVideoInputValue(passageIndex))
-  if(!normalizedUrl){
-    showToast('유튜브 링크 형식을 확인해 주세요.', 'var(--red)')
-    return
-  }
-
-  const rawPassages = Array.isArray(manager.currentDoc.payload && manager.currentDoc.payload.passages)
-    ? manager.currentDoc.payload.passages
-    : []
-  const rawPassage = rawPassages[Number(passageIndex)]
-  if(!rawPassage){
-    showToast('선택한 지문을 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-
-  const normalizedPassage = buildPassageState(rawPassage, Number(passageIndex))
-  const oldStoragePath = String(rawPassage.videoStoragePath || rawPassage.video && rawPassage.video.storagePath || '').trim()
-
-  manager.isSaving = true
-  manager.pendingPassageIndex = Number(passageIndex)
-  manager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 유튜브 링크 저장 중...'
-  renderPortalPrepVideoManager()
-
-  try{
-    const now = new Date().toISOString()
-    const nextDoc = clonePlainData(manager.currentDoc) || {}
-    const nextPayload = clonePlainData(nextDoc.payload) || {}
-    const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
-    const nextPassage = Object.assign({}, nextPassages[Number(passageIndex)] || {})
-    const nextVideoTitle = String(nextPassage.videoTitle || nextPassage.title || normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))).trim()
-
-    nextPassage.videoUrl = normalizedUrl.url
-    nextPassage.videoEmbedUrl = normalizedUrl.embedUrl
-    nextPassage.videoTitle = nextVideoTitle
-    nextPassage.videoUpdatedAt = now
-    delete nextPassage.videoFileName
-    delete nextPassage.videoStoragePath
-    nextPassage.video = Object.assign({}, nextPassage.video && typeof nextPassage.video === 'object' ? nextPassage.video : {}, {
-      url: normalizedUrl.url,
-      embedUrl: normalizedUrl.embedUrl,
-      title: nextVideoTitle,
-      provider: 'youtube',
-      updatedAt: now
-    })
-    delete nextPassage.video.fileName
-    delete nextPassage.video.storagePath
-    nextPassages[Number(passageIndex)] = nextPassage
-    nextPayload.passages = nextPassages
-
-    await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
-      payload: nextPayload
-    }))
-    if(oldStoragePath){
-      deletePortalStorageFileByPath(oldStoragePath)
-    }
-
-    await syncPrepContentAfterLogin(true)
-    const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
-    portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
-    portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || manager.title || '').trim()
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 유튜브 링크가 저장되었습니다.'
-
-    const targetClass = getPortalUploadTargetClass('prep')
-    if(targetClass && targetClass.id){
-      restorePortalPrepClassSelection(targetClass.id)
-    }
-    syncPortalAdminSetPanels(getCurrentActiveScreenId())
-    renderPortalPrepVideoManager()
-    showToast('PREP 지문 유튜브 링크를 저장했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '유튜브 링크 저장 중 오류가 발생했습니다.'
-    renderPortalPrepVideoManager()
-    showToast('PREP 유튜브 링크 저장 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-async function removePortalPrepPassageVideo(passageIndex){
-  const manager = portalState.prepVideoManager || {}
-  if(!manager.open || manager.isSaving || !manager.currentDoc) return
-  if(false && !canUsePortalCloudStorage()){
-    showToast('Firebase Storage 연결이 필요합니다.', 'var(--red)')
-    return
-  }
-
-  const rawPassages = Array.isArray(manager.currentDoc.payload && manager.currentDoc.payload.passages)
-    ? manager.currentDoc.payload.passages
-    : []
-  const rawPassage = rawPassages[Number(passageIndex)]
-  if(!rawPassage) return
-  const normalizedPassage = buildPassageState(rawPassage, Number(passageIndex))
-  if(!normalizedPassage.hasVideo){
-    showToast('삭제할 영상이 없습니다.', 'var(--blue)')
-    return
-  }
-  if(typeof window.confirm === 'function' && !window.confirm('이 지문의 영상을 삭제할까요?')) return
-
-  const oldStoragePath = String(rawPassage.videoStoragePath || rawPassage.video && rawPassage.video.storagePath || '').trim()
-  manager.isSaving = true
-  manager.pendingPassageIndex = Number(passageIndex)
-  manager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 영상 삭제 중...'
-  renderPortalPrepVideoManager()
-
-  try{
-    const nextDoc = clonePlainData(manager.currentDoc) || {}
-    const nextPayload = clonePlainData(nextDoc.payload) || {}
-    const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
-    const nextPassage = Object.assign({}, nextPassages[Number(passageIndex)] || {})
-    delete nextPassage.videoUrl
-    delete nextPassage.videoEmbedUrl
-    delete nextPassage.videoPoster
-    delete nextPassage.videoFileName
-    delete nextPassage.videoStoragePath
-    delete nextPassage.videoUpdatedAt
-    delete nextPassage.video
-    nextPassages[Number(passageIndex)] = nextPassage
-    nextPayload.passages = nextPassages
-
-    await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
-      payload: nextPayload
-    }))
-    if(oldStoragePath){
-      deletePortalStorageFileByPath(oldStoragePath)
-    }
-
-    await syncPrepContentAfterLogin(true)
-    const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
-    portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 영상이 삭제되었습니다.'
-
-    const targetClass = getPortalUploadTargetClass('prep')
-    if(targetClass && targetClass.id){
-      restorePortalPrepClassSelection(targetClass.id)
-    }
-    syncPortalAdminSetPanels(getCurrentActiveScreenId())
-    renderPortalPrepVideoManager()
-    showToast('PREP 지문 영상을 삭제했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    portalState.prepVideoManager.isSaving = false
-    portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '영상 삭제 중 오류가 발생했습니다.'
-    renderPortalPrepVideoManager()
-    showToast('PREP 영상 삭제 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-async function deletePortalStorageFileByPath(storagePath){
-  if(!canUsePortalCloudStorage()) return false
-  const path = String(storagePath || '').trim()
-  if(!path) return false
-  try{
-    await portalState.storage.ref().child(path).delete()
-    return true
-  }catch(error){
-    console.warn('storage delete skipped:', error && error.message ? error.message : error)
-    return false
   }
 }
 
@@ -5967,14 +5222,9 @@ async function regradePortalManagedCheckSet(docId){
 
 function buildPortalManagedSetItemHtml(kind, record){
   const chipClass = record && record.isManaged ? 'live' : 'legacy'
-  const chipLabel = record && record.isManaged
-    ? (kind === 'prep' && record.isDirectVideo ? '영상 업로드' : '직접 업로드')
-    : '기존 마스터'
+  const chipLabel = record && record.isManaged ? '직접 업로드' : '기존 마스터'
   const editButton = kind === 'check' && record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(record.docId) + '\')">문항 수정</button>'
-    : ''
-  const prepVideoButton = kind === 'prep' && record && record.isManaged
-    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoManager(\'' + escapeJs(record.docId) + '\')">' + (record.isDirectVideo ? '링크 수정' : '영상 관리') + '</button>'
     : ''
   const isRegrading = kind === 'check' && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
   const regradeButton = kind === 'check' && record && record.isManaged
@@ -5987,10 +5237,8 @@ function buildPortalManagedSetItemHtml(kind, record){
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.changePortalManagedSetDates(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">기간 변경</button>'
     : ''
   const deleteButton = record && record.isManaged
-    ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">삭제</button>'
-    : (kind === 'prep' && record && !record.isManaged && record.legacyIndex != null
-      ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalLegacyPrepSet(' + Number(record.legacyIndex) + ')">삭제</button>'
-      : '')
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.removePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">삭제</button>'
+    : ''
   return '' +
     '<div class="admin-content-item">' +
       '<div class="admin-content-item-body">' +
@@ -6000,7 +5248,6 @@ function buildPortalManagedSetItemHtml(kind, record){
       '<div class="admin-content-item-actions">' +
         '<span class="admin-content-chip ' + chipClass + '">' + escapeHtml(chipLabel) + '</span>' +
         editButton +
-        prepVideoButton +
         regradeButton +
         renameButton +
         dateButton +
@@ -6033,46 +5280,14 @@ function renderPrepAdminSetPanel(activeScreenId){
   const records = getVisiblePortalManagedSetRecords('prep', classInfo && classInfo.id)
   countNode.textContent = String(records.length)
   hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 올린 PREP 영상입니다. 영상 업로드 버튼으로 제목과 유튜브 링크를 바로 추가할 수 있습니다.')
-    : '먼저 반을 선택하면 PREP 영상을 올릴 수 있습니다.'
+    ? (classInfo.name + ' 반에 배정된 PREP 세트입니다. 직접 업로드한 세트만 이름/기간 변경과 삭제가 가능합니다.')
+    : '먼저 반을 선택하면 PREP 세트를 올릴 수 있습니다.'
 
   list.innerHTML = records.length
     ? records.map(function(record){
         return buildPortalManagedSetItemHtml('prep', record)
       }).join('')
-    : '<div class="admin-content-item-empty">이 반에 연결된 PREP 영상이 아직 없습니다.</div>'
-}
-
-function renderPrepPassageAdminSetPanel(activeScreenId){
-  const panel = document.getElementById('prep-passage-admin-set-panel')
-  const list = document.getElementById('prep-passage-admin-set-list')
-  const countNode = document.getElementById('prep-passage-admin-set-count')
-  const hintNode = document.getElementById('prep-passage-admin-set-hint')
-  const classButton = document.getElementById('prep-passage-admin-class-btn')
-  if(!panel || !list || !countNode || !hintNode) return
-
-  const shouldShow = isPortalAdmin() && activeScreenId === 'passage-screen'
-  panel.classList.toggle('hidden', !shouldShow)
-  if(!shouldShow) return
-
-  const classInfo = typeof getCurrentClass === 'function' ? getCurrentClass() : null
-  const records = getVisiblePortalManagedSetRecords('prep', classInfo && classInfo.id)
-  const visibleClassEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
-    ? window.getVisiblePortalPrepClassEntries()
-    : []
-  if(classButton){
-    classButton.classList.toggle('hidden', visibleClassEntries.length < 1)
-  }
-  countNode.textContent = String(records.length)
-  hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 올린 PREP 영상입니다. 영상 업로드 버튼으로 제목과 유튜브 링크를 바로 추가할 수 있습니다.')
-    : '현재 선택된 반이 없습니다. 반을 선택한 뒤 PREP 영상을 업로드해 주세요.'
-
-  list.innerHTML = records.length
-    ? records.map(function(record){
-        return buildPortalManagedSetItemHtml('prep', record)
-      }).join('')
-    : '<div class="admin-content-item-empty">아직 연결된 PREP 영상이 없습니다. 영상 업로드 버튼으로 제목과 유튜브 링크를 넣어 주세요.</div>'
+    : '<div class="admin-content-item-empty">이 반에 연결된 PREP 세트가 아직 없습니다.</div>'
 }
 
 function renderCheckAdminSetPanel(activeScreenId){
@@ -6103,7 +5318,6 @@ function renderCheckAdminSetPanel(activeScreenId){
 
 function syncPortalAdminSetPanels(screenId){
   renderPrepAdminSetPanel(screenId)
-  renderPrepPassageAdminSetPanel(screenId)
   renderCheckAdminSetPanel(screenId)
 }
 
@@ -6145,19 +5359,6 @@ async function renamePortalManagedSet(kind, docId){
       const targetDoc = targetDocs[index]
       const nextPayload = clonePlainData(targetDoc.payload) || {}
       nextPayload.title = nextTitle
-      if(kind === 'prep' && isPortalDirectPrepVideoPayload(nextPayload)){
-        const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
-        if(nextPassages[0]){
-          const nextPassage = Object.assign({}, nextPassages[0])
-          nextPassage.title = nextTitle
-          nextPassage.videoTitle = nextTitle
-          if(nextPassage.video && typeof nextPassage.video === 'object'){
-            nextPassage.video = Object.assign({}, nextPassage.video, { title: nextTitle })
-          }
-          nextPassages[0] = nextPassage
-          nextPayload.passages = nextPassages
-        }
-      }
       await saveCloudSetDoc(kind, targetDoc.docId, Object.assign({}, targetDoc, {
         title: nextTitle,
         payload: nextPayload
@@ -6169,8 +5370,7 @@ async function renamePortalManagedSet(kind, docId){
       if(targetClass && targetClass.id){
         restorePortalPrepClassSelection(targetClass.id)
       }
-      showPassageScreen()
-      syncPortalAdminSetPanels('passage-screen')
+      showHome()
     }else{
       await ensureCheckData(true)
       const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
@@ -6281,8 +5481,7 @@ async function changePortalManagedSetDates(kind, docId){
       if(targetClass && targetClass.id){
         restorePortalPrepClassSelection(targetClass.id)
       }
-      showPassageScreen()
-      syncPortalAdminSetPanels('passage-screen')
+      showHome()
     }else{
       await ensureCheckData(true)
       const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
@@ -6307,139 +5506,6 @@ async function changePortalManagedSetDates(kind, docId){
   }
 }
 
-async function removePortalLegacyPrepSet(legacyIndex){
-  if(!isPortalAdmin()){
-    showToast('관리자만 PREP 세트를 삭제할 수 있습니다.', 'var(--red)')
-    return
-  }
-
-  const targetIndex = Number(legacyIndex)
-  if(!Number.isInteger(targetIndex) || targetIndex < 0){
-    showToast('삭제할 PREP 세트를 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-
-  try{
-    const currentDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep)
-    const currentPayload = currentDoc && currentDoc.payload
-      ? clonePlainData(currentDoc.payload)
-      : (bundleData ? clonePlainData(bundleData) : null)
-    const studySets = Array.isArray(currentPayload && currentPayload.studySets)
-      ? currentPayload.studySets.slice()
-      : []
-    const targetSet = studySets[targetIndex]
-    if(!targetSet){
-      showToast('삭제할 PREP 세트를 찾지 못했습니다.', 'var(--red)')
-      return
-    }
-
-    const title = String(targetSet.title || targetSet.name || ('PREP 세트 ' + (targetIndex + 1))).trim()
-    const message = '"' + title + '" 기존 PREP 세트를 삭제할까요?'
-    if(typeof window.confirm === 'function' && !window.confirm(message)) return
-
-    const targetClass = getPortalUploadTargetClass('prep')
-    studySets.splice(targetIndex, 1)
-    const nextPayload = Object.assign({}, currentPayload || {}, {
-      studySets: studySets
-    })
-    await saveCloudContentDoc(
-      PORTAL_CLOUD_DOCS.prep,
-      nextPayload,
-      currentDoc && currentDoc.fileName ? currentDoc.fileName : 'session.json'
-    )
-
-    await syncPrepContentAfterLogin(true)
-    if(targetClass && targetClass.id){
-      restorePortalPrepClassSelection(targetClass.id)
-    }
-    showPassageScreen()
-    syncPortalAdminSetPanels('passage-screen')
-    showToast('PREP 세트를 삭제했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    showToast('PREP 세트 삭제 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
-async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
-  if(!isPortalAdmin()){
-    showToast('관리자만 PREP 영상을 삭제할 수 있습니다.', 'var(--red)')
-    return
-  }
-
-  const targetDocId = String(docId || '').trim()
-  const targetPassageIndex = Number(passageIndex)
-  if(!targetDocId || !Number.isInteger(targetPassageIndex) || targetPassageIndex < 0){
-    showToast('삭제할 영상을 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-
-  try{
-    const currentDoc = await getCloudSetDoc('prep', targetDocId)
-    const rawPassages = Array.isArray(currentDoc && currentDoc.payload && currentDoc.payload.passages)
-      ? currentDoc.payload.passages
-      : []
-    const rawPassage = rawPassages[targetPassageIndex]
-    if(!rawPassage){
-      showToast('삭제할 영상을 찾지 못했습니다.', 'var(--red)')
-      return
-    }
-
-    const normalizedPassage = buildPassageState(rawPassage, targetPassageIndex)
-    if(!normalizedPassage.hasVideo){
-      showToast('삭제할 영상이 없습니다.', 'var(--blue)')
-      return
-    }
-
-    const message = '"' + (normalizedPassage.title || ('지문 ' + (targetPassageIndex + 1))) + '" 영상을 삭제할까요?'
-    if(typeof window.confirm === 'function' && !window.confirm(message)) return
-
-    const oldStoragePath = String(rawPassage.videoStoragePath || rawPassage.video && rawPassage.video.storagePath || '').trim()
-    const nextDoc = clonePlainData(currentDoc) || {}
-    const nextPayload = clonePlainData(nextDoc.payload) || {}
-    const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
-    const nextPassage = Object.assign({}, nextPassages[targetPassageIndex] || {})
-    delete nextPassage.videoUrl
-    delete nextPassage.videoEmbedUrl
-    delete nextPassage.videoPoster
-    delete nextPassage.videoFileName
-    delete nextPassage.videoStoragePath
-    delete nextPassage.videoUpdatedAt
-    delete nextPassage.video
-    nextPassages[targetPassageIndex] = nextPassage
-    nextPayload.passages = nextPassages
-
-    await saveCloudSetDoc('prep', targetDocId, Object.assign({}, nextDoc, {
-      payload: nextPayload
-    }))
-    if(oldStoragePath){
-      deletePortalStorageFileByPath(oldStoragePath)
-    }
-
-    await syncPrepContentAfterLogin(true)
-    const targetClassId = Array.isArray(currentDoc.classIds) && currentDoc.classIds.length
-      ? currentDoc.classIds[0]
-      : ''
-    if(targetClassId){
-      restorePortalPrepClassSelection(targetClassId)
-    }
-
-    if(portalState.prepVideoManager && portalState.prepVideoManager.open && String(portalState.prepVideoManager.docId || '') === targetDocId){
-      const refreshedDoc = await getCloudSetDoc('prep', targetDocId)
-      portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
-      portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (targetPassageIndex + 1))) + '" 영상을 삭제했습니다.'
-      renderPortalPrepVideoManager()
-    }
-
-    showPassageScreen()
-    syncPortalAdminSetPanels('passage-screen')
-    showToast('PREP 지문 영상을 삭제했습니다.', 'var(--green)')
-  }catch(error){
-    console.error(error)
-    showToast('PREP 영상 삭제 중 오류가 발생했습니다.', 'var(--red)')
-  }
-}
-
 async function removePortalManagedSet(kind, docId){
   if(!isPortalAdmin()){
     showToast('관리자만 세트를 삭제할 수 있습니다.', 'var(--red)')
@@ -6456,8 +5522,7 @@ async function removePortalManagedSet(kind, docId){
       if(targetClass && targetClass.id){
         restorePortalPrepClassSelection(targetClass.id)
       }
-      showPassageScreen()
-      syncPortalAdminSetPanels('passage-screen')
+      showHome()
     }else{
       await ensureCheckData(true)
       renderCheckScreen()
@@ -6473,12 +5538,6 @@ async function removePortalManagedSet(kind, docId){
 window.renamePortalManagedSet = renamePortalManagedSet
 window.changePortalManagedSetDates = changePortalManagedSetDates
 window.removePortalManagedSet = removePortalManagedSet
-window.removePortalLegacyPrepSet = removePortalLegacyPrepSet
-window.removePortalPrepPassageVideoFromSet = removePortalPrepPassageVideoFromSet
-window.openPrepClassPicker = openPrepClassPicker
-window.openPortalPrepVideoManager = openPortalPrepVideoManager
-window.savePortalPrepPassageVideoUrl = savePortalPrepPassageVideoUrl
-window.removePortalPrepPassageVideo = removePortalPrepPassageVideo
 window.openPortalManagedCheckSetEditor = openPortalManagedCheckSetEditor
 window.regradePortalManagedCheckSet = regradePortalManagedCheckSet
 

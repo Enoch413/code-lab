@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260420-prep-direct-5">
+<link rel="stylesheet" href="./rotation_prep.css">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -242,12 +242,12 @@
   <div id="dash" style="display:none;margin-top:24px">
     <section class="group admin-content-panel hidden" id="prep-admin-set-panel">
       <div class="group-title">
-        <h3>PREP 영상 관리</h3>
+        <h3>PREP 세트 관리</h3>
         <span class="group-count" id="prep-admin-set-count">0</span>
       </div>
       <div class="admin-content-toolbar">
-        <div class="admin-content-copy" id="prep-admin-set-hint">현재 반에 올린 PREP 영상이 여기에 쌓입니다.</div>
-        <button class="btn btn-ghost btn-sm" type="button" id="prep-admin-upload-btn">영상 업로드</button>
+        <div class="admin-content-copy" id="prep-admin-set-hint">현재 반에 올린 PREP 세트가 여기에 쌓입니다.</div>
+        <button class="btn btn-ghost btn-sm" type="button" id="prep-admin-upload-btn">세트 업로드</button>
       </div>
       <div class="admin-content-list" id="prep-admin-set-list"></div>
     </section>
@@ -269,19 +269,6 @@
   </div>
 
   <div class="hd"><h1>PREP</h1><span class="sub" id="passage-subtitle"></span></div>
-
-  <section class="group admin-content-panel hidden" id="prep-passage-admin-set-panel">
-    <div class="group-title">
-      <h3>PREP 영상 관리</h3>
-      <span class="group-count" id="prep-passage-admin-set-count">0</span>
-    </div>
-    <div class="admin-content-toolbar">
-      <div class="admin-content-copy" id="prep-passage-admin-set-hint">관리자는 이곳에서 제목과 유튜브 링크만 입력해 PREP 영상을 바로 올릴 수 있습니다.</div>
-      <button class="btn btn-ghost btn-sm" type="button" id="prep-passage-admin-class-btn">반 변경</button>
-      <button class="btn btn-ghost btn-sm" type="button" id="prep-passage-admin-upload-btn">영상 업로드</button>
-    </div>
-    <div class="admin-content-list" id="prep-passage-admin-set-list"></div>
-  </section>
 
   <div class="class-bar" id="passage-bar">
     <div class="class-bar-copy">
@@ -612,29 +599,6 @@
 <input type="file" accept=".json,application/json" id="check-set-upload-input" hidden>
 <input type="file" accept=".csv,text/csv" id="superadmin-class-admin-upload-input" hidden>
 <input type="file" accept=".csv,text/csv" id="superadmin-student-upload-input" hidden>
-<div class="prep-video-manager-modal hidden" id="prep-video-manager-modal" aria-hidden="true">
-  <div class="prep-video-manager-backdrop" id="prep-video-manager-backdrop"></div>
-  <div class="prep-video-manager-sheet" role="dialog" aria-modal="true" aria-labelledby="prep-video-manager-title">
-    <div class="prep-video-manager-head">
-      <div class="prep-video-manager-copy">
-        <div class="prep-video-manager-kicker">PREP VIDEO MANAGER</div>
-        <h2 class="prep-video-manager-title" id="prep-video-manager-title">PREP 지문 영상 관리</h2>
-        <p class="prep-video-manager-meta" id="prep-video-manager-meta"></p>
-      </div>
-      <button class="btn btn-ghost btn-sm" type="button" id="prep-video-manager-close-btn">닫기</button>
-    </div>
-    <div class="prep-video-manager-note" id="prep-video-manager-note">
-      지문마다 유튜브 링크를 붙여넣어 저장할 수 있습니다. 저장이 끝나면 학생 화면에서 바로 재생됩니다.
-    </div>
-    <div class="prep-video-manager-list" id="prep-video-manager-list"></div>
-    <div class="prep-video-manager-foot">
-      <div class="prep-video-manager-status" id="prep-video-manager-status">유튜브 링크를 입력한 뒤 저장해 주세요.</div>
-      <div class="prep-video-manager-actions">
-        <button class="btn btn-ghost btn-sm" type="button" id="prep-video-manager-cancel-btn">닫기</button>
-      </div>
-    </div>
-  </div>
-</div>
 <div class="check-set-editor-modal hidden" id="check-set-editor-modal" aria-hidden="true">
   <div class="check-set-editor-backdrop" id="check-set-editor-backdrop"></div>
   <div class="check-set-editor-sheet" role="dialog" aria-modal="true" aria-labelledby="check-set-editor-title">
@@ -665,11 +629,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="./rotation_prep_core.js?v=20260420-prep-direct-5"></script>
-<script src="./rotation_prep_bundle.js?v=20260420-prep-direct-5"></script>
-<script src="./rotation_prep_passages.js?v=20260420-prep-direct-5"></script>
-<script src="./rotation_prep_ui.js?v=20260420-prep-direct-5"></script>
-<script src="./rotation_portal.js?v=20260420-prep-direct-5"></script>
-<script src="./rotation_portal_enhancements.js?v=20260420-prep-direct-5"></script>
+<script src="./rotation_prep_core.js"></script>
+<script src="./rotation_prep_bundle.js"></script>
+<script src="./rotation_prep_passages.js"></script>
+<script src="./rotation_prep_ui.js"></script>
+<script src="./rotation_portal.js"></script>
+<script src="./rotation_portal_enhancements.js"></script>
 </body>
 </html>

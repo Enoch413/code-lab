@@ -1,8 +1,4 @@
 function showHome(){
-  if(shouldUseDirectPrepPassageFlow()){
-    goBackFromSetScreen()
-    return
-  }
   ensureCurrentSetSelection()
   updateSetProgressContext()
   renderClassSummary()
@@ -18,13 +14,6 @@ function goBackFromSetScreen(){
 }
 
 function showPassageScreen(){
-  if(shouldUseDirectPrepPassageFlow()){
-    currentStudySectionId = ''
-    activateScreen('passage-screen')
-    renderClassSummary()
-    renderPassageScreen()
-    return
-  }
   const currentSet = getCurrentStudySet()
   const assignment = currentSet ? getCurrentClassAssignments(currentSet) : null
   if(!currentSet || !assignment){
@@ -32,77 +21,9 @@ function showPassageScreen(){
     return
   }
   currentStudySectionId = ''
-  activateScreen('passage-screen')
   renderClassSummary()
   renderPassageScreen()
-}
-
-function shouldUseDirectPrepPassageFlow(){
-  return typeof portalState !== 'undefined' && !!portalState.currentUser
-}
-
-function getAccessiblePrepStudySetEntries(){
-  return getStudySetsForCurrentClass().filter(function(entry){
-    return entry.isAccessible
-  })
-}
-
-function getVisiblePrepPassageEntries(){
-  const entries = []
-  const includeMissingVideo = typeof isPortalAdmin === 'function' && isPortalAdmin()
-
-  getAccessiblePrepStudySetEntries().forEach(function(setEntry){
-    setEntry.assignment.passageIndexes.forEach(function(passageIndex){
-      const passage = setEntry.studySet.passages[passageIndex]
-      if(!passage) return
-      if(!includeMissingVideo && !passage.hasVideo) return
-
-      entries.push({
-        setIndex: setEntry.index,
-        studySet: setEntry.studySet,
-        assignment: setEntry.assignment,
-        passageIndex: passageIndex,
-        passage: passage,
-        status: setEntry.status
-      })
-    })
-  })
-
-  return entries
-}
-
-function escapePrepInlineJsValue(value){
-  if(typeof escapeJs === 'function') return escapeJs(value)
-  return String(value == null ? '' : value)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r?\n/g, '\\n')
-}
-
-function getDirectPrepManagedDocId(studySet){
-  const studySetId = String(studySet && studySet.id || '').trim()
-  if(!studySetId || typeof portalState === 'undefined') return ''
-  const records = Array.isArray(portalState.prepSetInventory) ? portalState.prepSetInventory : []
-  const record = records.find(function(entry){
-    return !!(entry && entry.isManaged && String(entry.docId || '').trim() === studySetId)
-  })
-  return record ? String(record.docId || '').trim() : ''
-}
-
-function renderDirectPrepAdminPassageActions(entry){
-  if(!(typeof isPortalAdmin === 'function' && isPortalAdmin())) return ''
-  const docId = getDirectPrepManagedDocId(entry && entry.studySet)
-  if(!docId) return ''
-  const escapedDocId = escapePrepInlineJsValue(docId)
-  const passageIndex = Number(entry && entry.passageIndex)
-  const deleteButton = entry && entry.passage && entry.passage.hasVideo
-    ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="event.stopPropagation(); window.removePortalPrepPassageVideoFromSet(\'' + escapedDocId + '\', ' + passageIndex + ')">영상 삭제</button>'
-    : ''
-  return '' +
-    '<div class="p-actions" onclick="event.stopPropagation()">' +
-      '<button class="btn btn-ghost btn-sm" type="button" onclick="event.stopPropagation(); window.openPortalPrepVideoManager(\'' + escapedDocId + '\')">영상 관리</button>' +
-      deleteButton +
-    '</div>'
+  activateScreen('passage-screen')
 }
 
 function renderClassList(){
@@ -168,7 +89,7 @@ function renderClassSummary(){
     document.getElementById('current-class-meta').textContent = ''
   }
 
-  document.getElementById('passage-bar').style.display = shouldUseDirectPrepPassageFlow() ? 'none' : (currentSet ? 'flex' : 'none')
+  document.getElementById('passage-bar').style.display = currentSet ? 'flex' : 'none'
   if(currentSet){
     document.getElementById('current-set-name').textContent = currentSet.title
     document.getElementById('current-set-meta').textContent = getStudySetDateText(currentSet)
@@ -204,27 +125,22 @@ function renderPassageScreen(){
   const assignment = currentSet ? getCurrentClassAssignments(currentSet) : null
   const container = document.getElementById('p-list')
 
-  if(shouldUseDirectPrepPassageFlow()){
-    renderDirectPrepPassageScreen()
-    return
-  }
-
   if(!currentSet || !assignment){
     container.innerHTML = '<div class="empty-box">먼저 학습 세트를 선택해 주세요.</div>'
     document.getElementById('passage-stats').innerHTML = ''
     return
   }
 
-  const totalQuestions = assignment.passageIndexes.filter(function(passageIndex){
-    return !!(currentSet.passages[passageIndex] && currentSet.passages[passageIndex].hasVideo)
-  }).length
+  const totalQuestions = assignment.passageIndexes.reduce(function(sum, passageIndex){
+    return sum + (currentSet.passages[passageIndex] ? currentSet.passages[passageIndex].items.length : 0)
+  }, 0)
   const doneCount = assignment.passageIndexes.filter(function(passageIndex){
     return getPassageProgress(passageIndex).done
   }).length
 
   document.getElementById('passage-stats').innerHTML = [
     renderStat(assignment.passageIndexes.length, '지문'),
-    renderStat(totalQuestions, '영상'),
+    renderStat(totalQuestions, '질문'),
     renderStat(doneCount, '완료'),
     renderStat(Math.max(assignment.passageIndexes.length - doneCount, 0), '남음')
   ].join('')
@@ -239,95 +155,23 @@ function renderPassageScreen(){
   container.innerHTML = assignment.passageIndexes.map(function(passageIndex, visibleIndex){
     const passage = currentSet.passages[passageIndex]
     const state = getPassageProgress(passageIndex)
-    const preview = getPrepPassagePreviewText(passage)
-    const previewHtml = preview
-      ? '<div class="p-preview">' + escapeHtml(preview) + '</div>'
-      : ''
+    const preview = passage.textLines[0] || passage.text.slice(0, 80) || '본문 미리보기가 없습니다.'
 
     return '' +
       '<div class="p-item ' + (state.done ? 'done' : '') + '" onclick="openPassage(' + passageIndex + ')">' +
         '<div class="p-num">' + (visibleIndex + 1) + '</div>' +
         '<div class="p-body">' +
           '<div class="p-title">' + escapeHtml(passage.title) + '</div>' +
-          previewHtml +
+          '<div class="p-preview">' + escapeHtml(preview) + '</div>' +
           '<div class="p-meta">' +
-            '<span>' + (passage.hasVideo ? '영상 준비' : '영상 없음') + '</span>' +
-            '<span>' + escapeHtml(getStudySetDateText(currentSet)) + '</span>' +
+            '<span><b>' + passage.items.length + '</b>개 질문</span>' +
+            '<span>' + passage.textLines.length + '줄</span>' +
           '</div>' +
           '<div class="p-stage">' + renderProgressChip(state.done) + '</div>' +
         '</div>' +
         '<div class="p-arrow">&rsaquo;</div>' +
       '</div>'
   }).join('')
-}
-
-function renderDirectPrepPassageScreen(){
-  const container = document.getElementById('p-list')
-  const passageEntries = getVisiblePrepPassageEntries()
-  const doneCount = passageEntries.filter(function(entry){
-    return getPassageProgress(entry.passageIndex, entry.setIndex).done
-  }).length
-
-  if(!passageEntries.length){
-    document.getElementById('passage-bar').style.display = 'none'
-    document.getElementById('passage-stats').innerHTML = [
-      renderStat(0, '지문'),
-      renderStat(0, '영상'),
-      renderStat(0, '완료'),
-      renderStat(0, '남음')
-    ].join('')
-    document.getElementById('passage-list-label').textContent = 'PREP 지문 선택'
-    container.innerHTML = typeof isPortalAdmin === 'function' && isPortalAdmin()
-      ? '<div class="empty-box">아직 PREP 영상이 없습니다. 위의 영상 업로드 버튼으로 제목과 유튜브 링크를 올려 주세요.</div>'
-      : '<div class="empty-box">현재 등록된 PREP 영상이 없습니다.</div>'
-    return
-  }
-
-  document.getElementById('passage-bar').style.display = 'none'
-  document.getElementById('passage-stats').innerHTML = [
-    renderStat(passageEntries.length, '지문'),
-    renderStat(passageEntries.filter(function(entry){ return entry.passage.hasVideo }).length, '영상'),
-    renderStat(doneCount, '완료'),
-    renderStat(Math.max(passageEntries.length - doneCount, 0), '남음')
-  ].join('')
-
-  document.getElementById('passage-list-label').textContent = 'PREP 지문 선택'
-
-  if(!passageEntries.length){
-    container.innerHTML = '<div class="empty-box">현재 배정된 PREP 영상 지문이 없습니다.</div>'
-    return
-  }
-
-  container.innerHTML = passageEntries.map(function(entry, visibleIndex){
-    const state = getPassageProgress(entry.passageIndex, entry.setIndex)
-    const preview = getPrepPassagePreviewText(entry.passage)
-    const previewHtml = preview
-      ? '<div class="p-preview">' + escapeHtml(preview) + '</div>'
-      : ''
-
-    return '' +
-      '<div class="p-item ' + (state.done ? 'done' : '') + '" onclick="openPassageAt(' + entry.passageIndex + ', ' + entry.setIndex + ')">' +
-        '<div class="p-num">' + (visibleIndex + 1) + '</div>' +
-        '<div class="p-body">' +
-          '<div class="p-title">' + escapeHtml(entry.passage.title) + '</div>' +
-          previewHtml +
-          '<div class="p-meta">' +
-            '<span>' + escapeHtml(entry.studySet.title) + '</span>' +
-            '<span>' + escapeHtml(getStudySetDateText(entry.studySet)) + '</span>' +
-          '</div>' +
-          '<div class="p-stage">' + renderProgressChip(state.done) + '</div>' +
-          renderDirectPrepAdminPassageActions(entry) +
-        '</div>' +
-        '<div class="p-arrow">&rsaquo;</div>' +
-      '</div>'
-  }).join('')
-}
-
-function getPrepPassagePreviewText(passage){
-  if(!passage) return ''
-  return passage.videoDescription ||
-    passage.textLines[0] ||
-    String(passage.text || '').slice(0, 120)
 }
 
 function renderSetList(visibleSets){
@@ -352,8 +196,8 @@ function renderSetList(visibleSets){
             '<span class="set-badge ' + entry.status + '">' + escapeHtml(getStudySetStatusLabel(entry.status)) + '</span>' +
             '<span class="set-badge">' + entry.assignment.passageIndexes.length + '개 지문</span>' +
             '<span class="set-badge">' + entry.assignment.passageIndexes.reduce(function(sum, passageIndex){
-              return sum + (entry.studySet.passages[passageIndex] && entry.studySet.passages[passageIndex].hasVideo ? 1 : 0)
-            }, 0) + '개 영상</span>' +
+              return sum + (entry.studySet.passages[passageIndex] ? entry.studySet.passages[passageIndex].items.length : 0)
+            }, 0) + '개 질문</span>' +
           '</div>' +
         '</div>' +
         '<div class="p-arrow">' + (entry.isAccessible ? '&rsaquo;' : '예정') + '</div>' +
@@ -374,31 +218,26 @@ function openStudySet(index){
 }
 
 function openPassage(index){
-  return openPassageAt(index, currentSetIndex)
-}
-
-function openPassageAt(index, setIndex){
-  const targetSetIndex = typeof setIndex === 'number' ? setIndex : currentSetIndex
-  const studySet = studySets[targetSetIndex]
+  const studySet = getCurrentStudySet()
   if(!studySet || !studySet.passages[index]) return
-  currentSetIndex = targetSetIndex
   currentPassage = index
   currentStudySectionId = ''
-  updateSetProgressContext()
-  renderClassSummary()
-  renderStudy()
-  activateScreen('study-screen')
+  renderStudyMenu()
+  activateScreen('study-menu-screen')
 }
 
 function showStudyMenuScreen(){
-  showPassageScreen()
+  const studySet = getCurrentStudySet()
+  const passage = studySet && studySet.passages[currentPassage]
+  if(!studySet || !passage){
+    showPassageScreen()
+    return
+  }
+  renderStudyMenu()
+  activateScreen('study-menu-screen')
 }
 
 function goHome(){
-  if(shouldUseDirectPrepPassageFlow()){
-    goBackFromSetScreen()
-    return
-  }
   currentPassage = -1
   currentStudySectionId = ''
   renderClassSummary()
@@ -487,33 +326,35 @@ function renderStudy(){
     return
   }
 
-  const passageState = getPassageProgress(currentPassage)
-  const referenceBox = document.getElementById('p-box')
-  const referenceLabel = referenceBox ? referenceBox.querySelector('.lbl') : null
-  const referenceText = document.getElementById('p-txt')
-  const referenceContent = String(passage.text || '').trim()
-
-  document.getElementById('s-title').textContent = passage.videoTitle || passage.title
-  document.getElementById('s-cnt').textContent = passage.hasVideo ? 'VIDEO' : 'READY'
-  document.getElementById('study-meta').textContent = studySet.title + ' · ' + getStudySetDateText(studySet)
-  document.getElementById('stage-panel').innerHTML = renderPassageVideoPanel(passage, passageState)
-  document.getElementById('stage-content').innerHTML = renderPassageVideoBody(passage)
-
-  if(referenceBox && referenceText && referenceLabel){
-    if(referenceContent){
-      referenceBox.style.display = 'block'
-      referenceBox.classList.remove('expanded', 'no-toggle')
-      referenceLabel.textContent = '지문'
-      referenceText.textContent = referenceContent
-      document.getElementById('p-toggle').style.display = 'flex'
-      document.getElementById('p-toggle').textContent = '본문 더보기'
-      updatePassageToggleState()
-    }else{
-      referenceBox.style.display = 'none'
-    }
+  const sections = groupItems(passage.items)
+  const selectedSection = sections.find(function(section){
+    return section.id === currentStudySectionId
+  }) || sections[0] || null
+  if(!selectedSection){
+    document.getElementById('s-title').textContent = passage.title
+    document.getElementById('s-cnt').textContent = '0문제'
+    document.getElementById('study-meta').textContent = studySet.title + ' · ' + getStudySetDateText(studySet)
+    document.getElementById('p-txt').textContent = passage.text || '본문이 없습니다.'
+    document.getElementById('stage-panel').innerHTML = ''
+    document.getElementById('stage-content').innerHTML = '<div class="empty-box">이 지문에는 학습할 질문이 없습니다.</div>'
+    renderStageActions()
+    return
   }
 
+  currentStudySectionId = selectedSection.id
+  const sectionState = getSectionProgress(currentPassage, selectedSection.id)
+  document.getElementById('s-title').textContent = passage.title
+  document.getElementById('s-cnt').textContent = selectedSection.items.length + '문제'
+  document.getElementById('study-meta').textContent = studySet.title + ' · ' + selectedSection.title
+  document.getElementById('p-txt').textContent = passage.text || '본문이 없습니다.'
+  document.getElementById('p-box').classList.remove('expanded', 'no-toggle')
+  document.getElementById('p-toggle').style.display = 'flex'
+  document.getElementById('p-toggle').textContent = '본문 더보기'
+  document.getElementById('stage-panel').innerHTML = renderStagePanel(selectedSection, sectionState)
+  document.getElementById('stage-content').innerHTML = renderSection(selectedSection)
+
   renderStageActions()
+  updatePassageToggleState()
 }
 
 function renderStagePanel(section, sectionState){
@@ -523,55 +364,6 @@ function renderStagePanel(section, sectionState){
       '<div class="study-current-title">' + escapeHtml(section.title) + '</div>' +
       '<div class="study-current-sub">' + section.items.length + '개의 카드가 준비되어 있습니다. · ' + (sectionState && sectionState.done ? '완료' : '진행 중') + '</div>' +
     '</div>'
-}
-
-function renderPassageVideoPanel(passage, passageState){
-  return '' +
-    '<div class="study-current-section">' +
-      '<div class="study-current-kicker">PREP VIDEO</div>' +
-      '<div class="study-current-title">' + escapeHtml(passage.videoTitle || passage.title) + '</div>' +
-      '<div class="study-current-sub">' + escapeHtml(passage.videoDescription || '지문을 선택하면 바로 영상을 볼 수 있습니다.') + '</div>' +
-      '<div class="video-panel-status">' + renderProgressChip(!!(passageState && passageState.done)) + '</div>' +
-    '</div>'
-}
-
-function renderPassageVideoBody(passage){
-  const playerHtml = renderPassageVideoPlayer(passage)
-  const infoHtml = passage.videoDescription
-    ? '<div class="video-stage-note">' + escapeHtml(passage.videoDescription).replace(/\n/g, '<br>') + '</div>'
-    : ''
-
-  return '' +
-    '<section class="group video-stage">' +
-      '<div class="group-title">' +
-        '<h3>영상 보기</h3>' +
-        '<span class="group-count">' + escapeHtml(passage.hasVideo ? 'LIVE' : 'EMPTY') + '</span>' +
-      '</div>' +
-      playerHtml +
-      infoHtml +
-    '</section>'
-}
-
-function renderPassageVideoPlayer(passage){
-  if(passage.videoEmbedUrl){
-    return '' +
-      '<div class="video-player-shell">' +
-        '<div class="video-player-ratio">' +
-          '<iframe class="video-embed-frame" src="' + escapeHtml(passage.videoEmbedUrl) + '" title="' + escapeHtml(passage.videoTitle || passage.title) + '" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>' +
-        '</div>' +
-      '</div>'
-  }
-
-  if(passage.videoUrl){
-    return '' +
-      '<div class="video-player-shell">' +
-        '<video class="video-inline-player" controls playsinline preload="metadata"' + (passage.videoPoster ? ' poster="' + escapeHtml(passage.videoPoster) + '"' : '') + '>' +
-          '<source src="' + escapeHtml(passage.videoUrl) + '">' +
-        '</video>' +
-      '</div>'
-  }
-
-  return '<div class="empty-box video-empty-box">등록된 영상이 없습니다.</div>'
 }
 
 function groupItems(items){
@@ -704,8 +496,7 @@ function renderAnswerChip(label, value, emptyMessage){
 }
 
 function getStudySectionProgressKey(passageIndex, sectionId){
-  const baseKey = getPassageProgressStorageKey(currentSetIndex, passageIndex)
-  return sectionId ? (baseKey + ':' + String(sectionId || '').trim()) : baseKey
+  return String(passageIndex) + ':' + String(sectionId || '').trim()
 }
 
 function getPassageSections(passageIndex){
@@ -728,41 +519,48 @@ function migrateLegacyPassageProgress(passageIndex){
 }
 
 function getSectionProgress(passageIndex, sectionId){
-  return getPassageProgress(passageIndex)
+  migrateLegacyPassageProgress(passageIndex)
+  const sectionKey = getStudySectionProgressKey(passageIndex, sectionId)
+  return {
+    done: !!(progress.done && progress.done[sectionKey])
+  }
 }
 
-function getPassageProgress(passageIndex, setIndex){
-  const storageKey = getPassageProgressStorageKey(
-    typeof setIndex === 'number' ? setIndex : currentSetIndex,
-    passageIndex
-  )
+function getPassageProgress(passageIndex){
+  migrateLegacyPassageProgress(passageIndex)
+  const sections = getPassageSections(passageIndex)
+  const completedCount = sections.filter(function(section){
+    return getSectionProgress(passageIndex, section.id).done
+  }).length
   return {
-    done: !!(progress.done && progress.done[storageKey]),
-    completedCount: 0,
-    totalCount: 1
+    done: sections.length > 0 && completedCount === sections.length,
+    completedCount: completedCount,
+    totalCount: sections.length
   }
 }
 
 function renderStageActions(){
-  const state = getPassageProgress(currentPassage)
+  const state = getSectionProgress(currentPassage, currentStudySectionId)
   document.getElementById('stage-actions').innerHTML =
     '<button class="btn ' + (state.done ? 'btn-ghost' : 'btn-green') + '" type="button" onclick="markPassageDone()">' +
-      (state.done ? '영상 완료 취소' : '영상 완료') +
+      (state.done ? '학습 완료 취소' : '이 유형 학습 완료') +
     '</button>' +
+    '<button class="btn btn-ghost" type="button" onclick="showStudyMenuScreen()">학습 유형 보기</button>' +
     '<button class="btn btn-ghost" type="button" onclick="showPassageScreen()">목록으로 돌아가기</button>' +
     ''
 }
 
 function markPassageDone(){
-  if(currentPassage < 0) return
+  if(currentPassage < 0 || !currentStudySectionId) return
   if(!progress.done || typeof progress.done !== 'object') progress.done = {}
-  const storageKey = getPassageProgressStorageKey(currentSetIndex, currentPassage)
-  const nextDone = !progress.done[storageKey]
-  progress.done[storageKey] = nextDone
+  const sectionKey = getStudySectionProgressKey(currentPassage, currentStudySectionId)
+  const nextDone = !progress.done[sectionKey]
+  progress.done[sectionKey] = nextDone
   saveProgress()
   renderStudy()
+  renderStudyMenu()
   renderPassageScreen()
-  showToast(nextDone ? '영상을 완료로 표시했습니다.' : '영상 완료 표시를 취소했습니다.', 'var(--green)')
+  showToast(nextDone ? '이 유형을 학습 완료로 표시했습니다.' : '이 유형의 학습 완료 표시를 취소했습니다.', 'var(--green)')
 }
 
 function renderStat(value, label){
@@ -785,9 +583,7 @@ function resetProgress(){
   const currentClass = getCurrentClass()
   const currentSet = getCurrentStudySet()
   const prefix = currentClass ? '[' + currentClass.name + '] ' : ''
-  const setTitle = shouldUseDirectPrepPassageFlow()
-    ? 'PREP 전체 영상'
-    : (currentSet ? currentSet.title : '현재 세트')
+  const setTitle = currentSet ? currentSet.title : '현재 세트'
 
   if(!window.confirm(prefix + setTitle + '의 학습 기록을 초기화할까요?')) return
 

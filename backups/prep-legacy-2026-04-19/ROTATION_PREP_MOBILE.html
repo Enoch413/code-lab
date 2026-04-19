@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CODE LAB</title>
+<meta name="theme-color" content="#0d4d44">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CODE LAB">
+<meta name="color-scheme" content="light only">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./prep-icon.ico" sizes="any">
+<link rel="shortcut icon" href="./prep-icon.ico" type="image/x-icon">
+<link rel="icon" href="./prep-icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="./prep-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./rotation_prep.css">
+</head>
+<body>
+<div class="screen" id="auth-screen">
+  <div class="auth-shell">
+    <div class="logo">CODE LAB</div>
+
+    <div class="auth-card">
+      <div class="auth-grid">
+        <label class="auth-field">
+          <span>아이디</span>
+          <input type="text" id="auth-email" placeholder="student01" autocomplete="username" inputmode="text" autocapitalize="off" spellcheck="false">
+        </label>
+        <label class="auth-field">
+          <span>비밀번호</span>
+          <input type="password" id="auth-password" placeholder="비밀번호" autocomplete="current-password">
+        </label>
+      </div>
+
+      <div class="auth-error" id="auth-error"></div>
+      <div class="auth-actions">
+        <button class="btn btn-blue" type="button" id="auth-submit-btn">로그인</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="portal-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="portal-refresh-btn">새로고침</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="portal-password-btn">비밀번호 변경</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="portal-logout-btn">로그아웃</button>
+  </div>
+
+  <div class="hd"><h1>CODE LAB</h1><span class="sub" id="portal-subtitle"></span></div>
+
+  <div class="portal-user-card">
+    <div>
+      <div class="portal-user-label">현재 로그인</div>
+      <div class="portal-user-name" id="portal-user-name">학생</div>
+      <div class="portal-user-meta" id="portal-user-meta">class-1</div>
+    </div>
+  </div>
+
+  <div class="portal-grid">
+    <button class="portal-card portal-card-prep" type="button" id="portal-prep-btn">
+      <div class="portal-kicker">학습</div>
+      <div class="portal-title">PREP</div>
+      <div class="portal-desc"></div>
+    </button>
+    <button class="portal-card portal-card-check" type="button" id="portal-check-btn">
+      <div class="portal-kicker">제출</div>
+      <div class="portal-title">CHECK</div>
+      <div class="portal-desc"></div>
+    </button>
+    <button class="portal-card portal-card-admin hidden" type="button" id="portal-admin-btn">
+      <div class="portal-kicker">관리</div>
+      <div class="portal-title">ADMIN</div>
+      <div class="portal-desc"></div>
+    </button>
+  </div>
+</div>
+
+<div class="screen" id="password-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="password-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="password-home-btn">홈</button>
+  </div>
+
+  <div class="hd"><h1>비밀번호 변경</h1><span class="sub">PASSWORD</span></div>
+
+  <section class="group">
+    <div class="group-title">
+      <h3>처음 로그인했다면 비밀번호를 먼저 바꿔 주세요.</h3>
+    </div>
+    <div class="auth-grid">
+      <label class="auth-field">
+        <span>현재 비밀번호</span>
+        <input type="password" id="password-current" placeholder="현재 비밀번호">
+      </label>
+      <label class="auth-field">
+        <span>새 비밀번호</span>
+        <input type="password" id="password-next" placeholder="새 비밀번호">
+      </label>
+      <label class="auth-field">
+        <span>새 비밀번호 확인</span>
+        <input type="password" id="password-confirm" placeholder="새 비밀번호 확인">
+      </label>
+    </div>
+    <div class="auth-error" id="password-error"></div>
+    <div class="bottom-actions">
+      <button class="btn btn-blue" type="button" id="password-submit-btn">비밀번호 저장</button>
+    </div>
+  </section>
+</div>
+
+<div class="screen active boot-screen" id="boot-screen">
+  <div class="boot-card">
+    <div class="logo">PREP</div>
+    <div class="boot-title" id="boot-title">PREP 자료를 불러오는 중입니다.</div>
+    <div class="boot-desc" id="boot-desc">웹에서는 같은 폴더의 <b>session.json</b>을 자동으로 확인합니다.</div>
+  </div>
+  <footer class="prep-footer overlay">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
+</div>
+
+<div class="screen" id="pw-screen">
+  <div class="logo">CODE LAB</div>
+  <div class="tagline">수업 전 미리 준비하는 학습 페이지</div>
+  <input type="tel" id="pw-input" placeholder="공통 비밀번호" maxlength="20" inputmode="numeric" autocomplete="off">
+  <div class="err" id="pw-err"></div>
+  <button class="btn btn-blue" style="margin-top:16px;padding:12px 40px" type="button" id="pw-submit-btn">입장</button>
+  <footer class="prep-footer overlay">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
+</div>
+
+<div class="screen" id="class-screen">
+  <div class="hd"><h1>Prep</h1><span class="sub" id="class-subtitle"></span></div>
+  <div class="mini-note">
+    <b>먼저 자기 반을 선택하면 그 반에 배정된 학습 세트만 보이게 됩니다.</b><br>
+    반마다 공부 기간과 지문이 다를 수 있으니 본인 반을 정확하게 선택해 주세요.
+  </div>
+  <div class="label">반 선택</div>
+  <div class="class-list" id="class-list"></div>
+</div>
+
+<div class="screen" id="class-auth-screen">
+  <div class="hd"><h1>Prep</h1><span class="sub" id="class-auth-subtitle"></span></div>
+  <div class="class-auth-card">
+    <div class="label">선택한 반</div>
+    <div class="class-auth-name" id="class-auth-name">1반</div>
+    <div class="class-auth-help">이 반에 열려 있는 학습 세트를 보려면 반 비밀번호를 입력해 주세요.</div>
+    <input type="password" class="class-auth-input" id="class-pw-input" placeholder="반 비밀번호" autocomplete="off">
+    <div class="class-auth-err" id="class-pw-err"></div>
+    <div class="bottom-actions">
+      <button class="btn btn-ghost" type="button" id="class-auth-back-btn">반 목록으로</button>
+      <button class="btn btn-blue" type="button" id="class-auth-submit-btn">입장</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="home-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="set-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="set-home-btn" disabled>홈 화면</button>
+  </div>
+
+  <div class="hd"><h1>Prep</h1><span class="sub" id="home-subtitle"></span></div>
+
+  <div class="class-bar" id="class-bar">
+    <div class="class-bar-copy">
+      <div class="class-bar-label">현재 반</div>
+      <div class="class-bar-name" id="current-class-name"></div>
+      <div class="class-bar-meta" id="current-class-meta"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" type="button" id="change-class-btn">반 변경</button>
+  </div>
+
+  <div class="load-box" id="load-box" role="button" tabindex="0">
+    <div class="ic">📁</div>
+    <div class="t1">세션 JSON 직접 불러오기</div>
+    <div class="t2">로컬 테스트용입니다. 웹에서는 같은 폴더의 <b>session.json</b>을 자동으로 읽습니다.</div>
+  </div>
+
+  <div id="dash" style="display:none;margin-top:24px">
+    <div class="stats" id="stats"></div>
+    <div class="label">학습 세트 선택</div>
+    <div class="set-list" id="set-list"></div>
+  </div>
+
+  <div class="screen-nav screen-nav-bottom">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="goBackFromSetScreen()">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" disabled>홈 화면</button>
+  </div>
+</div>
+
+<div class="screen" id="passage-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="passage-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="passage-home-btn">홈 화면</button>
+  </div>
+
+  <div class="hd"><h1>Prep</h1><span class="sub" id="passage-subtitle"></span></div>
+
+  <div class="class-bar" id="passage-bar">
+    <div class="class-bar-copy">
+      <div class="class-bar-label">현재 학습 세트</div>
+      <div class="class-bar-name" id="current-set-name"></div>
+      <div class="class-bar-meta" id="current-set-meta"></div>
+    </div>
+  </div>
+
+  <div class="stats" id="passage-stats"></div>
+  <div class="label" id="passage-list-label">지문 선택</div>
+  <div class="p-list" id="p-list"></div>
+
+  <div class="bottom-actions" style="margin-top:16px">
+    <button class="btn btn-ghost btn-sm" type="button" id="reset-progress-btn">학습 기록 초기화</button>
+  </div>
+
+  <div class="screen-nav screen-nav-bottom">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="goHome()">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="goHome()">홈 화면</button>
+  </div>
+</div>
+
+<div class="screen" id="study-menu-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="study-menu-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="study-menu-home-btn">홈 화면</button>
+  </div>
+
+  <div class="s-title">
+    <h2 id="study-menu-title">지문 1</h2>
+    <span class="cnt" id="study-menu-count">0유형</span>
+  </div>
+
+  <div class="study-meta" id="study-menu-meta"></div>
+
+  <section class="group">
+    <div class="group-title">
+      <h3>학습 유형 선택</h3>
+      <span class="group-count">STEP</span>
+    </div>
+    <div class="study-topic-list" id="study-menu-list"></div>
+  </section>
+
+  <div class="screen-nav screen-nav-bottom">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="showPassageScreen()">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="goHome()">홈 화면</button>
+  </div>
+</div>
+
+<div class="screen" id="study-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="study-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="study-home-btn">홈 화면</button>
+  </div>
+
+  <div class="s-title">
+    <h2 id="s-title">지문 1</h2>
+    <span class="cnt" id="s-cnt">0문제</span>
+  </div>
+
+  <div class="study-meta" id="study-meta"></div>
+  <section class="group stage-panel" id="stage-panel"></section>
+
+  <div class="passage-box" id="p-box">
+    <div class="lbl">본문</div>
+    <div class="txt" id="p-txt"></div>
+    <div class="passage-toggle" id="p-toggle">더 보기</div>
+  </div>
+
+  <div id="stage-content"></div>
+  <div class="bottom-actions" id="stage-actions"></div>
+
+  <div class="screen-nav screen-nav-bottom">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="showStudyMenuScreen()">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="goHome()">홈 화면</button>
+  </div>
+</div>
+
+<div class="screen" id="check-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="check-back-btn">메인</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="check-refresh-btn">새로고침</button>
+  </div>
+
+  <div class="hd"><h1>Check</h1><span class="sub" id="check-subtitle"></span></div>
+
+  <div class="class-bar" style="display:flex">
+    <div class="class-bar-copy">
+      <div class="class-bar-label">현재 반</div>
+      <div class="class-bar-name" id="check-class-name"></div>
+      <div class="class-bar-meta" id="check-class-meta"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm hidden" type="button" id="check-change-class-btn">반 변경</button>
+  </div>
+
+  <div class="stats" id="check-stats"></div>
+  <div class="label">CHECK 세트 선택</div>
+  <div class="set-list" id="check-set-list"></div>
+</div>
+
+<div class="screen" id="check-set-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="check-set-back-btn">이전 페이지</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="check-set-home-btn">메인</button>
+  </div>
+
+  <div class="hd"><h1>Check</h1><span class="sub" id="check-set-subtitle"></span></div>
+
+  <div class="class-bar" style="display:flex">
+    <div class="class-bar-copy">
+      <div class="class-bar-label">현재 CHECK 세트</div>
+      <div class="class-bar-name" id="check-current-set-name"></div>
+      <div class="class-bar-meta" id="check-current-set-meta"></div>
+    </div>
+  </div>
+
+  <div class="check-form" id="check-form"></div>
+  <div class="bottom-actions" id="check-submit-actions">
+    <button class="btn btn-blue" type="button" id="check-submit-btn">모든 답안 제출</button>
+  </div>
+</div>
+
+<div class="screen" id="admin-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="admin-back-btn">메인</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="admin-refresh-btn">새로고침</button>
+  </div>
+
+  <div class="hd"><h1>Admin</h1><span class="sub" id="admin-subtitle"></span></div>
+  <div class="stats" id="admin-stats"></div>
+  <div class="admin-grid">
+    <section class="group">
+      <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
+      <div class="admin-list" id="admin-type-list"></div>
+    </section>
+    <section class="group">
+      <div class="group-title"><h3>학생별 오답</h3><span class="group-count" id="admin-student-count">0</span></div>
+      <div class="admin-list" id="admin-student-list"></div>
+    </section>
+    <section class="group">
+      <div class="group-title"><h3>최근 오답 기록</h3><span class="group-count" id="admin-response-count">0</span></div>
+      <div class="admin-list" id="admin-response-list"></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" accept=".json,application/json" id="file-input" hidden>
+<footer class="prep-footer global">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
+
+<script src="./firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="./rotation_prep_core.js"></script>
+<script src="./rotation_prep_bundle.js"></script>
+<script src="./rotation_prep_passages.js"></script>
+<script src="./rotation_prep_ui.js"></script>
+<script src="./rotation_portal.js"></script>
+</body>
+</html>
