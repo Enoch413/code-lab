@@ -2182,6 +2182,277 @@ body::before{
   }
 }
 
+.superadmin-exam-center{
+  margin-top:20px;
+  padding:22px 18px;
+  border-radius:22px;
+  background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(246,250,248,.9));
+  border:1px solid rgba(18,74,63,.08);
+  box-shadow:0 18px 36px rgba(16,33,29,.08);
+}
+
+#superadmin-exam-center{
+  margin-top:20px;
+}
+
+.superadmin-exam-center h2{
+  margin:0;
+}
+
+.superadmin-exam-center-meta{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.6;
+}
+
+.superadmin-exam-overview{
+  margin-top:14px;
+  display:grid;
+  gap:12px;
+}
+
+.superadmin-overview{
+  margin-top:14px;
+  display:grid;
+  gap:12px;
+}
+
+.superadmin-overview-title{
+  font-weight:800;
+}
+
+.superadmin-overview-meta{
+  color:var(--muted);
+  line-height:1.6;
+}
+
+.superadmin-exam-overview-card{
+  padding:14px 16px;
+  border-radius:18px;
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(18,74,63,.08);
+}
+
+.superadmin-exam-overview-card strong{
+  display:block;
+  margin-bottom:6px;
+}
+
+.superadmin-exam-grid{
+  margin-top:18px;
+  display:grid;
+  gap:14px;
+}
+
+.superadmin-cycle-grid{
+  margin-top:18px;
+  display:grid;
+  gap:14px;
+}
+
+.superadmin-exam-card{
+  padding:18px 16px;
+  border-radius:20px;
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(18,74,63,.08);
+}
+
+.superadmin-cycle-card{
+  padding:18px 16px;
+  border-radius:20px;
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(18,74,63,.08);
+}
+
+.superadmin-cycle-card-danger{
+  background:rgba(255,250,250,.9);
+  border-color:rgba(217,83,79,.18);
+}
+
+.superadmin-exam-step{
+  display:inline-flex;
+  align-items:center;
+  margin-bottom:8px;
+  padding:5px 10px;
+  border-radius:999px;
+  background:rgba(18,74,63,.08);
+  color:var(--ink);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
+.superadmin-step{
+  display:inline-flex;
+  align-items:center;
+  margin-bottom:8px;
+  padding:5px 10px;
+  border-radius:999px;
+  background:rgba(18,74,63,.08);
+  color:var(--ink);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
+.superadmin-exam-card h3{
+  margin:0;
+}
+
+.superadmin-cycle-card h4{
+  margin:0;
+  font-size:20px;
+}
+
+.superadmin-exam-card p{
+  margin:8px 0 0;
+  color:var(--muted);
+  line-height:1.6;
+}
+
+.superadmin-cycle-card p{
+  margin:8px 0 0;
+  color:var(--muted);
+  line-height:1.6;
+}
+
+.superadmin-exam-card .portal-field{
+  margin-top:14px;
+}
+
+.superadmin-field{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:14px;
+}
+
+.superadmin-field span{
+  font-size:14px;
+  font-weight:700;
+  color:var(--ink);
+}
+
+.superadmin-text-input{
+  width:100%;
+}
+
+.superadmin-exam-actions{
+  margin-top:14px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+
+.superadmin-inline-actions{
+  margin-top:14px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+
+.superadmin-exam-status{
+  margin-top:12px;
+  min-height:22px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.6;
+}
+
+.superadmin-status{
+  margin-top:12px;
+  min-height:22px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.6;
+}
+
+.superadmin-exam-status.is-error{
+  color:var(--red);
+  font-weight:700;
+}
+
+.superadmin-status.is-error{
+  color:var(--red);
+  font-weight:700;
+}
+
+.superadmin-exam-status.is-success{
+  color:var(--green);
+  font-weight:700;
+}
+
+.superadmin-status.is-success{
+  color:var(--green);
+  font-weight:700;
+}
+
+.superadmin-exam-status.is-working{
+  color:var(--ink);
+  font-weight:700;
+}
+
+.superadmin-status.is-working{
+  color:var(--ink);
+  font-weight:700;
+}
+
+.superadmin-exam-warning{
+  margin-top:14px;
+  padding:12px 14px;
+  border-radius:16px;
+  background:rgba(217,83,79,.08);
+  color:var(--red);
+  font-size:14px;
+  line-height:1.6;
+}
+
+.superadmin-status-danger{
+  color:var(--red);
+  font-weight:700;
+}
+
+@media (min-width:760px){
+  .superadmin-exam-overview{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .superadmin-overview{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .superadmin-exam-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .superadmin-cycle-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .superadmin-exam-card.is-wide{
+    grid-column:1 / -1;
+  }
+
+  .superadmin-cycle-card-danger{
+    grid-column:1 / -1;
+  }
+}
+
+@media (max-width:759px){
+  .superadmin-exam-center{
+    padding:18px 14px;
+  }
+
+  .superadmin-exam-actions .btn{
+    width:100%;
+  }
+
+  .superadmin-inline-actions .btn{
+    width:100%;
+  }
+}
+
 #auth-screen .auth-shell{
   min-height:100vh;
   min-height:100dvh;
