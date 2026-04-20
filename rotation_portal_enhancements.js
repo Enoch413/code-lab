@@ -9,11 +9,13 @@ const PORTAL_CLOUD_SET_COLLECTIONS = {
 }
 
 const PORTAL_CLASS_CATALOG_DOC = 'prep-classes'
+const PORTAL_PREP_VIDEO_PROGRESS_COLLECTION = 'prepVideoProgress'
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
   issues: 'rotation_portal_question_issues_v1',
-  issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_'
+  issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_',
+  prepVideoProgress: 'rotation_portal_prep_video_progress_v1'
 }
 
 const PREP_SCREEN_IDS = [
@@ -108,6 +110,18 @@ portalState.prepVideoManager = portalState.prepVideoManager || {
 portalState.prepVideoManager.isSaving = !!portalState.prepVideoManager.isSaving
 if(!portalState.prepVideoManager.open){
   portalState.prepVideoManager.status = '유튜브 링크를 입력해 주세요.'
+}
+portalState.prepVideoProgressModal = portalState.prepVideoProgressModal || {
+  open: false,
+  isLoading: false,
+  docId: '',
+  title: '',
+  classId: '',
+  className: '',
+  currentDoc: null,
+  students: [],
+  progressRows: [],
+  status: ''
 }
 portalState.checkSetEditor = portalState.checkSetEditor || {
   open: false,
@@ -301,6 +315,16 @@ function bindPortalEnhancementEvents(){
   })
   bindClick('prep-video-manager-cancel-btn', function(){
     closePortalPrepVideoManager()
+  })
+
+  bindClick('prep-video-progress-backdrop', function(){
+    closePortalPrepVideoProgressModal()
+  })
+  bindClick('prep-video-progress-close-btn', function(){
+    closePortalPrepVideoProgressModal()
+  })
+  bindClick('prep-video-progress-cancel-btn', function(){
+    closePortalPrepVideoProgressModal()
   })
 
   const prepVideoManagerList = document.getElementById('prep-video-manager-list')
@@ -4543,6 +4567,502 @@ async function createPortalPrepVideoByPrompt(){
   }
 }
 
+function sanitizePortalPrepProgressSegment(value){
+  return sanitizeId(String(value || '').trim()) || 'unknown'
+}
+
+function getPortalPrepProgressSetId(studySet, setIndex){
+  return sanitizePortalPrepProgressSegment(
+    studySet && studySet.id ||
+    (typeof setIndex === 'number' ? ('set-' + setIndex) : 'set')
+  )
+}
+
+function getPortalPrepProgressPassageId(passage, passageIndex){
+  return sanitizePortalPrepProgressSegment(
+    passage && (passage.id || passage.title) ||
+    (typeof passageIndex === 'number' ? ('passage-' + passageIndex) : 'passage')
+  )
+}
+
+function buildPortalPrepVideoProgressDocId(userId, setId, passageId, passageIndex){
+  return [
+    sanitizePortalPrepProgressSegment(userId),
+    sanitizePortalPrepProgressSegment(setId),
+    sanitizePortalPrepProgressSegment(passageId),
+    sanitizePortalPrepProgressSegment(typeof passageIndex === 'number' ? passageIndex : 0)
+  ].join('__')
+}
+
+function readLocalPortalPrepVideoProgressRows(){
+  try{
+    const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.prepVideoProgress)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(normalizePortalPrepVideoProgressRecord).filter(Boolean) : []
+  }catch(error){
+    console.error(error)
+    return []
+  }
+}
+
+function writeLocalPortalPrepVideoProgressRows(rows){
+  localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.prepVideoProgress, JSON.stringify(Array.isArray(rows) ? rows : []))
+}
+
+function saveLocalPortalPrepVideoProgressRecord(record){
+  const rows = readLocalPortalPrepVideoProgressRows().filter(function(entry){
+    return String(entry && (entry.id || entry.docId) || '').trim() !== String(record && record.id || '').trim()
+  })
+  rows.push(record)
+  writeLocalPortalPrepVideoProgressRows(rows)
+}
+
+function normalizePortalPrepVideoProgressRecord(source){
+  if(!source || typeof source !== 'object') return null
+  const id = String(source.id || source.docId || '').trim()
+  const setId = String(source.setId || '').trim()
+  const passageId = String(source.passageId || '').trim()
+  const userId = String(source.userId || '').trim()
+  if(!setId || !passageId || !userId) return null
+  return {
+    id: id || buildPortalPrepVideoProgressDocId(userId, setId, passageId, Number(source.passageIndex || 0)),
+    userId: userId,
+    loginId: String(source.loginId || '').trim(),
+    email: String(source.email || '').trim().toLowerCase(),
+    name: String(source.name || '').trim(),
+    studentId: String(source.studentId || '').trim(),
+    classId: String(source.classId || '').trim(),
+    classIds: Array.isArray(source.classIds) ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean) : [],
+    setId: setId,
+    setTitle: String(source.setTitle || '').trim(),
+    passageId: passageId,
+    passageIndex: Number(source.passageIndex || 0),
+    passageTitle: String(source.passageTitle || '').trim(),
+    videoTitle: String(source.videoTitle || '').trim(),
+    videoUrl: String(source.videoUrl || '').trim(),
+    done: !!source.done,
+    completedAt: String(source.completedAt || '').trim(),
+    clearedAt: String(source.clearedAt || '').trim(),
+    updatedAt: String(source.updatedAt || '').trim()
+  }
+}
+
+async function savePortalPrepVideoProgress(options){
+  const settings = options || {}
+  const studySet = settings.studySet || null
+  const passage = settings.passage || null
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  const userId = String(authUser.uid || profile.uid || profile.id || '').trim()
+  if(!userId || !studySet || !passage) return false
+
+  const classIds = typeof getProfileClassIds === 'function'
+    ? getProfileClassIds()
+    : (Array.isArray(profile.classIds) ? profile.classIds : [])
+  const currentClass = typeof getCurrentClass === 'function' ? getCurrentClass() : null
+  const classId = String(currentClass && currentClass.id || classIds[0] || '').trim()
+  const setId = getPortalPrepProgressSetId(studySet, settings.setIndex)
+  const passageIndex = Number(settings.passageIndex || 0)
+  const passageId = getPortalPrepProgressPassageId(passage, passageIndex)
+  const docId = buildPortalPrepVideoProgressDocId(userId, setId, passageId, passageIndex)
+  const now = new Date().toISOString()
+  const done = !!settings.done
+  const record = normalizePortalPrepVideoProgressRecord({
+    id: docId,
+    userId: userId,
+    loginId: profile.loginId || authUser.loginId || '',
+    email: profile.email || authUser.email || '',
+    name: profile.name || '',
+    studentId: profile.studentId || '',
+    classId: classId,
+    classIds: classIds,
+    setId: setId,
+    setTitle: studySet.title || '',
+    passageId: passageId,
+    passageIndex: passageIndex,
+    passageTitle: passage.title || '',
+    videoTitle: passage.videoTitle || passage.title || '',
+    videoUrl: passage.videoUrl || '',
+    done: done,
+    completedAt: done ? now : '',
+    clearedAt: done ? '' : now,
+    updatedAt: now
+  })
+  if(!record) return false
+
+  if(portalState.firebaseEnabled && portalState.db){
+    await portalState.db.collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION).doc(docId).set(record, { merge: true })
+  }else{
+    saveLocalPortalPrepVideoProgressRecord(record)
+  }
+  return true
+}
+
+async function fetchPortalPrepVideoProgressRows(filters){
+  const settings = filters || {}
+  const targetSetId = String(settings.setId || '').trim()
+  const targetClassId = String(settings.classId || '').trim()
+  let rows = []
+  let usedCloud = false
+
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      let query = portalState.db.collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
+      if(targetSetId) query = query.where('setId', '==', targetSetId)
+      const snapshot = await query.get()
+      usedCloud = true
+      rows = snapshot.docs.map(function(doc){
+        return normalizePortalPrepVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+      }).filter(Boolean)
+    }catch(error){
+      console.warn('prep video progress read fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  if(!usedCloud){
+    rows = readLocalPortalPrepVideoProgressRows()
+  }
+
+  return rows.filter(function(row){
+    if(targetSetId && String(row && row.setId || '').trim() !== targetSetId) return false
+    if(targetClassId){
+      const rowClassIds = Array.isArray(row && row.classIds) ? row.classIds : []
+      if(String(row && row.classId || '').trim() !== targetClassId && rowClassIds.indexOf(targetClassId) < 0) return false
+    }
+    return true
+  })
+}
+
+async function fetchAllPortalPrepVideoProgress(){
+  return fetchPortalPrepVideoProgressRows({})
+}
+
+function getPortalClassInfoById(classId){
+  const targetId = String(classId || '').trim()
+  return (Array.isArray(prepClasses) ? prepClasses : []).find(function(classInfo){
+    return String(classInfo && classInfo.id || '').trim() === targetId
+  }) || (targetId ? { id: targetId, name: targetId, password: '' } : null)
+}
+
+function getPortalPrepProgressClassId(record, currentDoc){
+  const activeClass = typeof getCurrentClass === 'function' ? getCurrentClass() : null
+  const classIds = Array.isArray(record && record.classIds) && record.classIds.length
+    ? record.classIds
+    : (Array.isArray(currentDoc && currentDoc.classIds) ? currentDoc.classIds : [])
+  const activeId = String(activeClass && activeClass.id || '').trim()
+  if(activeId && (!classIds.length || classIds.indexOf(activeId) >= 0)) return activeId
+  return String(classIds[0] || '').trim()
+}
+
+function getPortalPrepProgressPassages(currentDoc, classId){
+  const passages = buildPortalPrepVideoManagerPassages(currentDoc)
+  const assignments = Array.isArray(currentDoc && currentDoc.payload && currentDoc.payload.classAssignments)
+    ? currentDoc.payload.classAssignments
+    : []
+  const assignment = assignments.find(function(entry){
+    return String(entry && entry.classId || '').trim() === String(classId || '').trim()
+  }) || null
+  if(!assignment || !Array.isArray(assignment.passageIndexes) || !assignment.passageIndexes.length) return passages
+  const allowed = new Set(assignment.passageIndexes.map(function(index){ return Number(index) }))
+  return passages.filter(function(passage){
+    return allowed.has(Number(passage && passage.index))
+  })
+}
+
+function normalizePortalPrepProgressStudents(students, classId){
+  const targetClassId = String(classId || '').trim()
+  return (Array.isArray(students) ? students : []).filter(function(student){
+    if(!student || String(student.role || 'student').trim().toLowerCase() === 'admin') return false
+    if(student.loginDisabled) return false
+    if(!targetClassId) return true
+    return Array.isArray(student.classIds) && student.classIds.indexOf(targetClassId) >= 0
+  }).sort(function(left, right){
+    const leftName = String(left && (left.name || left.loginId || left.studentId || left.email) || '')
+    const rightName = String(right && (right.name || right.loginId || right.studentId || right.email) || '')
+    return leftName.localeCompare(rightName, 'ko')
+  })
+}
+
+function normalizePortalPrepProgressMatchValue(value){
+  return String(value || '').trim().toLowerCase()
+}
+
+function doesPortalPrepProgressMatchStudent(row, student){
+  const rowValues = [
+    row && row.userId,
+    row && row.studentId,
+    row && row.loginId,
+    row && row.email
+  ].map(normalizePortalPrepProgressMatchValue).filter(Boolean)
+  const studentValues = [
+    student && student.uid,
+    student && student.id,
+    student && student.studentId,
+    student && student.loginId,
+    student && student.email
+  ].map(normalizePortalPrepProgressMatchValue).filter(Boolean)
+  return studentValues.some(function(value){
+    return rowValues.indexOf(value) >= 0
+  })
+}
+
+function getPortalPrepProgressForStudent(rows, student, passage){
+  const passageId = String(passage && passage.id || '').trim()
+  const passageIndex = Number(passage && passage.index || 0)
+  return (Array.isArray(rows) ? rows : []).filter(function(row){
+    if(String(row && row.passageId || '').trim() !== passageId) return false
+    if(Number(row && row.passageIndex || 0) !== passageIndex) return false
+    return doesPortalPrepProgressMatchStudent(row, student)
+  }).sort(function(left, right){
+    return String(right && right.updatedAt || '').localeCompare(String(left && left.updatedAt || ''))
+  })[0] || null
+}
+
+function countPortalPrepProgressDone(students, rows, passage){
+  return (Array.isArray(students) ? students : []).reduce(function(sum, student){
+    const progressRow = getPortalPrepProgressForStudent(rows, student, passage)
+    return sum + (progressRow && progressRow.done ? 1 : 0)
+  }, 0)
+}
+
+function getPortalPrepArchiveClassIdsForSet(prepSetDoc){
+  const payload = prepSetDoc && prepSetDoc.payload && typeof prepSetDoc.payload === 'object'
+    ? prepSetDoc.payload
+    : {}
+  const assignmentClassIds = Array.isArray(payload.classAssignments)
+    ? payload.classAssignments.map(function(assignment){
+        return String(assignment && assignment.classId || '').trim()
+      }).filter(Boolean)
+    : []
+  const docClassIds = Array.isArray(prepSetDoc && prepSetDoc.classIds)
+    ? prepSetDoc.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+    : []
+  return Array.from(new Set(assignmentClassIds.concat(docClassIds)))
+}
+
+function buildPortalPrepVideoProgressArchiveRows(prepSets, users, progressRows, classes){
+  const classNameMap = new Map((Array.isArray(classes) ? classes : []).map(function(classInfo){
+    return [
+      String(classInfo && classInfo.id || '').trim(),
+      String(classInfo && classInfo.name || '').trim()
+    ]
+  }))
+  const rows = []
+
+  ;(Array.isArray(prepSets) ? prepSets : []).forEach(function(prepSetDoc){
+    const payload = prepSetDoc && prepSetDoc.payload && typeof prepSetDoc.payload === 'object'
+      ? prepSetDoc.payload
+      : null
+    if(!payload) return
+
+    const setId = getPortalPrepProgressSetId(payload, 0)
+    const setTitle = String(prepSetDoc && prepSetDoc.title || payload.title || setId).trim()
+    const classIds = getPortalPrepArchiveClassIdsForSet(prepSetDoc)
+    classIds.forEach(function(classId){
+      const classStudents = normalizePortalPrepProgressStudents(users, classId)
+      const classProgressRows = (Array.isArray(progressRows) ? progressRows : []).filter(function(row){
+        if(String(row && row.setId || '').trim() !== setId) return false
+        const rowClassIds = Array.isArray(row && row.classIds) ? row.classIds : []
+        return String(row && row.classId || '').trim() === classId || rowClassIds.indexOf(classId) >= 0
+      })
+      const passages = getPortalPrepProgressPassages(prepSetDoc, classId)
+      passages.forEach(function(passage){
+        classStudents.forEach(function(student){
+          const progressRow = getPortalPrepProgressForStudent(classProgressRows, student, passage)
+          const isDone = !!(progressRow && progressRow.done)
+          rows.push({
+            docId: String(prepSetDoc && prepSetDoc.docId || '').trim(),
+            setId: setId,
+            setTitle: setTitle,
+            classId: classId,
+            className: classNameMap.get(classId) || classId,
+            passageIndex: Number(passage && passage.index || 0),
+            passageId: String(passage && passage.id || '').trim(),
+            passageTitle: String(passage && (passage.videoTitle || passage.title) || '').trim(),
+            videoUrl: String(passage && passage.videoUrl || '').trim(),
+            userId: String(student && (student.uid || student.id) || '').trim(),
+            loginId: String(student && student.loginId || '').trim(),
+            studentId: String(student && student.studentId || '').trim(),
+            name: String(student && (student.name || student.loginId || student.studentId || student.email) || '').trim(),
+            email: String(student && student.email || '').trim(),
+            done: isDone,
+            status: isDone ? 'done' : 'pending',
+            completedAt: isDone && progressRow ? String(progressRow.completedAt || '').trim() : '',
+            updatedAt: progressRow ? String(progressRow.updatedAt || '').trim() : ''
+          })
+        })
+      })
+    })
+  })
+
+  return rows
+}
+
+function renderPortalPrepProgressStudentRows(students, rows, passage){
+  if(!students.length){
+    return '<div class="empty-box">이 반에 표시할 학생이 없습니다.</div>'
+  }
+  return students.map(function(student){
+    const progressRow = getPortalPrepProgressForStudent(rows, student, passage)
+    const isDone = !!(progressRow && progressRow.done)
+    const displayName = String(student && (student.name || student.loginId || student.studentId || student.email) || '학생').trim()
+    const meta = [
+      student && student.loginId ? ('ID ' + student.loginId) : '',
+      student && student.studentId && student.studentId !== student.loginId ? ('학생ID ' + student.studentId) : '',
+      isDone && progressRow.completedAt ? ('완료 ' + formatAdminTime(progressRow.completedAt)) : '완료 기록 없음'
+    ].filter(Boolean).join(' · ')
+    return '' +
+      '<div class="admin-content-item">' +
+        '<div class="admin-content-item-body">' +
+          '<div class="admin-content-item-title">' + escapeHtml(displayName) + '</div>' +
+          '<div class="admin-content-item-meta">' + escapeHtml(meta) + '</div>' +
+        '</div>' +
+        '<div class="admin-content-item-actions">' +
+          '<span class="admin-content-chip ' + (isDone ? 'live' : 'legacy') + '">' + escapeHtml(isDone ? '완료' : '미완료') + '</span>' +
+        '</div>' +
+      '</div>'
+  }).join('')
+}
+
+function renderPortalPrepVideoProgressModal(){
+  const modal = document.getElementById('prep-video-progress-modal')
+  const titleNode = document.getElementById('prep-video-progress-title')
+  const metaNode = document.getElementById('prep-video-progress-meta')
+  const noteNode = document.getElementById('prep-video-progress-note')
+  const listNode = document.getElementById('prep-video-progress-list')
+  const statusNode = document.getElementById('prep-video-progress-status')
+  if(!modal || !titleNode || !metaNode || !listNode || !statusNode) return
+
+  const state = portalState.prepVideoProgressModal || {}
+  if(!state.open){
+    modal.classList.add('hidden')
+    modal.setAttribute('aria-hidden', 'true')
+    document.body.classList.remove('modal-open')
+    listNode.innerHTML = ''
+    statusNode.textContent = ''
+    return
+  }
+
+  modal.classList.remove('hidden')
+  modal.setAttribute('aria-hidden', 'false')
+  document.body.classList.add('modal-open')
+  titleNode.textContent = state.title ? ('시청 현황 · ' + state.title) : 'PREP 영상 시청 현황'
+  metaNode.textContent = [state.className || state.classId || '', state.status || ''].filter(Boolean).join(' · ')
+  if(noteNode){
+    noteNode.textContent = '학생이 영상 완료 버튼을 누른 기록 기준입니다. 유튜브를 실제로 끝까지 봤는지까지 검증하는 기능은 아닙니다.'
+  }
+
+  if(state.isLoading){
+    listNode.innerHTML = '<div class="empty-box">시청 현황을 불러오는 중입니다...</div>'
+    statusNode.textContent = 'Firebase 기록을 확인하고 있습니다.'
+    return
+  }
+
+  const students = Array.isArray(state.students) ? state.students : []
+  const rows = Array.isArray(state.progressRows) ? state.progressRows : []
+  const passages = state.currentDoc ? getPortalPrepProgressPassages(state.currentDoc, state.classId) : []
+  if(!passages.length){
+    listNode.innerHTML = '<div class="empty-box">' + escapeHtml(state.status || '이 PREP 세트에서 확인할 영상을 찾지 못했습니다.') + '</div>'
+    statusNode.textContent = state.status || ''
+    return
+  }
+
+  const totalSlots = students.length * passages.length
+  const doneSlots = passages.reduce(function(sum, passage){
+    return sum + countPortalPrepProgressDone(students, rows, passage)
+  }, 0)
+  statusNode.textContent = '전체 ' + totalSlots + '건 중 완료 ' + doneSlots + '건, 미완료 ' + Math.max(totalSlots - doneSlots, 0) + '건'
+
+  listNode.innerHTML = passages.map(function(passage){
+    const doneCount = countPortalPrepProgressDone(students, rows, passage)
+    const pendingCount = Math.max(students.length - doneCount, 0)
+    return '' +
+      '<div class="prep-video-manager-item">' +
+        '<div class="prep-video-manager-item-head">' +
+          '<div>' +
+            '<div class="prep-video-manager-item-title">' + escapeHtml(String(passage.index + 1) + '. ' + (passage.videoTitle || passage.title || 'PREP 영상')) + '</div>' +
+            '<div class="prep-video-manager-item-meta">' +
+              '<span class="admin-content-chip live">' + escapeHtml('완료 ' + doneCount) + '</span>' +
+              '<span class="admin-content-chip legacy">' + escapeHtml('미완료 ' + pendingCount) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="prep-video-manager-item-copy">' +
+          '<div class="admin-content-list">' + renderPortalPrepProgressStudentRows(students, rows, passage) + '</div>' +
+        '</div>' +
+      '</div>'
+  }).join('')
+}
+
+function closePortalPrepVideoProgressModal(){
+  portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
+    open: false,
+    isLoading: false
+  })
+  renderPortalPrepVideoProgressModal()
+}
+
+async function openPortalPrepVideoProgressModal(docId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 PREP 시청 현황을 확인할 수 있습니다.', 'var(--red)')
+    return
+  }
+  const targetDocId = String(docId || '').trim()
+  if(!targetDocId) return
+  const inventoryRecord = (Array.isArray(portalState.prepSetInventory) ? portalState.prepSetInventory : []).find(function(record){
+    return String(record && record.docId || '').trim() === targetDocId
+  }) || null
+
+  portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
+    open: true,
+    isLoading: true,
+    docId: targetDocId,
+    title: inventoryRecord && inventoryRecord.title || '',
+    classId: '',
+    className: '',
+    currentDoc: null,
+    students: [],
+    progressRows: [],
+    status: '불러오는 중'
+  })
+  renderPortalPrepVideoProgressModal()
+
+  try{
+    const currentDoc = await getCloudSetDoc('prep', targetDocId)
+    if(!currentDoc || !currentDoc.payload) throw new Error('PREP 세트 정보를 찾지 못했습니다.')
+    const classId = getPortalPrepProgressClassId(inventoryRecord || currentDoc, currentDoc)
+    const classInfo = getPortalClassInfoById(classId)
+    if(classInfo && !canManagePortalClass(classInfo)){
+      throw new Error('현재 계정으로 확인할 수 없는 반입니다.')
+    }
+    const setId = getPortalPrepProgressSetId(currentDoc.payload, 0)
+    const students = normalizePortalPrepProgressStudents(await fetchAdminStudentProfiles(), classId)
+    const progressRows = await fetchPortalPrepVideoProgressRows({ setId: setId, classId: classId })
+
+    portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
+      open: true,
+      isLoading: false,
+      docId: targetDocId,
+      title: currentDoc.title || currentDoc.payload.title || targetDocId,
+      classId: classId,
+      className: classInfo && classInfo.name || classId,
+      currentDoc: currentDoc,
+      students: students,
+      progressRows: progressRows,
+      status: students.length + '명 대상'
+    })
+    renderPortalPrepVideoProgressModal()
+  }catch(error){
+    console.error(error)
+    portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
+      open: true,
+      isLoading: false,
+      status: String(error && error.message || '시청 현황을 불러오지 못했습니다.')
+    })
+    renderPortalPrepVideoProgressModal()
+  }
+}
+
 function canUsePortalCloudStorage(){
   return !!(portalState.storage && typeof portalState.storage.ref === 'function')
 }
@@ -5979,6 +6499,9 @@ function buildPortalManagedSetItemHtml(kind, record){
   const prepVideoButton = kind === 'prep' && record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoManager(\'' + escapeJs(record.docId) + '\')">' + (record.isDirectVideo ? '링크 수정' : '영상 관리') + '</button>'
     : ''
+  const prepProgressButton = kind === 'prep' && record && record.isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoProgressModal(\'' + escapeJs(record.docId) + '\')">시청 현황</button>'
+    : ''
   const isRegrading = kind === 'check' && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
   const regradeButton = kind === 'check' && record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
@@ -6004,6 +6527,7 @@ function buildPortalManagedSetItemHtml(kind, record){
         '<span class="admin-content-chip ' + chipClass + '">' + escapeHtml(chipLabel) + '</span>' +
         editButton +
         prepVideoButton +
+        prepProgressButton +
         regradeButton +
         renameButton +
         dateButton +
@@ -6482,6 +7006,9 @@ window.openPrepClassPicker = openPrepClassPicker
 window.openPortalPrepVideoManager = openPortalPrepVideoManager
 window.savePortalPrepPassageVideoUrl = savePortalPrepPassageVideoUrl
 window.removePortalPrepPassageVideo = removePortalPrepPassageVideo
+window.openPortalPrepVideoProgressModal = openPortalPrepVideoProgressModal
+window.closePortalPrepVideoProgressModal = closePortalPrepVideoProgressModal
+window.savePortalPrepVideoProgress = savePortalPrepVideoProgress
 window.openPortalManagedCheckSetEditor = openPortalManagedCheckSetEditor
 window.regradePortalManagedCheckSet = regradePortalManagedCheckSet
 
@@ -6972,11 +7499,12 @@ function getPortalCurrentExamName(){
 }
 
 async function buildPortalExamArchiveSnapshot(examName){
-  const [examState, users, responses, issues, prepSets, checkSets, prepSessionDoc, checkDataDoc, classCatalogDoc] = await Promise.all([
+  const [examState, users, responses, issues, prepProgress, prepSets, checkSets, prepSessionDoc, checkDataDoc, classCatalogDoc] = await Promise.all([
     loadPortalExamState(false),
     fetchAllPortalUsersForSuperAdmin(),
     fetchAllCheckResponses(),
     fetchAllQuestionIssues(),
+    fetchAllPortalPrepVideoProgress(),
     loadCloudSetDocs('prep'),
     loadCloudSetDocs('check'),
     loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep),
@@ -6989,6 +7517,7 @@ async function buildPortalExamArchiveSnapshot(examName){
       ? classCatalogDoc.payload.classes
       : prepClasses
   )
+  const prepProgressReport = buildPortalPrepVideoProgressArchiveRows(prepSets, users, prepProgress, classList)
 
   return {
     kind: 'code-lab-exam-archive',
@@ -7002,6 +7531,8 @@ async function buildPortalExamArchiveSnapshot(examName){
     users: clonePlainData(users) || [],
     checkResponses: clonePlainData(responses) || [],
     questionIssues: clonePlainData(issues) || [],
+    prepVideoProgress: clonePlainData(prepProgress) || [],
+    prepVideoProgressReport: clonePlainData(prepProgressReport) || [],
     portalPrepSets: clonePlainData(prepSets) || [],
     portalCheckSets: clonePlainData(checkSets) || [],
     portalContent: {
@@ -7018,6 +7549,8 @@ function buildPortalExamArchiveExcelHtml(snapshot){
   const checkSets = Array.isArray(snapshot && snapshot.portalCheckSets) ? snapshot.portalCheckSets : []
   const responses = Array.isArray(snapshot && snapshot.checkResponses) ? snapshot.checkResponses : []
   const issues = Array.isArray(snapshot && snapshot.questionIssues) ? snapshot.questionIssues : []
+  const prepProgress = Array.isArray(snapshot && snapshot.prepVideoProgress) ? snapshot.prepVideoProgress : []
+  const prepProgressReport = Array.isArray(snapshot && snapshot.prepVideoProgressReport) ? snapshot.prepVideoProgressReport : []
   const classes = Array.isArray(snapshot && snapshot.prepClasses) ? snapshot.prepClasses : []
 
   const summaryRows = [
@@ -7030,6 +7563,8 @@ function buildPortalExamArchiveExcelHtml(snapshot){
     ['관리자 수', String(summarizePortalCounts(users, function(user){ return String(user && user.role || '').trim() === 'admin' }))],
     ['CHECK 제출 수', String(responses.length)],
     ['질문 수', String(issues.length)],
+    ['PREP 영상 완료 기록 수', String(prepProgress.length)],
+    ['PREP 영상 관리 행 수', String(prepProgressReport.length)],
     ['PREP 세트 수', String(prepSets.length)],
     ['CHECK 세트 수', String(checkSets.length)]
   ]
@@ -7082,6 +7617,35 @@ function buildPortalExamArchiveExcelHtml(snapshot){
     ]
   })
 
+  const prepProgressRows = prepProgress.map(function(entry){
+    return [
+      String(entry && entry.setTitle || entry && entry.setId || '').trim(),
+      String(entry && entry.passageTitle || entry && entry.videoTitle || '').trim(),
+      String(entry && entry.name || '').trim(),
+      String(entry && entry.studentId || '').trim(),
+      String(entry && entry.loginId || '').trim(),
+      String(entry && entry.classId || '').trim(),
+      String(entry && entry.done ? '완료' : '미완료'),
+      String(entry && entry.completedAt || '').trim(),
+      String(entry && entry.updatedAt || '').trim()
+    ]
+  })
+
+  const prepProgressReportRows = prepProgressReport.map(function(entry){
+    return [
+      String(entry && entry.setTitle || entry && entry.setId || '').trim(),
+      String(entry && entry.className || entry && entry.classId || '').trim(),
+      String(entry && entry.passageTitle || '').trim(),
+      String(entry && entry.name || '').trim(),
+      String(entry && entry.studentId || '').trim(),
+      String(entry && entry.loginId || '').trim(),
+      String(entry && entry.done ? '완료' : '미완료'),
+      String(entry && entry.completedAt || '').trim(),
+      String(entry && entry.updatedAt || '').trim(),
+      String(entry && entry.videoUrl || '').trim()
+    ]
+  })
+
   const prepSetRows = prepSets.map(function(entry){
     const payload = entry && entry.payload ? entry.payload : {}
     return [
@@ -7121,6 +7685,8 @@ function buildPortalExamArchiveExcelHtml(snapshot){
         '<h2>사용자</h2>' + buildPortalHtmlTable(['role', 'adminScope', 'status', 'loginId', 'name', 'studentId', 'email', 'classIds'], userRows) +
         '<h2>CHECK 제출</h2>' + buildPortalHtmlTable(['setTitle', 'name', 'studentId', 'classIds', 'submittedAt', 'total', 'correct', 'wrong'], responseRows) +
         '<h2>질문있어요</h2>' + buildPortalHtmlTable(['setTitle', 'questionNumber', 'problemType', 'name', 'studentId', 'status', 'createdAt', 'prompt', 'userAnswer'], issueRows) +
+        '<h2>PREP 영상 관리</h2>' + buildPortalHtmlTable(['setTitle', 'className', 'videoTitle', 'name', 'studentId', 'loginId', 'status', 'completedAt', 'updatedAt', 'videoUrl'], prepProgressReportRows) +
+        '<h2>PREP 영상 시청 원본</h2>' + buildPortalHtmlTable(['setTitle', 'passageTitle', 'name', 'studentId', 'loginId', 'classId', 'status', 'completedAt', 'updatedAt'], prepProgressRows) +
         '<h2>PREP 세트</h2>' + buildPortalHtmlTable(['docId', 'title', 'classIds', 'updatedAt', 'passageCount'], prepSetRows) +
         '<h2>CHECK 세트</h2>' + buildPortalHtmlTable(['docId', 'title', 'classIds', 'assignmentMode', 'targets', 'sourceSetId', 'sourceRound', 'updatedAt', 'questionCount'], checkSetRows) +
       '</body>' +
@@ -7612,6 +8178,11 @@ async function deletePortalCollectionDocuments(collectionName){
     writeLocalQuestionIssues([])
     return count
   }
+  if(collectionName === PORTAL_PREP_VIDEO_PROGRESS_COLLECTION){
+    const count = readLocalPortalPrepVideoProgressRows().length
+    writeLocalPortalPrepVideoProgressRows([])
+    return count
+  }
   if(collectionName === 'portalPrepSets' || collectionName === 'portalCheckSets'){
     const kind = collectionName === 'portalPrepSets' ? 'prep' : 'check'
     const count = readLocalPortalSetDocs(kind).length
@@ -7647,6 +8218,7 @@ async function resetSuperAdminExamCycle(){
 
   const deletedResponses = await deletePortalCollectionDocuments('checkResponses')
   const deletedIssues = await deletePortalCollectionDocuments('questionIssues')
+  const deletedPrepProgress = await deletePortalCollectionDocuments(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
   const deletedPrepSets = await deletePortalCollectionDocuments('portalPrepSets')
   const deletedCheckSets = await deletePortalCollectionDocuments('portalCheckSets')
 
@@ -7719,6 +8291,7 @@ async function resetSuperAdminExamCycle(){
   return {
     deletedResponses: deletedResponses,
     deletedIssues: deletedIssues,
+    deletedPrepProgress: deletedPrepProgress,
     deletedPrepSets: deletedPrepSets,
     deletedCheckSets: deletedCheckSets,
     nextExamKey: nextExamKey,
@@ -7798,7 +8371,7 @@ async function handleSuperAdminResetCycle(){
     const result = await resetSuperAdminExamCycle()
     setPortalExamCenterStatus(
       'superadmin-reset-status',
-      '초기화 완료: CHECK 제출 ' + result.deletedResponses + '건, 질문 ' + result.deletedIssues + '건, PREP 세트 ' + result.deletedPrepSets + '건, CHECK 세트 ' + result.deletedCheckSets + '건 삭제',
+      '초기화 완료: CHECK 제출 ' + result.deletedResponses + '건, 질문 ' + result.deletedIssues + '건, PREP 시청 기록 ' + result.deletedPrepProgress + '건, PREP 세트 ' + result.deletedPrepSets + '건, CHECK 세트 ' + result.deletedCheckSets + '건 삭제',
       'success'
     )
     if(getPortalExamCenterNode('superadmin-reset-confirm-text')) getPortalExamCenterNode('superadmin-reset-confirm-text').value = ''
