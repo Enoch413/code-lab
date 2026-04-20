@@ -792,11 +792,25 @@ function syncCurrentPassageProgressUi(isDone){
 function markPassageDone(){
   if(currentPassage < 0) return
   if(!progress.done || typeof progress.done !== 'object') progress.done = {}
+  const studySet = getCurrentStudySet()
+  const passage = studySet && studySet.passages ? studySet.passages[currentPassage] : null
   const storageKey = getPassageProgressStorageKey(currentSetIndex, currentPassage)
   const nextDone = !progress.done[storageKey]
   progress.done[storageKey] = nextDone
   saveProgress()
   syncCurrentPassageProgressUi(nextDone)
+  if(typeof window.savePortalPrepVideoProgress === 'function' && studySet && passage){
+    window.savePortalPrepVideoProgress({
+      studySet: studySet,
+      setIndex: currentSetIndex,
+      passage: passage,
+      passageIndex: currentPassage,
+      done: nextDone
+    }).catch(function(error){
+      console.warn('prep video progress save failed:', error && error.message ? error.message : error)
+      showToast('시청 기록 Firebase 저장에 실패했습니다. 로컬 완료 표시는 유지됩니다.', 'var(--red)')
+    })
+  }
   showToast(nextDone ? '영상을 완료로 표시했습니다.' : '영상 완료 표시를 취소했습니다.', 'var(--green)')
 }
 
