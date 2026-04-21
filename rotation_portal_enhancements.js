@@ -2986,7 +2986,9 @@ function ensureAdminCollapsibleSections(){
   ;[
     { groupId: 'admin-type-group', listId: 'admin-type-list', bodyId: 'admin-type-body' },
     { groupId: 'admin-student-group', listId: 'admin-student-list', bodyId: 'admin-student-body' },
-    { groupId: 'admin-response-group', listId: 'admin-response-list', bodyId: 'admin-response-body' }
+    { groupId: 'admin-response-group', listId: 'admin-response-list', bodyId: 'admin-response-body' },
+    { groupId: 'admin-issue-group', listId: 'admin-issue-list', bodyId: 'admin-issue-body' },
+    { groupId: 'admin-counsel-group', listId: 'admin-counsel-list', bodyId: 'admin-counsel-body' }
   ].forEach(function(config){
     const listNode = document.getElementById(config.listId)
     if(!listNode) return
