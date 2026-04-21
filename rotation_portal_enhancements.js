@@ -37,6 +37,7 @@ const PREP_SCREEN_IDS = [
 const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
   'counsel-screen': { title: 'COUNSEL', sub: '상담 선택' },
+  'counsel-history-screen': { title: 'HISTORY', sub: '상담 신청 내역' },
   'counsel-form-screen': { title: 'COUNSEL', sub: '상담 신청' },
   'account-screen': { title: 'CODE LAB', sub: '회원정보' },
   'password-screen': { title: 'CODE LAB', sub: '비밀번호 변경' },
@@ -55,6 +56,7 @@ const CHROME_SCREEN_TITLES = {
 const CHROME_BREADCRUMBS = {
   'portal-screen': ['CODE LAB', 'HOME'],
   'counsel-screen': ['CODE LAB', 'COUNSEL'],
+  'counsel-history-screen': ['CODE LAB', 'COUNSEL', 'HISTORY'],
   'counsel-form-screen': ['CODE LAB', 'COUNSEL', 'FORM'],
   'account-screen': ['CODE LAB', '회원정보'],
   'password-screen': ['CODE LAB', '비밀번호 변경'],
@@ -168,6 +170,9 @@ portalState.prepSetInventory = portalState.prepSetInventory || []
 portalState.checkSetInventory = portalState.checkSetInventory || []
 portalState.checkSetRegradeDocId = portalState.checkSetRegradeDocId || ''
 portalState.currentCounselType = portalState.currentCounselType || ''
+portalState.currentCounselEditId = portalState.currentCounselEditId || ''
+portalState.currentCounselEditRecord = portalState.currentCounselEditRecord || null
+portalState.myCounselRequests = portalState.myCounselRequests || []
 portalState.prepVideoManager = portalState.prepVideoManager || {
   open: false,
   isSaving: false,
@@ -311,6 +316,9 @@ function bindPortalEnhancementEvents(){
       openCounselFormPortal(button.dataset.counselType || '')
     })
   })
+  bindClick('counsel-history-tab-btn', openCounselHistoryTab)
+  bindClick('counsel-history-back-btn', openCounselPortal)
+  bindClick('counsel-history-home-btn', showPortalScreen)
 
   bindClick('counsel-form-back-btn', openCounselPortal)
   bindClick('counsel-form-home-btn', showPortalScreen)
@@ -842,6 +850,7 @@ function restoreAppRoute(route){
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
   if(route.screenId === 'counsel-screen') return openCounselPortal()
+  if(route.screenId === 'counsel-history-screen') return openCounselHistoryTab()
   if(route.screenId === 'counsel-form-screen') return openCounselFormPortal(route.counselType || 'career')
   if(route.screenId === 'account-screen') return openAccountScreen()
   if(route.screenId === 'password-screen') return openPasswordScreen(!!route.force)
@@ -2245,6 +2254,12 @@ function buildCounselRequestDocId(userId){
   return safeUserId + '__' + Date.now() + '__' + Math.random().toString(36).slice(2, 8)
 }
 
+function getCurrentCounselUserId(){
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  return String(authUser.uid || profile.uid || profile.id || '').trim()
+}
+
 function setCounselFormStatus(message, isError){
   const node = document.getElementById('counsel-form-status')
   if(!node) return
@@ -2259,17 +2274,21 @@ function openCounselFormPortal(type){
   }
   const typeInfo = getCounselTypeInfo(type)
   portalState.currentCounselType = typeInfo.key
+  portalState.currentCounselEditId = ''
+  portalState.currentCounselEditRecord = null
   updatePortalUserCard()
   renderCounselForm(typeInfo)
   activatePortalScreen('counsel-form-screen')
 }
 
-function renderCounselForm(typeInfo){
+function renderCounselForm(typeInfo, existingRecord){
   const info = typeInfo || getCounselTypeInfo(portalState.currentCounselType)
+  const record = existingRecord || null
+  const isEditMode = !!record
   setElementTextSafe('counsel-form-title', info.title)
-  setElementTextSafe('counsel-form-heading', info.label + ' 신청서')
+  setElementTextSafe('counsel-form-heading', info.label + (isEditMode ? ' 수정서' : ' 신청서'))
   setElementTextSafe('counsel-form-type-badge', info.title)
-  setElementTextSafe('counsel-form-subtitle', info.label)
+  setElementTextSafe('counsel-form-subtitle', isEditMode ? '상담 수정' : info.label)
 
   const reasonSelect = document.getElementById('counsel-reason-select')
   const reasonOtherInput = document.getElementById('counsel-reason-other-input')
@@ -2277,7 +2296,7 @@ function renderCounselForm(typeInfo){
   const timeSelect = document.getElementById('counsel-time-select')
   const datetimeInput = document.getElementById('counsel-datetime-input')
   const contentInput = document.getElementById('counsel-content-input')
-  const withdrawalFields = document.getElementById('counsel-withdrawal-fields')
+  const submitButton = document.getElementById('counsel-submit-btn')
   if(reasonSelect){
     const options = Array.isArray(info.reasonOptions) ? info.reasonOptions : []
     reasonSelect.innerHTML = '<option value="">상담사유 선택</option>' +
@@ -2299,8 +2318,74 @@ function renderCounselForm(typeInfo){
   if(datetimeInput) datetimeInput.value = ''
   if(contentInput) contentInput.value = ''
   resetCounselWithdrawalFields(info.key === 'withdrawal')
+  if(submitButton) submitButton.textContent = isEditMode ? '상담 수정 저장' : '상담 신청 제출'
+  if(record) applyCounselRequestToForm(record, info)
   validateCounselDateTimeSelection(false)
   setCounselFormStatus('', false)
+}
+
+function splitCounselRequestedAt(value){
+  const raw = String(value || '').trim()
+  if(!raw) return { date: '', time: '' }
+  if(raw.indexOf('T') >= 0){
+    return {
+      date: raw.slice(0, 10),
+      time: raw.slice(11, 16)
+    }
+  }
+  const date = new Date(raw)
+  if(Number.isNaN(date.getTime())) return { date: '', time: '' }
+  return {
+    date: [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-'),
+    time: [
+      String(date.getHours()).padStart(2, '0'),
+      String(date.getMinutes()).padStart(2, '0')
+    ].join(':')
+  }
+}
+
+function setCounselSubjectChecks(name, values){
+  const selected = normalizeCounselSubjectList(values)
+  Array.from(document.querySelectorAll('input[name="' + name + '"]')).forEach(function(input){
+    input.checked = selected.indexOf(String(input.value || '').trim()) >= 0
+  })
+}
+
+function applyCounselRequestToForm(record, typeInfo){
+  const info = typeInfo || getCounselTypeInfo(record && record.type)
+  const reasonSelect = document.getElementById('counsel-reason-select')
+  const reasonOtherInput = document.getElementById('counsel-reason-other-input')
+  const dateInput = document.getElementById('counsel-date-input')
+  const timeSelect = document.getElementById('counsel-time-select')
+  const contentInput = document.getElementById('counsel-content-input')
+  const reasonChoice = String(record && record.reasonChoice || '').trim()
+  const reason = String(record && record.reason || '').trim()
+  const options = Array.isArray(info.reasonOptions) ? info.reasonOptions : []
+  if(reasonSelect){
+    if(options.indexOf(reasonChoice) >= 0){
+      reasonSelect.value = reasonChoice
+    }else if(options.indexOf(reason) >= 0){
+      reasonSelect.value = reason
+    }else{
+      reasonSelect.value = PORTAL_COUNSEL_OTHER_REASON
+    }
+  }
+  if(reasonOtherInput){
+    const isOther = reasonSelect && reasonSelect.value === PORTAL_COUNSEL_OTHER_REASON
+    reasonOtherInput.classList.toggle('hidden', !isOther)
+    reasonOtherInput.value = isOther ? reason : ''
+  }
+  const parts = splitCounselRequestedAt(record && record.requestedAt)
+  if(dateInput) dateInput.value = parts.date
+  if(timeSelect) timeSelect.value = parts.time
+  syncCounselDateTimeValue()
+  if(contentInput) contentInput.value = String(record && record.content || '').trim()
+  setCounselSubjectChecks('counsel-current-subjects', record && record.currentSubjects)
+  setCounselSubjectChecks('counsel-withdrawal-subjects', record && record.withdrawalSubjects)
 }
 
 function resetCounselWithdrawalFields(shouldShow){
@@ -2438,6 +2523,15 @@ function buildCounselSlotRecord(slotId, requestId, payload, status){
   }
 }
 
+function buildCounselSlotReleaseRecord(slotId, requestId, updates, status){
+  return Object.assign({}, updates || {}, {
+    id: String(slotId || '').trim(),
+    requestId: String(requestId || (updates && updates.requestId) || '').trim(),
+    status: String(status || 'canceled').trim() || 'canceled',
+    updatedAt: new Date().toISOString()
+  })
+}
+
 function readLocalCounselSlots(){
   try{
     const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.counselSlots)
@@ -2541,6 +2635,21 @@ async function markCounselSlotCompleted(slotId, updates){
   return updateLocalCounselSlot(targetId, payload)
 }
 
+async function releaseCounselSlot(slotId, requestId, updates, status){
+  const targetId = String(slotId || '').trim()
+  if(!targetId) return false
+  const payload = buildCounselSlotReleaseRecord(targetId, requestId, updates, status || 'canceled')
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(targetId).set(payload, { merge: true })
+      return true
+    }catch(error){
+      console.warn('counselSlots release fallback:', error && error.message ? error.message : error)
+    }
+  }
+  return updateLocalCounselSlot(targetId, payload)
+}
+
 function readLocalCounselRequests(){
   try{
     const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.counselRequests)
@@ -2589,6 +2698,8 @@ function normalizeCounselRequestRecord(source){
     status: String(source.status || 'open').trim() || 'open',
     completedAt: String(source.completedAt || '').trim(),
     completedBy: String(source.completedBy || '').trim(),
+    canceledAt: String(source.canceledAt || '').trim(),
+    canceledBy: String(source.canceledBy || '').trim(),
     createdAt: String(source.createdAt || '').trim(),
     updatedAt: String(source.updatedAt || '').trim()
   }
@@ -2641,7 +2752,7 @@ async function submitCounselRequest(){
 
   const profile = portalState.currentProfile || {}
   const authUser = portalState.currentUser || {}
-  const userId = String(authUser.uid || profile.uid || profile.id || '').trim()
+  const userId = getCurrentCounselUserId()
   if(!userId){
     setCounselFormStatus('로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.', true)
     return
@@ -2651,11 +2762,19 @@ async function submitCounselRequest(){
     ? getProfileClassIds()
     : (Array.isArray(profile.classIds) ? profile.classIds : [])
   const now = new Date().toISOString()
-  const docId = buildCounselRequestDocId(userId)
+  const editRecord = portalState.currentCounselEditRecord || null
+  const editId = String(portalState.currentCounselEditId || '').trim()
+  const isEditMode = !!(editId && editRecord)
+  if(isEditMode && (!isCounselRequestOwnedByCurrentUser(editRecord) || !isCounselRequestOpen(editRecord))){
+    setCounselFormStatus('수정할 수 없는 상담 신청입니다.', true)
+    showToast('수정할 수 없는 상담 신청입니다.', 'var(--red)')
+    return
+  }
+  const docId = isEditMode ? editId : buildCounselRequestDocId(userId)
   const slotId = buildCounselSlotId(requestedAt)
   const slotStartMs = getCounselSlotStartMs(requestedAt)
   const slotEndMs = getCounselSlotEndMs(requestedAt)
-  const payload = normalizeCounselRequestRecord({
+  const payload = normalizeCounselRequestRecord(Object.assign({}, isEditMode ? editRecord : {}, {
     id: docId,
     userId: userId,
     loginId: profile.loginId || authUser.loginId || profile.studentId || '',
@@ -2679,9 +2798,9 @@ async function submitCounselRequest(){
     slotEndAt: Number.isFinite(slotEndMs) ? new Date(slotEndMs).toISOString() : '',
     content: content,
     status: 'open',
-    createdAt: now,
+    createdAt: isEditMode ? (editRecord.createdAt || now) : now,
     updatedAt: now
-  })
+  }))
 
   if(!payload || !slotId){
     setCounselFormStatus('상담 신청 정보를 만들지 못했습니다.', true)
@@ -2691,15 +2810,20 @@ async function submitCounselRequest(){
   try{
     if(submitButton) submitButton.disabled = true
     setCounselFormStatus('상담 시간을 확인하는 중입니다...', false)
-    const reservation = await reserveCounselSlot(slotId, docId, payload)
-    if(!reservation || !reservation.ok){
-      const message = '이미 신청된 상담 시간입니다. 다른 시간을 선택해 주세요.'
-      setCounselFormStatus(message, true)
-      showToast(message, 'var(--red)')
-      return
+    const previousSlotId = isEditMode ? String(editRecord.slotId || buildCounselSlotId(editRecord.requestedAt) || '').trim() : ''
+    const shouldReserveSlot = !isEditMode || previousSlotId !== slotId
+    let reservation = null
+    if(shouldReserveSlot){
+      reservation = await reserveCounselSlot(slotId, docId, payload)
+      if(!reservation || !reservation.ok){
+        const message = '이미 신청된 상담 시간입니다. 다른 시간을 선택해 주세요.'
+        setCounselFormStatus(message, true)
+        showToast(message, 'var(--red)')
+        return
+      }
     }
 
-    setCounselFormStatus('상담 신청을 저장하는 중입니다...', false)
+    setCounselFormStatus(isEditMode ? '상담 신청을 수정하는 중입니다...' : '상담 신청을 저장하는 중입니다...', false)
     let savedToCloud = false
     if(portalState.firebaseEnabled && portalState.db){
       try{
@@ -2707,7 +2831,7 @@ async function submitCounselRequest(){
         savedToCloud = true
       }catch(error){
         console.warn('counselRequests write fallback:', error && error.message ? error.message : error)
-        if(reservation.cloud){
+        if(reservation && reservation.cloud){
           await markCounselSlotCompleted(slotId, {
             requestId: docId,
             releasedAt: new Date().toISOString(),
@@ -2718,11 +2842,29 @@ async function submitCounselRequest(){
     }
     if(!savedToCloud){
       const rows = readLocalCounselRequests()
-      rows.push(payload)
-      writeLocalCounselRequests(rows)
+      let replacedLocalRow = false
+      const nextRows = isEditMode
+        ? rows.map(function(entry){
+            if(String(entry && entry.id || '').trim() !== docId) return entry
+            replacedLocalRow = true
+            return payload
+          })
+        : rows.concat([payload])
+      if(isEditMode && !replacedLocalRow) nextRows.push(payload)
+      writeLocalCounselRequests(nextRows)
     }
-    showToast(savedToCloud ? '상담 신청이 관리자에게 전달되었습니다.' : '상담 신청이 이 브라우저에 임시 저장되었습니다.', 'var(--green)')
-    openCounselPortal()
+    if(isEditMode && previousSlotId && previousSlotId !== slotId){
+      await releaseCounselSlot(previousSlotId, docId, {
+        userId: userId,
+        releasedAt: new Date().toISOString(),
+        releaseReason: 'request-edited'
+      }, 'canceled')
+    }
+    portalState.currentCounselEditId = ''
+    portalState.currentCounselEditRecord = null
+    showToast(isEditMode ? '상담 신청을 수정했습니다.' : (savedToCloud ? '상담 신청이 관리자에게 전달되었습니다.' : '상담 신청이 이 브라우저에 임시 저장되었습니다.'), 'var(--green)')
+    if(isEditMode) openCounselHistoryTab()
+    else openCounselPortal()
   }catch(error){
     console.error(error)
     setCounselFormStatus('상담 신청 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.', true)
@@ -2730,6 +2872,190 @@ async function submitCounselRequest(){
   }finally{
     if(submitButton) submitButton.disabled = false
   }
+}
+
+function isCounselRequestOwnedByCurrentUser(entry){
+  const userId = getCurrentCounselUserId()
+  return !!userId && String(entry && entry.userId || '').trim() === userId
+}
+
+async function fetchMyCounselRequests(){
+  const userId = getCurrentCounselUserId()
+  if(!userId) return []
+  let rows = []
+  let usedCloud = false
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION)
+        .where('userId', '==', userId)
+        .get()
+      usedCloud = true
+      rows = snapshot.docs.map(function(doc){
+        return normalizeCounselRequestRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+      }).filter(Boolean)
+    }catch(error){
+      console.warn('counselRequests my read fallback:', error && error.message ? error.message : error)
+    }
+  }
+  if(!usedCloud){
+    rows = readLocalCounselRequests().filter(isCounselRequestOwnedByCurrentUser)
+  }
+  return rows.sort(function(a, b){
+    return String(b.createdAt || b.requestedAt || '').localeCompare(String(a.createdAt || a.requestedAt || ''))
+  })
+}
+
+function getCounselRequestStatusLabel(entry){
+  const status = String(entry && entry.status || 'open').trim().toLowerCase()
+  if(status === 'completed' || status === 'done' || status === 'resolved' || status === 'closed') return '상담완료'
+  if(status === 'canceled' || status === 'cancelled') return '취소됨'
+  return '신청중'
+}
+
+function buildMyCounselRequestItem(entry){
+  const isOpen = isCounselRequestOpen(entry)
+  const slotId = entry.slotId || buildCounselSlotId(entry.requestedAt)
+  return '' +
+    '<div class="admin-item counsel-history-item">' +
+      '<span class="admin-counsel-type">' + escapeHtml(entry.typeLabel || entry.typeTitle || '상담') + '</span>' +
+      '<strong class="admin-item-title">' + escapeHtml(formatCounselRequestedAt(entry.requestedAt) || '상담 시간 미지정') + '</strong>' +
+      '<span class="admin-item-meta">상태: ' + escapeHtml(getCounselRequestStatusLabel(entry)) + '</span>' +
+      '<span class="admin-item-meta">사유: ' + escapeHtml(entry.reason || '') + '</span>' +
+      buildCounselWithdrawalMeta(entry) +
+      '<span class="admin-item-meta admin-counsel-content">' + escapeHtml(entry.content || '') + '</span>' +
+      '<span class="admin-item-muted">' + escapeHtml(formatAdminTime(entry.updatedAt || entry.createdAt)) + '</span>' +
+      (isOpen ? (
+        '<div class="admin-item-actions counsel-history-actions">' +
+          '<button class="btn btn-ghost btn-sm" type="button" onclick="editMyCounselRequest(\'' + escapeJs(entry.id) + '\')">상담 수정</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" onclick="cancelMyCounselRequest(\'' + escapeJs(entry.id) + '\', \'' + escapeJs(slotId) + '\')">상담 취소</button>' +
+        '</div>'
+      ) : '') +
+    '</div>'
+}
+
+async function renderMyCounselRequests(){
+  const panel = document.getElementById('counsel-history-panel')
+  const countNode = document.getElementById('counsel-history-count')
+  const listNode = document.getElementById('counsel-history-list')
+  if(!panel || !countNode || !listNode) return
+  const shouldShow = !!portalState.currentUser && !isPortalAdmin()
+  if(!shouldShow){
+    countNode.textContent = '0'
+    listNode.innerHTML = ''
+    return
+  }
+  listNode.innerHTML = '<div class="empty-box">상담 신청 내역을 불러오는 중입니다...</div>'
+  const rows = await fetchMyCounselRequests()
+  portalState.myCounselRequests = rows
+  countNode.textContent = String(rows.length)
+  listNode.innerHTML = rows.length
+    ? rows.map(buildMyCounselRequestItem).join('')
+    : '<div class="empty-box">아직 신청한 상담이 없습니다.</div>'
+}
+
+function syncCounselHistoryTabVisibility(){
+  const button = document.getElementById('counsel-history-tab-btn')
+  if(!button) return
+  button.classList.toggle('hidden', !portalState.currentUser || isPortalAdmin())
+}
+
+function renderCounselPortal(){
+  portalState.currentCounselEditId = ''
+  portalState.currentCounselEditRecord = null
+  syncCounselHistoryTabVisibility()
+}
+
+function openCounselHistoryTab(){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  if(isPortalAdmin()){
+    showToast('학생 계정에서만 상담 신청 내역을 볼 수 있습니다.', 'var(--red)')
+    return
+  }
+  syncCounselHistoryTabVisibility()
+  updatePortalUserCard()
+  activatePortalScreen('counsel-history-screen')
+  renderMyCounselRequests()
+}
+
+async function getMyCounselRequestById(requestId){
+  const targetId = String(requestId || '').trim()
+  if(!targetId) return null
+  const cachedRows = Array.isArray(portalState.myCounselRequests) ? portalState.myCounselRequests : []
+  let found = cachedRows.find(function(entry){
+    return String(entry && entry.id || '').trim() === targetId
+  }) || null
+  if(found) return found
+  const rows = await fetchMyCounselRequests()
+  portalState.myCounselRequests = rows
+  return rows.find(function(entry){
+    return String(entry && entry.id || '').trim() === targetId
+  }) || null
+}
+
+window.editMyCounselRequest = function(requestId){
+  editMyCounselRequestImpl(requestId)
+}
+
+async function editMyCounselRequestImpl(requestId){
+  const entry = await getMyCounselRequestById(requestId)
+  if(!entry || !isCounselRequestOwnedByCurrentUser(entry)){
+    showToast('수정할 상담 신청을 찾지 못했습니다.', 'var(--red)')
+    return
+  }
+  if(!isCounselRequestOpen(entry)){
+    showToast('이미 완료되었거나 취소된 상담은 수정할 수 없습니다.', 'var(--red)')
+    return
+  }
+  const typeInfo = getCounselTypeInfo(entry.type)
+  portalState.currentCounselType = typeInfo.key
+  portalState.currentCounselEditId = entry.id
+  portalState.currentCounselEditRecord = entry
+  updatePortalUserCard()
+  renderCounselForm(typeInfo, entry)
+  activatePortalScreen('counsel-form-screen')
+}
+
+window.cancelMyCounselRequest = function(requestId, slotId){
+  cancelMyCounselRequestImpl(requestId, slotId)
+}
+
+async function cancelMyCounselRequestImpl(requestId, slotId){
+  const entry = await getMyCounselRequestById(requestId)
+  if(!entry || !isCounselRequestOwnedByCurrentUser(entry)){
+    showToast('취소할 상담 신청을 찾지 못했습니다.', 'var(--red)')
+    return
+  }
+  if(!isCounselRequestOpen(entry)){
+    showToast('이미 완료되었거나 취소된 상담입니다.', 'var(--red)')
+    return
+  }
+  if(typeof window.confirm === 'function' && !window.confirm('이 상담 신청을 취소할까요?')){
+    return
+  }
+  const canceledAt = new Date().toISOString()
+  const userId = getCurrentCounselUserId()
+  const updates = {
+    userId: userId,
+    status: 'canceled',
+    canceledAt: canceledAt,
+    canceledBy: userId,
+    updatedAt: canceledAt
+  }
+  const didSave = await updateCounselRequestRecord(entry.id, updates)
+  if(!didSave){
+    showToast('상담 취소에 실패했습니다.', 'var(--red)')
+    return
+  }
+  await releaseCounselSlot(slotId || entry.slotId || buildCounselSlotId(entry.requestedAt), entry.id, {
+    userId: userId,
+    canceledAt: canceledAt,
+    releaseReason: 'request-canceled'
+  }, 'canceled')
+  await renderMyCounselRequests()
+  showToast('상담 신청을 취소했습니다.', 'var(--green)')
 }
 
 async function fetchAllCounselRequests(){

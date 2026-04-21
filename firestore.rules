@@ -72,7 +72,11 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           signedIn()
-          && resource.data.status == 'completed'
+          && (
+            resource.data.status == 'completed'
+            || resource.data.status == 'canceled'
+            || resource.data.status == 'cancelled'
+          )
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.status == 'open'
         )

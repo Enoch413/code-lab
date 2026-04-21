@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./rotation_prep.css?v=20260421-counsel-18">
+  <link rel="stylesheet" href="./rotation_prep.css?v=20260421-counsel-21">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -145,7 +145,29 @@
       <div class="portal-title">WITHDRAWAL</div>
       <div class="portal-desc"></div>
     </button>
+    <button class="portal-card portal-card-history hidden" type="button" id="counsel-history-tab-btn">
+      <div class="portal-kicker">상담내역</div>
+      <div class="portal-title">HISTORY</div>
+      <div class="portal-desc"></div>
+    </button>
   </div>
+</div>
+
+<div class="screen" id="counsel-history-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="counsel-history-back-btn">상담 선택</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="counsel-history-home-btn">메인</button>
+  </div>
+
+  <div class="hd"><h1>HISTORY</h1><span class="sub">상담 신청 내역</span></div>
+
+  <section class="group counsel-history-panel" id="counsel-history-panel">
+    <div class="group-title">
+      <h3>상담 신청 내역</h3>
+      <span class="group-count" id="counsel-history-count">0</span>
+    </div>
+    <div class="admin-list counsel-history-list" id="counsel-history-list"></div>
+  </section>
 </div>
 
 <div class="screen" id="counsel-form-screen">
@@ -792,11 +814,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./rotation_prep_core.js?v=20260421-counsel-18"></script>
-  <script src="./rotation_prep_bundle.js?v=20260421-counsel-18"></script>
-  <script src="./rotation_prep_passages.js?v=20260421-counsel-18"></script>
-  <script src="./rotation_prep_ui.js?v=20260421-counsel-18"></script>
-  <script src="./rotation_portal.js?v=20260421-counsel-18"></script>
-  <script src="./rotation_portal_enhancements.js?v=20260421-counsel-18"></script>
+  <script src="./rotation_prep_core.js?v=20260421-counsel-21"></script>
+  <script src="./rotation_prep_bundle.js?v=20260421-counsel-21"></script>
+  <script src="./rotation_prep_passages.js?v=20260421-counsel-21"></script>
+  <script src="./rotation_prep_ui.js?v=20260421-counsel-21"></script>
+  <script src="./rotation_portal.js?v=20260421-counsel-21"></script>
+  <script src="./rotation_portal_enhancements.js?v=20260421-counsel-21"></script>
 </body>
 </html>
