@@ -69,6 +69,7 @@ function applyPortalCopy(){
   setElementText('portal-user-name', '학생')
   setElementText('portal-user-meta', '')
   setHeadingText('#portal-screen .hd h1', 'CODE LAB')
+  setHeadingText('#counsel-screen .hd h1', 'COUNSEL')
   setHeadingText('#check-screen .hd h1', 'CHECK')
   setHeadingText('#check-set-screen .hd h1', 'CHECK')
   setHeadingText('#admin-screen .hd h1', 'ADMIN')
@@ -133,10 +134,12 @@ function bindPortalEvents(){
   const submitBtn = document.getElementById('auth-submit-btn')
   const portalPrepBtn = document.getElementById('portal-prep-btn')
   const portalCheckBtn = document.getElementById('portal-check-btn')
+  const portalCounselBtn = document.getElementById('portal-counsel-btn')
   const portalAdminBtn = document.getElementById('portal-admin-btn')
   const portalRefreshBtn = document.getElementById('portal-refresh-btn')
   const portalLogoutBtn = document.getElementById('portal-logout-btn')
   const portalPasswordBtn = document.getElementById('portal-password-btn')
+  const counselBackBtn = document.getElementById('counsel-back-btn')
   const checkBackBtn = document.getElementById('check-back-btn')
   const checkRefreshBtn = document.getElementById('check-refresh-btn')
   const checkChangeClassBtn = document.getElementById('check-change-class-btn')
@@ -154,6 +157,7 @@ function bindPortalEvents(){
   if(submitBtn) submitBtn.addEventListener('click', submitAuthForm)
   if(portalPrepBtn) portalPrepBtn.addEventListener('click', openPrepPortal)
   if(portalCheckBtn) portalCheckBtn.addEventListener('click', openCheckPortal)
+  if(portalCounselBtn) portalCounselBtn.addEventListener('click', openCounselPortal)
   if(portalAdminBtn) portalAdminBtn.addEventListener('click', openAdminPortal)
   if(portalRefreshBtn) portalRefreshBtn.addEventListener('click', refreshPortalData)
   if(portalLogoutBtn) portalLogoutBtn.addEventListener('click', logoutPortal)
@@ -1954,6 +1958,7 @@ function applyPortalCopy(){
 
   hydratePortalCard('portal-prep-btn', '학습', 'PREP', '내 반에 배정된 세트를 열고 지문을 미리 공부합니다.')
   hydratePortalCard('portal-check-btn', '제출', 'CHECK', '푼 문제만 제출하고, 제출한 문항의 정답과 해설을 바로 확인합니다.')
+  hydratePortalCard('portal-counsel-btn', '상담', 'COUNSEL', '진로, 인생, 퇴원 상담 메뉴를 선택합니다.')
   hydratePortalCard('portal-admin-btn', '관리', 'ADMIN', '학생별 오답과 문제 유형 통계를 확인합니다.')
 
   setElementText('check-back-btn', '메인')
@@ -1963,6 +1968,7 @@ function applyPortalCopy(){
   setElementText('check-submit-btn', '이번에 푼 문제 제출')
   setElementText('admin-back-btn', '메인')
   setElementText('admin-refresh-btn', '새로고침')
+  setElementText('counsel-back-btn', '메인')
   setElementText('password-back-btn', '이전 페이지')
   setElementText('password-home-btn', '홈')
   setElementText('password-submit-btn', '비밀번호 저장')
@@ -2337,6 +2343,7 @@ function applyPortalCopy(){
   setElementText('portal-user-name', '학생')
   setElementText('portal-user-meta', '')
   setHeadingText('#portal-screen .hd h1', 'CODE LAB')
+  setHeadingText('#counsel-screen .hd h1', 'COUNSEL')
   setHeadingText('#check-screen .hd h1', 'CHECK')
   setHeadingText('#check-set-screen .hd h1', 'CHECK')
   setHeadingText('#admin-screen .hd h1', 'ADMIN')
@@ -2533,6 +2540,15 @@ function showPortalScreen(){
   updatePortalUserCard()
   mountPortalPasswordButton()
   activatePortalScreen('portal-screen')
+}
+
+function openCounselPortal(){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  updatePortalUserCard()
+  activatePortalScreen('counsel-screen')
 }
 
 function openPasswordScreen(forceChange){
@@ -2907,8 +2923,10 @@ function applyPortalCopy(){
   setQueryText('#check-set-screen .class-bar-label', '현재 CHECK 세트')
   hydratePortalCard('portal-prep-btn', '학습', 'PREP', '내 반에 배정된 세트를 열고 지문을 미리 공부합니다.')
   hydratePortalCard('portal-check-btn', '제출', 'CHECK', '푼 문제만 제출하고, 제출한 문항의 정답과 해설을 바로 확인합니다.')
+  hydratePortalCard('portal-counsel-btn', '상담', 'COUNSEL', '')
   hydratePortalCard('portal-admin-btn', '관리', 'ADMIN', '학생별 오답과 문제 유형 통계를 확인합니다.')
 
+  setElementText('counsel-back-btn', '메인')
   setElementText('check-back-btn', '메인')
   setElementText('check-refresh-btn', '새로고침')
   setElementText('check-set-back-btn', '이전 페이지')
@@ -2926,10 +2944,12 @@ function bindPortalEvents(){
   const submitBtn = document.getElementById('auth-submit-btn')
   const portalPrepBtn = document.getElementById('portal-prep-btn')
   const portalCheckBtn = document.getElementById('portal-check-btn')
+  const portalCounselBtn = document.getElementById('portal-counsel-btn')
   const portalAdminBtn = document.getElementById('portal-admin-btn')
   const portalRefreshBtn = document.getElementById('portal-refresh-btn')
   const portalLogoutBtn = document.getElementById('portal-logout-btn')
   const portalPasswordBtn = document.getElementById('portal-password-btn')
+  const counselBackBtn = document.getElementById('counsel-back-btn')
   const checkBackBtn = document.getElementById('check-back-btn')
   const checkRefreshBtn = document.getElementById('check-refresh-btn')
   const checkChangeClassBtn = document.getElementById('check-change-class-btn')
@@ -2946,10 +2966,12 @@ function bindPortalEvents(){
   if(submitBtn) submitBtn.addEventListener('click', submitAuthForm)
   if(portalPrepBtn) portalPrepBtn.addEventListener('click', openPrepPortal)
   if(portalCheckBtn) portalCheckBtn.addEventListener('click', openCheckPortal)
+  if(portalCounselBtn) portalCounselBtn.addEventListener('click', openCounselPortal)
   if(portalAdminBtn) portalAdminBtn.addEventListener('click', openAdminPortal)
   if(portalRefreshBtn) portalRefreshBtn.addEventListener('click', refreshPortalData)
   if(portalLogoutBtn) portalLogoutBtn.addEventListener('click', logoutPortal)
   if(portalPasswordBtn) portalPasswordBtn.addEventListener('click', openPasswordScreen)
+  if(counselBackBtn) counselBackBtn.addEventListener('click', showPortalScreen)
   if(checkBackBtn) checkBackBtn.addEventListener('click', showPortalScreen)
   if(checkRefreshBtn) checkRefreshBtn.addEventListener('click', refreshCheckDataAndRender)
   if(checkChangeClassBtn) checkChangeClassBtn.addEventListener('click', openCheckClassPicker)
