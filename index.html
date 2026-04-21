@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./rotation_prep.css?v=20260421-counsel-21">
+  <link rel="stylesheet" href="./rotation_prep.css?v=20260422-study-cafe-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -46,6 +46,7 @@
     <button class="app-drawer-link" type="button" data-drawer-action="prep" id="drawer-prep-btn"><span>PREP</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="check" id="drawer-check-btn"><span>CHECK</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="counsel" id="drawer-counsel-btn"><span>COUNSEL</span><span>›</span></button>
+    <button class="app-drawer-link" type="button" data-drawer-action="study-cafe" id="drawer-study-cafe-btn"><span>STUDY CAFE</span><span>›</span></button>
     <button class="app-drawer-link hidden" type="button" data-drawer-action="admin" id="drawer-admin-btn"><span>ADMIN</span><span>›</span></button>
   </div>
 
@@ -114,12 +115,42 @@
       <div class="portal-title">COUNSEL</div>
       <div class="portal-desc"></div>
     </button>
+    <button class="portal-card portal-card-study-cafe" type="button" id="portal-study-cafe-btn">
+      <div class="portal-kicker">자습실</div>
+      <div class="portal-title">STUDY CAFE</div>
+      <div class="portal-desc"></div>
+    </button>
     <button class="portal-card portal-card-admin hidden" type="button" id="portal-admin-btn">
       <div class="portal-kicker">관리</div>
       <div class="portal-title">ADMIN</div>
       <div class="portal-desc"></div>
     </button>
   </div>
+</div>
+
+<div class="screen" id="study-cafe-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="study-cafe-back-btn">메인</button>
+  </div>
+
+  <div class="hd"><h1>STUDY CAFE</h1><span class="sub">STUDY LAB 연결</span></div>
+
+  <section class="group study-cafe-panel">
+    <div class="group-title">
+      <h3>STUDY LAB</h3>
+      <span class="group-count" id="study-cafe-badge">LINK</span>
+    </div>
+    <div class="study-cafe-status" id="study-cafe-status">STUDY LAB 연결을 준비하는 중입니다.</div>
+    <div class="study-cafe-frame-shell">
+      <iframe
+        class="study-cafe-frame hidden"
+        id="study-cafe-frame"
+        title="STUDY LAB"
+        allow="camera; microphone; autoplay; clipboard-read; clipboard-write"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+    </div>
+  </section>
 </div>
 
 <div class="screen" id="counsel-screen">
@@ -814,11 +845,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./rotation_prep_core.js?v=20260421-counsel-21"></script>
-  <script src="./rotation_prep_bundle.js?v=20260421-counsel-21"></script>
-  <script src="./rotation_prep_passages.js?v=20260421-counsel-21"></script>
-  <script src="./rotation_prep_ui.js?v=20260421-counsel-21"></script>
-  <script src="./rotation_portal.js?v=20260421-counsel-21"></script>
-  <script src="./rotation_portal_enhancements.js?v=20260421-counsel-21"></script>
+<script src="./rotation_prep_core.js?v=20260422-study-cafe-01"></script>
+<script src="./rotation_prep_bundle.js?v=20260422-study-cafe-01"></script>
+<script src="./rotation_prep_passages.js?v=20260422-study-cafe-01"></script>
+<script src="./rotation_prep_ui.js?v=20260422-study-cafe-01"></script>
+<script src="./rotation_portal.js?v=20260422-study-cafe-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260422-study-cafe-01"></script>
 </body>
 </html>
