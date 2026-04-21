@@ -627,12 +627,29 @@ function setStudyCafeBadge(label){
   if(node) node.textContent = String(label || '').trim() || 'LINK'
 }
 
-function setStudyCafeStatus(message, isError){
-  const node = document.getElementById('study-cafe-status')
-  if(!node) return
+function setStudyCafeStatus(message, isError, state){
+  const node = document.getElementById('study-cafe-status-pill')
   const normalizedMessage = String(message || '').trim()
-  node.textContent = normalizedMessage
-  node.style.color = isError ? 'var(--red)' : 'var(--ink2)'
+  const normalizedState = String(state || '').trim().toLowerCase()
+  const resolvedState = normalizedState || (isError ? 'error' : 'connected')
+  let label = '연결 대기'
+
+  if(resolvedState === 'loading'){
+    label = '연결 중'
+  }else if(resolvedState === 'connected'){
+    label = '연결됨'
+  }else if(resolvedState === 'error'){
+    label = '연결 실패'
+  }
+
+  if(node){
+    node.textContent = label
+    node.dataset.state = resolvedState
+    node.dataset.tooltip = normalizedMessage || '상태 정보가 없습니다.'
+    node.title = normalizedMessage || '상태 정보가 없습니다.'
+    node.setAttribute('aria-label', normalizedMessage || '상태 정보가 없습니다.')
+  }
+
   portalState.studyCafe.lastStatus = normalizedMessage
   portalState.studyCafe.lastError = isError ? normalizedMessage : ''
 }
@@ -656,6 +673,7 @@ function resetStudyCafeEmbed(options){
     frame.src = 'about:blank'
   }
   setStudyCafeFrameVisibility(false)
+  setStudyCafeStatus('STUDY LAB 연결을 준비하는 중입니다.', false, 'idle')
 }
 
 function isStudyCafeFirebaseBridgeAvailable(){
@@ -684,7 +702,7 @@ function openStudyCafePortal(){
     portalState.studyCafe.frameOrigin = ''
     portalState.studyCafe.isLoaded = false
     setStudyCafeFrameVisibility(false)
-    setStudyCafeStatus('STUDY LAB 주소가 설정되지 않았습니다. firebase-config.js의 studyLabUrl을 확인해 주세요.', true)
+    setStudyCafeStatus('STUDY LAB 주소가 설정되지 않았습니다. firebase-config.js의 studyLabUrl을 확인해 주세요.', true, 'error')
     return
   }
 
@@ -695,18 +713,18 @@ function openStudyCafePortal(){
   if(!isStudyCafeFirebaseBridgeAvailable()){
     portalState.studyCafe.isLoaded = false
     setStudyCafeFrameVisibility(false)
-    setStudyCafeStatus('STUDY CAFE는 Firebase 로그인 사용자만 이용할 수 있습니다. 현재는 운영용 Firebase 세션이 확인되지 않습니다.', true)
+    setStudyCafeStatus('STUDY CAFE는 Firebase 로그인 사용자만 이용할 수 있습니다. 현재는 운영용 Firebase 세션이 확인되지 않습니다.', true, 'error')
     return
   }
 
   const frame = getStudyCafeFrame()
   if(!frame){
-    setStudyCafeStatus('STUDY LAB 프레임을 찾지 못했습니다.', true)
+    setStudyCafeStatus('STUDY LAB 프레임을 찾지 못했습니다.', true, 'error')
     return
   }
 
   setStudyCafeFrameVisibility(true)
-  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다. 로드 후 Firebase 권한을 자동으로 전달합니다.', false)
+  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다. 로드 후 Firebase 권한을 자동으로 전달합니다.', false, 'loading')
   if(frame.src !== config.url){
     portalState.studyCafe.isLoaded = false
     frame.src = config.url
@@ -714,13 +732,13 @@ function openStudyCafePortal(){
   }
 
   if(portalState.studyCafe.isLoaded){
-    setStudyCafeStatus('STUDY LAB이 열려 있습니다. 학생은 학생 화면만, 강사/관리자는 강사 화면만 표시됩니다.', false)
+    setStudyCafeStatus('STUDY LAB이 열려 있습니다. 학생은 학생 화면만, 강사/관리자는 강사 화면만 표시됩니다.', false, 'connected')
   }
 }
 
 function handleStudyCafeFrameLoad(){
   portalState.studyCafe.isLoaded = true
-  setStudyCafeStatus('STUDY LAB 화면이 열렸습니다. Firebase 권한 요청을 기다리는 중입니다.', false)
+  setStudyCafeStatus('STUDY LAB 화면이 열렸습니다. Firebase 권한 요청을 기다리는 중입니다.', false, 'loading')
 }
 
 async function buildStudyCafeAuthResponsePayload(requestId){
@@ -799,9 +817,9 @@ async function handleStudyCafeWindowMessage(event){
   const payload = await buildStudyCafeAuthResponsePayload(requestId)
   if(payload.ok){
     setStudyCafeBadge(payload.role === 'admin' && payload.adminScope === 'all' ? 'ADMIN' : payload.role === 'admin' ? 'TEACHER' : 'STUDENT')
-    setStudyCafeStatus('Firebase 로그인 정보를 전달했습니다. STUDY LAB 권한 화면을 불러오는 중입니다.', false)
+    setStudyCafeStatus('Firebase 로그인 정보를 전달했습니다. STUDY LAB 권한 화면을 불러오는 중입니다.', false, 'connected')
   }else if(getCurrentActiveScreenId() === 'study-cafe-screen'){
-    setStudyCafeStatus(payload.error || 'STUDY LAB 인증 정보 전달에 실패했습니다.', true)
+    setStudyCafeStatus(payload.error || 'STUDY LAB 인증 정보 전달에 실패했습니다.', true, 'error')
   }
 
   event.source.postMessage(payload, event.origin || expectedOrigin || '*')
