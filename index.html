@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260420-prep-direct-6">
+  <link rel="stylesheet" href="./rotation_prep.css?v=20260421-counsel-16">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -45,6 +45,7 @@
     <button class="app-drawer-link" type="button" data-drawer-action="home" id="drawer-home-btn"><span>HOME</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="prep" id="drawer-prep-btn"><span>PREP</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="check" id="drawer-check-btn"><span>CHECK</span><span>›</span></button>
+    <button class="app-drawer-link" type="button" data-drawer-action="counsel" id="drawer-counsel-btn"><span>COUNSEL</span><span>›</span></button>
     <button class="app-drawer-link hidden" type="button" data-drawer-action="admin" id="drawer-admin-btn"><span>ADMIN</span><span>›</span></button>
   </div>
 
@@ -108,12 +109,111 @@
       <div class="portal-title">CHECK</div>
       <div class="portal-desc"></div>
     </button>
+    <button class="portal-card portal-card-counsel" type="button" id="portal-counsel-btn">
+      <div class="portal-kicker">상담</div>
+      <div class="portal-title">COUNSEL</div>
+      <div class="portal-desc"></div>
+    </button>
     <button class="portal-card portal-card-admin hidden" type="button" id="portal-admin-btn">
       <div class="portal-kicker">관리</div>
       <div class="portal-title">ADMIN</div>
       <div class="portal-desc"></div>
     </button>
   </div>
+</div>
+
+<div class="screen" id="counsel-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="counsel-back-btn">메인</button>
+  </div>
+
+  <div class="hd"><h1>COUNSEL</h1><span class="sub" id="counsel-subtitle"></span></div>
+
+  <div class="portal-grid counsel-grid">
+    <button class="portal-card portal-card-career" type="button" data-counsel-type="career">
+      <div class="portal-kicker">진로상담</div>
+      <div class="portal-title">CAREER</div>
+      <div class="portal-desc"></div>
+    </button>
+    <button class="portal-card portal-card-life" type="button" data-counsel-type="life">
+      <div class="portal-kicker">인생상담</div>
+      <div class="portal-title">LIFE</div>
+      <div class="portal-desc"></div>
+    </button>
+    <button class="portal-card portal-card-withdrawal" type="button" data-counsel-type="withdrawal">
+      <div class="portal-kicker">퇴원상담</div>
+      <div class="portal-title">WITHDRAWAL</div>
+      <div class="portal-desc"></div>
+    </button>
+  </div>
+</div>
+
+<div class="screen" id="counsel-form-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="counsel-form-back-btn">상담 선택</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="counsel-form-home-btn">메인</button>
+  </div>
+
+  <div class="hd"><h1 id="counsel-form-title">COUNSEL</h1><span class="sub" id="counsel-form-subtitle">상담 신청</span></div>
+
+  <section class="group counsel-form-panel">
+    <div class="group-title">
+      <h3 id="counsel-form-heading">상담 신청서</h3>
+      <span class="group-count" id="counsel-form-type-badge">COUNSEL</span>
+    </div>
+    <div class="counsel-form-grid">
+      <label class="counsel-field">
+        <span>상담사유</span>
+        <select id="counsel-reason-select">
+          <option value="">상담사유 선택</option>
+        </select>
+        <input class="hidden" type="text" id="counsel-reason-other-input" maxlength="80" placeholder="상담사유를 직접 입력해 주세요">
+      </label>
+      <label class="counsel-field">
+        <span>상담날짜시간</span>
+        <div class="counsel-datetime-grid">
+          <input type="date" id="counsel-date-input">
+          <select id="counsel-time-select">
+            <option value="">시간 선택</option>
+          </select>
+        </div>
+        <input type="hidden" id="counsel-datetime-input">
+        <small class="counsel-field-help" id="counsel-datetime-help"></small>
+      </label>
+      <label class="counsel-field counsel-field-wide">
+        <span>상담내용</span>
+        <textarea id="counsel-content-input" maxlength="600" placeholder="상담받고 싶은 내용을 짧게 적어주세요."></textarea>
+      </label>
+      <div class="counsel-withdrawal-fields hidden" id="counsel-withdrawal-fields">
+        <div class="counsel-check-group">
+          <span>현재 수강 과목</span>
+          <div class="counsel-check-options">
+            <label><input type="checkbox" name="counsel-current-subjects" value="영어"> 영어</label>
+            <label><input type="checkbox" name="counsel-current-subjects" value="수학"> 수학</label>
+            <label><input type="checkbox" name="counsel-current-subjects" value="과학"> 과학</label>
+          </div>
+        </div>
+        <div class="counsel-check-group">
+          <span>퇴원 희망 과목</span>
+          <div class="counsel-check-options">
+            <label><input type="checkbox" name="counsel-withdrawal-subjects" value="영어"> 영어</label>
+            <label><input type="checkbox" name="counsel-withdrawal-subjects" value="수학"> 수학</label>
+            <label><input type="checkbox" name="counsel-withdrawal-subjects" value="과학"> 과학</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="counsel-form-actions">
+      <div class="counsel-withdrawal-notice hidden" id="counsel-withdrawal-notice">
+        <strong>퇴원 상담 신청 전 꼭 확인해주세요.</strong>
+        <span>우리 학원은 퇴원 신청 후 바로 퇴원되지 않습니다.</span>
+        <span>퇴원을 희망하는 경우, 먼저 담당 선생님과 학생 대면 상담을 진행해야 하며, 이후 학부모 전화 상담까지 완료되어야 최종 퇴원 처리됩니다.</span>
+        <span>위 내용을 충분히 확인한 후 퇴원 상담을 신청해 주세요.</span>
+      </div>
+      <div class="counsel-form-status" id="counsel-form-status"></div>
+      <button class="btn btn-blue" type="button" id="counsel-submit-btn">상담 신청 제출</button>
+    </div>
+  </section>
 </div>
 
 <div class="screen" id="account-screen">
@@ -602,6 +702,10 @@
       <div class="group-title"><h3>질문 있어요</h3><span class="group-count" id="admin-issue-count">0</span></div>
       <div class="admin-list" id="admin-issue-list"></div>
     </section>
+    <section class="group admin-wide">
+      <div class="group-title"><h3>상담 요청</h3><span class="group-count" id="admin-counsel-count">0</span></div>
+      <div class="admin-list" id="admin-counsel-list"></div>
+    </section>
   </div>
 </div>
 
@@ -688,11 +792,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="./rotation_prep_core.js?v=20260420-prep-direct-7"></script>
-<script src="./rotation_prep_bundle.js?v=20260420-prep-direct-7"></script>
-<script src="./rotation_prep_passages.js?v=20260420-prep-direct-7"></script>
-<script src="./rotation_prep_ui.js?v=20260420-prep-direct-7"></script>
-<script src="./rotation_portal.js?v=20260420-prep-direct-7"></script>
-<script src="./rotation_portal_enhancements.js?v=20260420-prep-direct-7"></script>
+  <script src="./rotation_prep_core.js?v=20260421-counsel-16"></script>
+  <script src="./rotation_prep_bundle.js?v=20260421-counsel-16"></script>
+  <script src="./rotation_prep_passages.js?v=20260421-counsel-16"></script>
+  <script src="./rotation_prep_ui.js?v=20260421-counsel-16"></script>
+  <script src="./rotation_portal.js?v=20260421-counsel-16"></script>
+  <script src="./rotation_portal_enhancements.js?v=20260421-counsel-16"></script>
 </body>
 </html>

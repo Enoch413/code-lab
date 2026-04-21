@@ -10,12 +10,19 @@ const PORTAL_CLOUD_SET_COLLECTIONS = {
 
 const PORTAL_CLASS_CATALOG_DOC = 'prep-classes'
 const PORTAL_PREP_VIDEO_PROGRESS_COLLECTION = 'prepVideoProgress'
+const PORTAL_COUNSEL_REQUEST_COLLECTION = 'counselRequests'
+const PORTAL_COUNSEL_SLOT_COLLECTION = 'counselSlots'
+const PORTAL_COUNSEL_SLOT_MINUTES = 30
+const PORTAL_COUNSEL_START_MINUTES = 16 * 60
+const PORTAL_COUNSEL_END_MINUTES = (22 * 60) - PORTAL_COUNSEL_SLOT_MINUTES
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
   issues: 'rotation_portal_question_issues_v1',
   issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_',
-  prepVideoProgress: 'rotation_portal_prep_video_progress_v1'
+  prepVideoProgress: 'rotation_portal_prep_video_progress_v1',
+  counselRequests: 'rotation_portal_counsel_requests_v1',
+  counselSlots: 'rotation_portal_counsel_slots_v1'
 }
 
 const PREP_SCREEN_IDS = [
@@ -29,6 +36,8 @@ const PREP_SCREEN_IDS = [
 
 const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
+  'counsel-screen': { title: 'COUNSEL', sub: '상담 선택' },
+  'counsel-form-screen': { title: 'COUNSEL', sub: '상담 신청' },
   'account-screen': { title: 'CODE LAB', sub: '회원정보' },
   'password-screen': { title: 'CODE LAB', sub: '비밀번호 변경' },
   'admin-portal-screen': { title: 'TOOLS', sub: '허브' },
@@ -45,6 +54,8 @@ const CHROME_SCREEN_TITLES = {
 
 const CHROME_BREADCRUMBS = {
   'portal-screen': ['CODE LAB', 'HOME'],
+  'counsel-screen': ['CODE LAB', 'COUNSEL'],
+  'counsel-form-screen': ['CODE LAB', 'COUNSEL', 'FORM'],
   'account-screen': ['CODE LAB', '회원정보'],
   'password-screen': ['CODE LAB', '비밀번호 변경'],
   'admin-portal-screen': ['CODE LAB', 'TOOLS'],
@@ -83,6 +94,64 @@ const ADMIN_PORTAL_LAB_OWNER_IDS = {
 const ADMIN_PORTAL_LAB_COUNT = 6
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
 
+const PORTAL_COUNSEL_OTHER_REASON = '__other__'
+const PORTAL_COUNSEL_TYPES = {
+  career: {
+    key: 'career',
+    title: 'CAREER',
+    label: '진로상담',
+    reasonOptions: [
+      '진로를 잘 모르겠어요',
+      '내 강점을 알고 싶어요',
+      '내가 좋아하는 일을 찾고 싶어요',
+      '고등학교 선택이 고민돼요',
+      '학과 선택이 고민돼요',
+      '과목 선택이 고민돼요',
+      '성적에 맞는 진로가 궁금해요',
+      '원하는 직업이 있어요',
+      '공부 방향이 고민돼요',
+      '아직 꿈이 없어요'
+    ]
+  },
+  life: {
+    key: 'life',
+    title: 'LIFE',
+    label: '인생상담',
+    reasonOptions: [
+      '요즘 마음이 힘들어요',
+      '고민이 많아요',
+      '스트레스를 많이 받아요',
+      '자신감이 없어요',
+      '친구 관계가 힘들어요',
+      '가족 문제로 힘들어요',
+      '공부와 생활의 균형이 어려워요',
+      '자꾸 불안해져요',
+      '집중이 잘 안 돼요',
+      '의욕이 없어요',
+      '미래가 걱정돼요',
+      '혼자 해결하기 어려워요',
+      '누군가와 이야기하고 싶어요',
+      '위로가 필요해요'
+    ]
+  },
+  withdrawal: {
+    key: 'withdrawal',
+    title: 'WITHDRAWAL',
+    label: '퇴원상담',
+    reasonOptions: [
+      '시간이 안 맞아요',
+      '공부 방향을 바꿨어요',
+      '수업의 난이도가 안 맞아요',
+      '수업 방식이 나랑 안 맞아요',
+      '성적의 변화가 없어요',
+      '학교 공부가 너무 바빠요',
+      '집이 멀어요',
+      '이사/전학 가요',
+      '목표를 이뤄서 그만해요'
+    ]
+  }
+}
+
 portalState.forcePasswordReset = false
 portalState.contentMeta = portalState.contentMeta || {}
 portalState.currentQuestionIssues = portalState.currentQuestionIssues || []
@@ -98,6 +167,7 @@ portalState.prepSyncPromise = null
 portalState.prepSetInventory = portalState.prepSetInventory || []
 portalState.checkSetInventory = portalState.checkSetInventory || []
 portalState.checkSetRegradeDocId = portalState.checkSetRegradeDocId || ''
+portalState.currentCounselType = portalState.currentCounselType || ''
 portalState.prepVideoManager = portalState.prepVideoManager || {
   open: false,
   isSaving: false,
@@ -235,6 +305,47 @@ function bindPortalEnhancementEvents(){
       runDrawerAction(button.dataset.drawerAction || '')
     })
   })
+
+  Array.from(document.querySelectorAll('[data-counsel-type]')).forEach(function(button){
+    button.addEventListener('click', function(){
+      openCounselFormPortal(button.dataset.counselType || '')
+    })
+  })
+
+  bindClick('counsel-form-back-btn', openCounselPortal)
+  bindClick('counsel-form-home-btn', showPortalScreen)
+  bindClick('counsel-submit-btn', submitCounselRequest)
+  const counselReasonSelect = document.getElementById('counsel-reason-select')
+  if(counselReasonSelect){
+    counselReasonSelect.addEventListener('change', syncCounselReasonOtherVisibility)
+  }
+  const counselDateTimeInput = document.getElementById('counsel-datetime-input')
+  if(counselDateTimeInput){
+    counselDateTimeInput.addEventListener('change', function(){
+      validateCounselDateTimeSelection(true)
+    })
+    counselDateTimeInput.addEventListener('input', function(){
+      validateCounselDateTimeSelection(false)
+    })
+  }
+  const counselDateInput = document.getElementById('counsel-date-input')
+  if(counselDateInput){
+    counselDateInput.addEventListener('change', function(){
+      syncCounselDateTimeValue()
+      validateCounselDateTimeSelection(true)
+    })
+    counselDateInput.addEventListener('input', function(){
+      syncCounselDateTimeValue()
+      validateCounselDateTimeSelection(false)
+    })
+  }
+  const counselTimeSelect = document.getElementById('counsel-time-select')
+  if(counselTimeSelect){
+    counselTimeSelect.addEventListener('change', function(){
+      syncCounselDateTimeValue()
+      validateCounselDateTimeSelection(true)
+    })
+  }
 
   bindClick('account-prep-btn', function(){
     closeAppDrawer()
@@ -420,6 +531,7 @@ function runDrawerAction(action){
   if(action === 'home') return showPortalScreen()
   if(action === 'prep') return openPrepPortal()
   if(action === 'check') return openCheckPortal()
+  if(action === 'counsel') return openCounselPortal()
   if(action === 'admin') return openAdminPortal()
   if(action === 'account') return openAccountScreen()
   if(action === 'password') return openPasswordScreen(false)
@@ -694,6 +806,9 @@ function captureAppRoute(screenId){
   if(screenId === 'check-set-screen' && portalState.currentCheckSet){
     route.checkSetId = portalState.currentCheckSet.id
   }
+  if(screenId === 'counsel-form-screen'){
+    route.counselType = portalState.currentCounselType || ''
+  }
   if(screenId === 'password-screen'){
     route.force = !!portalState.forcePasswordReset
   }
@@ -726,6 +841,8 @@ function restoreAppRoute(route){
   }
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
+  if(route.screenId === 'counsel-screen') return openCounselPortal()
+  if(route.screenId === 'counsel-form-screen') return openCounselFormPortal(route.counselType || 'career')
   if(route.screenId === 'account-screen') return openAccountScreen()
   if(route.screenId === 'password-screen') return openPasswordScreen(!!route.force)
   if(route.screenId === 'admin-portal-screen') return openToolsPortal()
@@ -2092,6 +2209,685 @@ function readLocalQuestionIssues(){
 
 function writeLocalQuestionIssues(rows){
   localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.issues, JSON.stringify(rows))
+}
+
+function normalizeCounselType(value){
+  const key = String(value || '').trim().toLowerCase()
+  return PORTAL_COUNSEL_TYPES[key] ? key : 'career'
+}
+
+function getCounselTypeInfo(value){
+  return PORTAL_COUNSEL_TYPES[normalizeCounselType(value)]
+}
+
+function normalizeCounselSubjectList(values){
+  const allowed = ['영어', '수학', '과학']
+  return Array.from(new Set((Array.isArray(values) ? values : []).map(function(value){
+    return String(value || '').trim()
+  }).filter(function(value){
+    return allowed.indexOf(value) >= 0
+  })))
+}
+
+function buildCounselTimeOptionsHtml(){
+  const options = ['<option value="">시간 선택</option>']
+  for(let minutes = PORTAL_COUNSEL_START_MINUTES; minutes <= PORTAL_COUNSEL_END_MINUTES; minutes += PORTAL_COUNSEL_SLOT_MINUTES){
+    const hourText = String(Math.floor(minutes / 60)).padStart(2, '0')
+    const minuteText = String(minutes % 60).padStart(2, '0')
+    const value = hourText + ':' + minuteText
+    options.push('<option value="' + value + '">' + value + '</option>')
+  }
+  return options.join('')
+}
+
+function buildCounselRequestDocId(userId){
+  const safeUserId = sanitizeId(String(userId || '').trim()) || 'user'
+  return safeUserId + '__' + Date.now() + '__' + Math.random().toString(36).slice(2, 8)
+}
+
+function setCounselFormStatus(message, isError){
+  const node = document.getElementById('counsel-form-status')
+  if(!node) return
+  node.textContent = String(message || '').trim()
+  node.style.color = isError ? 'var(--red)' : 'var(--ink2)'
+}
+
+function openCounselFormPortal(type){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  const typeInfo = getCounselTypeInfo(type)
+  portalState.currentCounselType = typeInfo.key
+  updatePortalUserCard()
+  renderCounselForm(typeInfo)
+  activatePortalScreen('counsel-form-screen')
+}
+
+function renderCounselForm(typeInfo){
+  const info = typeInfo || getCounselTypeInfo(portalState.currentCounselType)
+  setElementTextSafe('counsel-form-title', info.title)
+  setElementTextSafe('counsel-form-heading', info.label + ' 신청서')
+  setElementTextSafe('counsel-form-type-badge', info.title)
+  setElementTextSafe('counsel-form-subtitle', info.label)
+
+  const reasonSelect = document.getElementById('counsel-reason-select')
+  const reasonOtherInput = document.getElementById('counsel-reason-other-input')
+  const dateInput = document.getElementById('counsel-date-input')
+  const timeSelect = document.getElementById('counsel-time-select')
+  const datetimeInput = document.getElementById('counsel-datetime-input')
+  const contentInput = document.getElementById('counsel-content-input')
+  const withdrawalFields = document.getElementById('counsel-withdrawal-fields')
+  if(reasonSelect){
+    const options = Array.isArray(info.reasonOptions) ? info.reasonOptions : []
+    reasonSelect.innerHTML = '<option value="">상담사유 선택</option>' +
+      options.map(function(option){
+        return '<option value="' + escapeHtml(option) + '">' + escapeHtml(option) + '</option>'
+      }).join('') +
+      '<option value="' + PORTAL_COUNSEL_OTHER_REASON + '">기타(직접입력)</option>'
+    reasonSelect.value = ''
+  }
+  if(reasonOtherInput){
+    reasonOtherInput.value = ''
+    reasonOtherInput.classList.add('hidden')
+  }
+  if(dateInput) dateInput.value = ''
+  if(timeSelect){
+    timeSelect.innerHTML = buildCounselTimeOptionsHtml()
+    timeSelect.value = ''
+  }
+  if(datetimeInput) datetimeInput.value = ''
+  if(contentInput) contentInput.value = ''
+  resetCounselWithdrawalFields(info.key === 'withdrawal')
+  validateCounselDateTimeSelection(false)
+  setCounselFormStatus('', false)
+}
+
+function resetCounselWithdrawalFields(shouldShow){
+  const panel = document.getElementById('counsel-withdrawal-fields')
+  if(panel) panel.classList.toggle('hidden', !shouldShow)
+  const notice = document.getElementById('counsel-withdrawal-notice')
+  if(notice) notice.classList.toggle('hidden', !shouldShow)
+  Array.from(document.querySelectorAll('input[name="counsel-current-subjects"], input[name="counsel-withdrawal-subjects"]')).forEach(function(input){
+    input.checked = false
+  })
+}
+
+function getCheckedCounselSubjects(name){
+  return normalizeCounselSubjectList(Array.from(document.querySelectorAll('input[name="' + name + '"]:checked')).map(function(input){
+    return input.value
+  }))
+}
+
+function syncCounselReasonOtherVisibility(){
+  const reasonSelect = document.getElementById('counsel-reason-select')
+  const reasonOtherInput = document.getElementById('counsel-reason-other-input')
+  if(!reasonSelect || !reasonOtherInput) return
+  const shouldShow = String(reasonSelect.value || '') === PORTAL_COUNSEL_OTHER_REASON
+  reasonOtherInput.classList.toggle('hidden', !shouldShow)
+  if(!shouldShow){
+    reasonOtherInput.value = ''
+    return
+  }
+  reasonOtherInput.focus()
+}
+
+function syncCounselDateTimeValue(){
+  const dateInput = document.getElementById('counsel-date-input')
+  const timeSelect = document.getElementById('counsel-time-select')
+  const datetimeInput = document.getElementById('counsel-datetime-input')
+  if(!datetimeInput) return ''
+  const dateValue = String(dateInput && dateInput.value || '').trim()
+  const timeValue = String(timeSelect && timeSelect.value || '').trim()
+  const combined = dateValue && timeValue ? (dateValue + 'T' + timeValue) : ''
+  datetimeInput.value = combined
+  return combined
+}
+
+function getCounselRequestedAtValue(){
+  return syncCounselDateTimeValue()
+}
+
+function getCounselDateTimeValidationMessage(value){
+  const raw = String(value || '').trim()
+  if(!raw) return ''
+  const date = new Date(raw)
+  if(Number.isNaN(date.getTime())) return '상담날짜시간을 다시 선택해 주세요.'
+  const day = date.getDay()
+  if(day === 0 || day === 6) return '상담은 평일(월~금)에만 신청할 수 있습니다.'
+  const totalMinutes = (date.getHours() * 60) + date.getMinutes()
+  const startMinutes = PORTAL_COUNSEL_START_MINUTES
+  const endMinutes = PORTAL_COUNSEL_END_MINUTES
+  if(totalMinutes < startMinutes || totalMinutes > endMinutes){
+    return '상담은 평일 16:00~21:30 시작 시간만 선택할 수 있습니다.'
+  }
+  if(date.getMinutes() % PORTAL_COUNSEL_SLOT_MINUTES !== 0){
+    return '상담은 30분 단위로만 선택할 수 있습니다.'
+  }
+  return ''
+}
+
+function validateCounselDateTimeSelection(showToastMessage){
+  const input = document.getElementById('counsel-datetime-input')
+  const help = document.getElementById('counsel-datetime-help')
+  if(!input) return true
+  const message = getCounselDateTimeValidationMessage(getCounselRequestedAtValue())
+  input.setCustomValidity(message)
+  if(help){
+    help.textContent = message || ''
+    help.classList.toggle('is-error', !!message)
+  }
+  if(message && showToastMessage) showToast(message, 'var(--red)')
+  return !message
+}
+
+function parseCounselRequestedAt(value){
+  const raw = String(value || '').trim()
+  if(!raw) return null
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getCounselSlotStartMs(value){
+  const date = parseCounselRequestedAt(value)
+  return date ? date.getTime() : NaN
+}
+
+function getCounselSlotEndMs(value){
+  const startMs = getCounselSlotStartMs(value)
+  return Number.isFinite(startMs) ? startMs + (PORTAL_COUNSEL_SLOT_MINUTES * 60 * 1000) : NaN
+}
+
+function isCounselRequestOpen(entry){
+  const raw = String(entry && entry.status || 'open').trim().toLowerCase()
+  return raw !== 'completed' && raw !== 'done' && raw !== 'resolved' && raw !== 'closed' && raw !== 'canceled' && raw !== 'cancelled'
+}
+
+function doCounselSlotsOverlap(leftRequestedAt, rightRequestedAt){
+  const leftStart = getCounselSlotStartMs(leftRequestedAt)
+  const rightStart = getCounselSlotStartMs(rightRequestedAt)
+  if(!Number.isFinite(leftStart) || !Number.isFinite(rightStart)) return false
+  const leftEnd = leftStart + (PORTAL_COUNSEL_SLOT_MINUTES * 60 * 1000)
+  const rightEnd = rightStart + (PORTAL_COUNSEL_SLOT_MINUTES * 60 * 1000)
+  return leftStart < rightEnd && rightStart < leftEnd
+}
+
+function buildCounselSlotId(requestedAt){
+  const date = parseCounselRequestedAt(requestedAt)
+  if(!date) return ''
+  const localValue = String(requestedAt || '').trim().slice(0, 16)
+  return sanitizeId(localValue.replace('T', '-'))
+}
+
+function buildCounselSlotRecord(slotId, requestId, payload, status){
+  const requestedAt = String(payload && payload.requestedAt || '').trim()
+  const startMs = getCounselSlotStartMs(requestedAt)
+  const endMs = getCounselSlotEndMs(requestedAt)
+  const now = new Date().toISOString()
+  return {
+    id: slotId,
+    requestId: String(requestId || '').trim(),
+    userId: String(payload && payload.userId || '').trim(),
+    classId: String(payload && payload.classId || '').trim(),
+    classIds: Array.isArray(payload && payload.classIds) ? payload.classIds.slice() : [],
+    requestedAt: requestedAt,
+    startAt: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
+    endAt: Number.isFinite(endMs) ? new Date(endMs).toISOString() : '',
+    status: String(status || 'open').trim() || 'open',
+    updatedAt: now
+  }
+}
+
+function readLocalCounselSlots(){
+  try{
+    const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.counselSlots)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  }catch(error){
+    console.error(error)
+    return []
+  }
+}
+
+function writeLocalCounselSlots(rows){
+  localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.counselSlots, JSON.stringify(Array.isArray(rows) ? rows : []))
+}
+
+function findLocalCounselSlotConflict(requestedAt){
+  const slotRows = readLocalCounselSlots()
+  const slotConflict = slotRows.find(function(entry){
+    return isCounselRequestOpen(entry) && doCounselSlotsOverlap(requestedAt, entry && entry.requestedAt)
+  })
+  if(slotConflict) return slotConflict
+
+  return readLocalCounselRequests().find(function(entry){
+    return isCounselRequestOpen(entry) && doCounselSlotsOverlap(requestedAt, entry && entry.requestedAt)
+  }) || null
+}
+
+function reserveLocalCounselSlot(slotId, requestId, payload){
+  const conflict = findLocalCounselSlotConflict(payload && payload.requestedAt)
+  if(conflict) return { ok: false, conflict: conflict }
+  const rows = readLocalCounselSlots().filter(function(entry){
+    return String(entry && entry.id || '').trim() !== slotId
+  })
+  rows.push(buildCounselSlotRecord(slotId, requestId, payload, 'open'))
+  writeLocalCounselSlots(rows)
+  return { ok: true }
+}
+
+function updateLocalCounselSlot(slotId, updates){
+  const targetId = String(slotId || '').trim()
+  if(!targetId) return false
+  const rows = readLocalCounselSlots()
+  let changed = false
+  const nextRows = rows.map(function(entry){
+    if(String(entry && entry.id || '').trim() !== targetId) return entry
+    changed = true
+    return Object.assign({}, entry, updates, { id: targetId })
+  })
+  if(changed) writeLocalCounselSlots(nextRows)
+  return changed
+}
+
+async function reserveCloudCounselSlot(slotId, requestId, payload){
+  if(!portalState.firebaseEnabled || !portalState.db || typeof portalState.db.runTransaction !== 'function') return false
+  const slotRef = portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(slotId)
+  const slotRecord = buildCounselSlotRecord(slotId, requestId, payload, 'open')
+  await portalState.db.runTransaction(function(transaction){
+    return transaction.get(slotRef).then(function(snapshot){
+      if(snapshot.exists){
+        const existing = snapshot.data() || {}
+        if(isCounselRequestOpen(existing) && doCounselSlotsOverlap(payload && payload.requestedAt, existing.requestedAt)){
+          throw new Error('counsel-slot-conflict')
+        }
+      }
+      transaction.set(slotRef, slotRecord, { merge: true })
+    })
+  })
+  return true
+}
+
+async function reserveCounselSlot(slotId, requestId, payload){
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await reserveCloudCounselSlot(slotId, requestId, payload)
+      return { ok: true, cloud: true }
+    }catch(error){
+      if(String(error && error.message || '').indexOf('counsel-slot-conflict') >= 0){
+        return { ok: false, conflict: true }
+      }
+      console.warn('counselSlots reservation fallback:', error && error.message ? error.message : error)
+    }
+  }
+  return reserveLocalCounselSlot(slotId, requestId, payload)
+}
+
+async function markCounselSlotCompleted(slotId, updates){
+  const targetId = String(slotId || '').trim()
+  if(!targetId) return false
+  const payload = Object.assign({}, updates || {}, {
+    status: 'completed',
+    updatedAt: new Date().toISOString()
+  })
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(targetId).set(payload, { merge: true })
+      return true
+    }catch(error){
+      console.warn('counselSlots update fallback:', error && error.message ? error.message : error)
+    }
+  }
+  return updateLocalCounselSlot(targetId, payload)
+}
+
+function readLocalCounselRequests(){
+  try{
+    const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.counselRequests)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(normalizeCounselRequestRecord).filter(Boolean) : []
+  }catch(error){
+    console.error(error)
+    return []
+  }
+}
+
+function writeLocalCounselRequests(rows){
+  localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.counselRequests, JSON.stringify(Array.isArray(rows) ? rows : []))
+}
+
+function normalizeCounselRequestRecord(source){
+  if(!source || typeof source !== 'object') return null
+  const id = String(source.id || source.docId || '').trim()
+  const userId = String(source.userId || '').trim()
+  const type = normalizeCounselType(source.type)
+  const typeInfo = getCounselTypeInfo(type)
+  if(!id || !userId) return null
+  return {
+    id: id,
+    userId: userId,
+    loginId: String(source.loginId || '').trim(),
+    email: String(source.email || '').trim().toLowerCase(),
+    name: String(source.name || '').trim(),
+    studentId: String(source.studentId || '').trim(),
+    role: String(source.role || 'student').trim() || 'student',
+    classId: String(source.classId || '').trim(),
+    classIds: Array.isArray(source.classIds) ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean) : [],
+    type: type,
+    typeTitle: String(source.typeTitle || typeInfo.title || '').trim(),
+    typeLabel: String(source.typeLabel || typeInfo.label || '').trim(),
+    reasonChoice: String(source.reasonChoice || source.reason || '').trim(),
+    reason: String(source.reason || '').trim(),
+    currentSubjects: normalizeCounselSubjectList(source.currentSubjects),
+    withdrawalSubjects: normalizeCounselSubjectList(source.withdrawalSubjects),
+    requestedAt: String(source.requestedAt || '').trim(),
+    slotId: String(source.slotId || buildCounselSlotId(source.requestedAt) || '').trim(),
+    slotMinutes: Number(source.slotMinutes || PORTAL_COUNSEL_SLOT_MINUTES),
+    slotStartAt: String(source.slotStartAt || '').trim(),
+    slotEndAt: String(source.slotEndAt || '').trim(),
+    content: String(source.content || '').trim(),
+    status: String(source.status || 'open').trim() || 'open',
+    completedAt: String(source.completedAt || '').trim(),
+    completedBy: String(source.completedBy || '').trim(),
+    createdAt: String(source.createdAt || '').trim(),
+    updatedAt: String(source.updatedAt || '').trim()
+  }
+}
+
+async function submitCounselRequest(){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+
+  const submitButton = document.getElementById('counsel-submit-btn')
+  const reasonSelect = document.getElementById('counsel-reason-select')
+  const reasonOtherInput = document.getElementById('counsel-reason-other-input')
+  const dateInput = document.getElementById('counsel-date-input')
+  const timeSelect = document.getElementById('counsel-time-select')
+  const contentInput = document.getElementById('counsel-content-input')
+  const reasonChoice = String(reasonSelect && reasonSelect.value || '').trim()
+  const reason = reasonChoice === PORTAL_COUNSEL_OTHER_REASON
+    ? String(reasonOtherInput && reasonOtherInput.value || '').trim()
+    : reasonChoice
+  const requestedAt = getCounselRequestedAtValue()
+  const content = String(contentInput && contentInput.value || '').trim()
+  const typeInfo = getCounselTypeInfo(portalState.currentCounselType)
+  const currentSubjects = typeInfo.key === 'withdrawal'
+    ? getCheckedCounselSubjects('counsel-current-subjects')
+    : []
+  const withdrawalSubjects = typeInfo.key === 'withdrawal'
+    ? getCheckedCounselSubjects('counsel-withdrawal-subjects')
+    : []
+
+  if(!reasonChoice || !reason || !requestedAt || !content){
+    setCounselFormStatus('상담사유, 상담날짜시간, 상담내용을 모두 입력해 주세요.', true)
+    showToast('상담 신청 내용을 모두 입력해 주세요.', 'var(--red)')
+    return
+  }
+  if(typeInfo.key === 'withdrawal' && (!currentSubjects.length || !withdrawalSubjects.length)){
+    setCounselFormStatus('현재 듣고 있는 강의와 퇴원희망과목을 각각 1개 이상 선택해 주세요.', true)
+    showToast('현재 수강 과목과 퇴원희망과목을 선택해 주세요.', 'var(--red)')
+    return
+  }
+  if(!validateCounselDateTimeSelection(false)){
+    const message = getCounselDateTimeValidationMessage(requestedAt)
+    setCounselFormStatus(message, true)
+    showToast(message, 'var(--red)')
+    if(dateInput && !dateInput.value) dateInput.focus()
+    else if(timeSelect) timeSelect.focus()
+    return
+  }
+
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  const userId = String(authUser.uid || profile.uid || profile.id || '').trim()
+  if(!userId){
+    setCounselFormStatus('로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.', true)
+    return
+  }
+
+  const classIds = typeof getProfileClassIds === 'function'
+    ? getProfileClassIds()
+    : (Array.isArray(profile.classIds) ? profile.classIds : [])
+  const now = new Date().toISOString()
+  const docId = buildCounselRequestDocId(userId)
+  const slotId = buildCounselSlotId(requestedAt)
+  const slotStartMs = getCounselSlotStartMs(requestedAt)
+  const slotEndMs = getCounselSlotEndMs(requestedAt)
+  const payload = normalizeCounselRequestRecord({
+    id: docId,
+    userId: userId,
+    loginId: profile.loginId || authUser.loginId || profile.studentId || '',
+    email: profile.email || authUser.email || '',
+    name: profile.name || '',
+    studentId: profile.studentId || profile.loginId || '',
+    role: profile.role || 'student',
+    classId: classIds[0] || '',
+    classIds: classIds,
+    type: typeInfo.key,
+    typeTitle: typeInfo.title,
+    typeLabel: typeInfo.label,
+    reasonChoice: reasonChoice === PORTAL_COUNSEL_OTHER_REASON ? '기타(직접입력)' : reasonChoice,
+    reason: reason,
+    currentSubjects: currentSubjects,
+    withdrawalSubjects: withdrawalSubjects,
+    requestedAt: requestedAt,
+    slotId: slotId,
+    slotMinutes: PORTAL_COUNSEL_SLOT_MINUTES,
+    slotStartAt: Number.isFinite(slotStartMs) ? new Date(slotStartMs).toISOString() : '',
+    slotEndAt: Number.isFinite(slotEndMs) ? new Date(slotEndMs).toISOString() : '',
+    content: content,
+    status: 'open',
+    createdAt: now,
+    updatedAt: now
+  })
+
+  if(!payload || !slotId){
+    setCounselFormStatus('상담 신청 정보를 만들지 못했습니다.', true)
+    return
+  }
+
+  try{
+    if(submitButton) submitButton.disabled = true
+    setCounselFormStatus('상담 시간을 확인하는 중입니다...', false)
+    const reservation = await reserveCounselSlot(slotId, docId, payload)
+    if(!reservation || !reservation.ok){
+      const message = '이미 신청된 상담 시간입니다. 다른 시간을 선택해 주세요.'
+      setCounselFormStatus(message, true)
+      showToast(message, 'var(--red)')
+      return
+    }
+
+    setCounselFormStatus('상담 신청을 저장하는 중입니다...', false)
+    let savedToCloud = false
+    if(portalState.firebaseEnabled && portalState.db){
+      try{
+        await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(docId).set(payload, { merge: true })
+        savedToCloud = true
+      }catch(error){
+        console.warn('counselRequests write fallback:', error && error.message ? error.message : error)
+        if(reservation.cloud){
+          await markCounselSlotCompleted(slotId, {
+            requestId: docId,
+            releasedAt: new Date().toISOString(),
+            releaseReason: 'request-save-failed'
+          })
+        }
+      }
+    }
+    if(!savedToCloud){
+      const rows = readLocalCounselRequests()
+      rows.push(payload)
+      writeLocalCounselRequests(rows)
+    }
+    showToast(savedToCloud ? '상담 신청이 관리자에게 전달되었습니다.' : '상담 신청이 이 브라우저에 임시 저장되었습니다.', 'var(--green)')
+    openCounselPortal()
+  }catch(error){
+    console.error(error)
+    setCounselFormStatus('상담 신청 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.', true)
+    showToast('상담 신청 저장에 실패했습니다.', 'var(--red)')
+  }finally{
+    if(submitButton) submitButton.disabled = false
+  }
+}
+
+async function fetchAllCounselRequests(){
+  let rows = []
+  let usedCloud = false
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).get()
+      usedCloud = true
+      rows = snapshot.docs.map(function(doc){
+        return normalizeCounselRequestRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+      }).filter(Boolean)
+    }catch(error){
+      console.warn('counselRequests admin read fallback:', error && error.message ? error.message : error)
+    }
+  }
+  if(!usedCloud){
+    rows = readLocalCounselRequests()
+  }
+  return rows
+}
+
+function filterAdminCounselRequests(rows){
+  return (Array.isArray(rows) ? rows : []).filter(function(entry){
+    if(!isCounselRequestOpen(entry)) return false
+    if(isPortalAdmin() && !isPortalSuperAdmin()){
+      const allowedClassIds = getProfileClassIds()
+      const classIds = Array.isArray(entry && entry.classIds) ? entry.classIds : []
+      if(!classIds.some(function(classId){
+        return allowedClassIds.indexOf(classId) >= 0
+      })){
+        return false
+      }
+    }
+    if(portalState.adminClassFilter !== 'all'){
+      const classIds = Array.isArray(entry && entry.classIds) ? entry.classIds : []
+      if(classIds.indexOf(portalState.adminClassFilter) < 0) return false
+    }
+    return true
+  }).sort(function(a, b){
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+  })
+}
+
+function formatCounselRequestedAt(value){
+  const raw = String(value || '').trim()
+  if(!raw) return ''
+  if(raw.indexOf('T') >= 0 && raw.length <= 16) return raw.replace('T', ' ')
+  return formatPortalDateTime(raw) || raw
+}
+
+function getCounselRequestClassName(entry){
+  const classId = String(entry && (entry.classId || (Array.isArray(entry.classIds) ? entry.classIds[0] : '')) || '').trim()
+  const classInfo = getPortalClassInfoById(classId)
+  return classInfo && classInfo.name ? classInfo.name : classId
+}
+
+function buildCounselWithdrawalMeta(entry){
+  if(String(entry && entry.type || '').trim() !== 'withdrawal') return ''
+  const currentSubjects = normalizeCounselSubjectList(entry && entry.currentSubjects).join(', ')
+  const withdrawalSubjects = normalizeCounselSubjectList(entry && entry.withdrawalSubjects).join(', ')
+  return '' +
+    '<span class="admin-item-meta">현재 수강: ' + escapeHtml(currentSubjects || '미선택') + '</span>' +
+    '<span class="admin-item-meta">퇴원희망: ' + escapeHtml(withdrawalSubjects || '미선택') + '</span>'
+}
+
+function buildAdminCounselItem(entry){
+  const slotId = entry.slotId || buildCounselSlotId(entry.requestedAt)
+  return '' +
+    '<div class="admin-item">' +
+      '<span class="admin-counsel-type">' + escapeHtml(entry.typeLabel || entry.typeTitle || '상담') + '</span>' +
+      '<strong class="admin-item-title">' + escapeHtml(entry.name || '학생') + '</strong>' +
+      '<span class="admin-item-meta">' + escapeHtml(getCounselRequestClassName(entry) || '반 정보 없음') + ' · ' + escapeHtml(entry.studentId || entry.loginId || '') + '</span>' +
+      '<span class="admin-item-numbers">희망: ' + escapeHtml(formatCounselRequestedAt(entry.requestedAt) || '미지정') + '</span>' +
+      '<span class="admin-item-meta">사유: ' + escapeHtml(entry.reason || '') + '</span>' +
+      buildCounselWithdrawalMeta(entry) +
+      '<span class="admin-item-meta admin-counsel-content">' + escapeHtml(entry.content || '') + '</span>' +
+      '<span class="admin-item-muted">' + escapeHtml(formatAdminTime(entry.createdAt)) + '</span>' +
+      '<div class="admin-item-actions">' +
+        '<button class="btn btn-ghost btn-sm" type="button" onclick="completeAdminCounselRequest(\'' + escapeJs(entry.id) + '\', \'' + escapeJs(slotId) + '\')">상담완료</button>' +
+      '</div>' +
+    '</div>'
+}
+
+async function updateCounselRequestRecord(requestId, updates){
+  const targetId = String(requestId || '').trim()
+  if(!targetId || !updates || typeof updates !== 'object') return false
+
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(targetId).set(updates, { merge: true })
+      return true
+    }catch(error){
+      console.warn('counselRequests update fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  const rows = readLocalCounselRequests()
+  let changed = false
+  const nextRows = rows.map(function(entry){
+    if(String(entry && entry.id || '').trim() !== targetId) return entry
+    changed = true
+    return normalizeCounselRequestRecord(Object.assign({}, entry, updates, { id: targetId }))
+  }).filter(Boolean)
+  if(changed) writeLocalCounselRequests(nextRows)
+  return changed
+}
+
+window.completeAdminCounselRequest = function(requestId, slotId){
+  completeAdminCounselRequestImpl(requestId, slotId)
+}
+
+async function completeAdminCounselRequestImpl(requestId, slotId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 상담완료 처리할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const targetId = String(requestId || '').trim()
+  if(!targetId) return
+  const completedAt = new Date().toISOString()
+  const completedBy = portalState.currentProfile && (portalState.currentProfile.name || portalState.currentProfile.loginId)
+    ? (portalState.currentProfile.name || portalState.currentProfile.loginId)
+    : (portalState.currentUser && portalState.currentUser.email || '')
+  const updates = {
+    status: 'completed',
+    completedAt: completedAt,
+    completedBy: completedBy,
+    updatedAt: completedAt
+  }
+
+  const didSave = await updateCounselRequestRecord(targetId, updates)
+  if(!didSave){
+    showToast('상담완료 처리에 실패했습니다.', 'var(--red)')
+    return
+  }
+
+  await markCounselSlotCompleted(slotId, Object.assign({
+    requestId: targetId
+  }, updates))
+  await renderAdminScreen()
+  showToast('상담완료 처리했습니다.', 'var(--green)')
+}
+
+async function renderAdminCounselRequests(){
+  const countNode = document.getElementById('admin-counsel-count')
+  const listNode = document.getElementById('admin-counsel-list')
+  if(!countNode || !listNode) return
+  if(!isPortalAdmin()){
+    countNode.textContent = '0'
+    listNode.innerHTML = '<div class="empty-box">관리자만 상담 요청을 확인할 수 있습니다.</div>'
+    return
+  }
+  const rows = filterAdminCounselRequests(await fetchAllCounselRequests())
+  countNode.textContent = String(rows.length)
+  listNode.innerHTML = rows.length
+    ? rows.map(buildAdminCounselItem).join('')
+    : '<div class="empty-box">아직 접수된 상담 요청이 없습니다.</div>'
 }
 
 function getAdminQuestionIssueHiddenStorageKey(){
@@ -7499,11 +8295,12 @@ function getPortalCurrentExamName(){
 }
 
 async function buildPortalExamArchiveSnapshot(examName){
-  const [examState, users, responses, issues, prepProgress, prepSets, checkSets, prepSessionDoc, checkDataDoc, classCatalogDoc] = await Promise.all([
+  const [examState, users, responses, issues, counselRequests, prepProgress, prepSets, checkSets, prepSessionDoc, checkDataDoc, classCatalogDoc] = await Promise.all([
     loadPortalExamState(false),
     fetchAllPortalUsersForSuperAdmin(),
     fetchAllCheckResponses(),
     fetchAllQuestionIssues(),
+    fetchAllCounselRequests(),
     fetchAllPortalPrepVideoProgress(),
     loadCloudSetDocs('prep'),
     loadCloudSetDocs('check'),
@@ -7531,6 +8328,7 @@ async function buildPortalExamArchiveSnapshot(examName){
     users: clonePlainData(users) || [],
     checkResponses: clonePlainData(responses) || [],
     questionIssues: clonePlainData(issues) || [],
+    counselRequests: clonePlainData(counselRequests) || [],
     prepVideoProgress: clonePlainData(prepProgress) || [],
     prepVideoProgressReport: clonePlainData(prepProgressReport) || [],
     portalPrepSets: clonePlainData(prepSets) || [],
@@ -7549,6 +8347,7 @@ function buildPortalExamArchiveExcelHtml(snapshot){
   const checkSets = Array.isArray(snapshot && snapshot.portalCheckSets) ? snapshot.portalCheckSets : []
   const responses = Array.isArray(snapshot && snapshot.checkResponses) ? snapshot.checkResponses : []
   const issues = Array.isArray(snapshot && snapshot.questionIssues) ? snapshot.questionIssues : []
+  const counselRequests = Array.isArray(snapshot && snapshot.counselRequests) ? snapshot.counselRequests : []
   const prepProgress = Array.isArray(snapshot && snapshot.prepVideoProgress) ? snapshot.prepVideoProgress : []
   const prepProgressReport = Array.isArray(snapshot && snapshot.prepVideoProgressReport) ? snapshot.prepVideoProgressReport : []
   const classes = Array.isArray(snapshot && snapshot.prepClasses) ? snapshot.prepClasses : []
@@ -7563,6 +8362,7 @@ function buildPortalExamArchiveExcelHtml(snapshot){
     ['관리자 수', String(summarizePortalCounts(users, function(user){ return String(user && user.role || '').trim() === 'admin' }))],
     ['CHECK 제출 수', String(responses.length)],
     ['질문 수', String(issues.length)],
+    ['상담 요청 수', String(counselRequests.length)],
     ['PREP 영상 완료 기록 수', String(prepProgress.length)],
     ['PREP 영상 관리 행 수', String(prepProgressReport.length)],
     ['PREP 세트 수', String(prepSets.length)],
@@ -7614,6 +8414,24 @@ function buildPortalExamArchiveExcelHtml(snapshot){
       String(entry && entry.createdAt || '').trim(),
       String(entry && entry.prompt || '').trim(),
       String(entry && entry.userAnswer || '').trim()
+    ]
+  })
+
+  const counselRows = counselRequests.map(function(entry){
+    return [
+      String(entry && entry.typeLabel || entry && entry.typeTitle || '').trim(),
+      String(entry && entry.name || '').trim(),
+      String(entry && entry.studentId || '').trim(),
+      Array.isArray(entry && entry.classIds) ? entry.classIds.join(', ') : '',
+      String(entry && entry.reasonChoice || '').trim(),
+      String(entry && entry.reason || '').trim(),
+      Array.isArray(entry && entry.currentSubjects) ? entry.currentSubjects.join(', ') : '',
+      Array.isArray(entry && entry.withdrawalSubjects) ? entry.withdrawalSubjects.join(', ') : '',
+      String(entry && entry.requestedAt || '').trim(),
+      String(entry && entry.content || '').trim(),
+      String(entry && entry.status || '').trim(),
+      String(entry && entry.completedAt || '').trim(),
+      String(entry && entry.createdAt || '').trim()
     ]
   })
 
@@ -7685,6 +8503,7 @@ function buildPortalExamArchiveExcelHtml(snapshot){
         '<h2>사용자</h2>' + buildPortalHtmlTable(['role', 'adminScope', 'status', 'loginId', 'name', 'studentId', 'email', 'classIds'], userRows) +
         '<h2>CHECK 제출</h2>' + buildPortalHtmlTable(['setTitle', 'name', 'studentId', 'classIds', 'submittedAt', 'total', 'correct', 'wrong'], responseRows) +
         '<h2>질문있어요</h2>' + buildPortalHtmlTable(['setTitle', 'questionNumber', 'problemType', 'name', 'studentId', 'status', 'createdAt', 'prompt', 'userAnswer'], issueRows) +
+        '<h2>상담 요청</h2>' + buildPortalHtmlTable(['type', 'name', 'studentId', 'classIds', 'reasonChoice', 'reason', 'currentSubjects', 'withdrawalSubjects', 'requestedAt', 'content', 'status', 'completedAt', 'createdAt'], counselRows) +
         '<h2>PREP 영상 관리</h2>' + buildPortalHtmlTable(['setTitle', 'className', 'videoTitle', 'name', 'studentId', 'loginId', 'status', 'completedAt', 'updatedAt', 'videoUrl'], prepProgressReportRows) +
         '<h2>PREP 영상 시청 원본</h2>' + buildPortalHtmlTable(['setTitle', 'passageTitle', 'name', 'studentId', 'loginId', 'classId', 'status', 'completedAt', 'updatedAt'], prepProgressRows) +
         '<h2>PREP 세트</h2>' + buildPortalHtmlTable(['docId', 'title', 'classIds', 'updatedAt', 'passageCount'], prepSetRows) +
@@ -8178,6 +8997,16 @@ async function deletePortalCollectionDocuments(collectionName){
     writeLocalQuestionIssues([])
     return count
   }
+  if(collectionName === PORTAL_COUNSEL_REQUEST_COLLECTION){
+    const count = readLocalCounselRequests().length
+    writeLocalCounselRequests([])
+    return count
+  }
+  if(collectionName === PORTAL_COUNSEL_SLOT_COLLECTION){
+    const count = readLocalCounselSlots().length
+    writeLocalCounselSlots([])
+    return count
+  }
   if(collectionName === PORTAL_PREP_VIDEO_PROGRESS_COLLECTION){
     const count = readLocalPortalPrepVideoProgressRows().length
     writeLocalPortalPrepVideoProgressRows([])
@@ -8218,6 +9047,8 @@ async function resetSuperAdminExamCycle(){
 
   const deletedResponses = await deletePortalCollectionDocuments('checkResponses')
   const deletedIssues = await deletePortalCollectionDocuments('questionIssues')
+  const deletedCounselRequests = await deletePortalCollectionDocuments(PORTAL_COUNSEL_REQUEST_COLLECTION)
+  const deletedCounselSlots = await deletePortalCollectionDocuments(PORTAL_COUNSEL_SLOT_COLLECTION)
   const deletedPrepProgress = await deletePortalCollectionDocuments(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
   const deletedPrepSets = await deletePortalCollectionDocuments('portalPrepSets')
   const deletedCheckSets = await deletePortalCollectionDocuments('portalCheckSets')
@@ -8278,6 +9109,16 @@ async function resetSuperAdminExamCycle(){
       localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.issues)
     }catch(error){}
   }
+  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.counselRequests){
+    try{
+      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.counselRequests)
+    }catch(error){}
+  }
+  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.counselSlots){
+    try{
+      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.counselSlots)
+    }catch(error){}
+  }
   try{
     localStorage.removeItem(getAdminQuestionIssueHiddenStorageKey())
   }catch(error){}
@@ -8291,6 +9132,8 @@ async function resetSuperAdminExamCycle(){
   return {
     deletedResponses: deletedResponses,
     deletedIssues: deletedIssues,
+    deletedCounselRequests: deletedCounselRequests,
+    deletedCounselSlots: deletedCounselSlots,
     deletedPrepProgress: deletedPrepProgress,
     deletedPrepSets: deletedPrepSets,
     deletedCheckSets: deletedCheckSets,
@@ -8588,4 +9431,5 @@ const originalRenderAdminScreenForExamCenter = renderAdminScreen
 renderAdminScreen = async function(){
   await originalRenderAdminScreenForExamCenter()
   await renderSuperAdminExamCenter()
+  await renderAdminCounselRequests()
 }

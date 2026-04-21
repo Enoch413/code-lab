@@ -49,6 +49,43 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /counselRequests/{requestId} {
+      allow read: if isAdmin()
+        || (signedIn() && requestId.matches('^' + request.auth.uid + '__.*$'))
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && requestId.matches('^' + request.auth.uid + '__.*$');
+      allow update: if isAdmin() || (
+        signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && requestId.matches('^' + request.auth.uid + '__.*$')
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /counselSlots/{slotId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.status == 'completed'
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'open'
+        )
+        || (
+          signedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && (request.resource.data.status == 'completed' || request.resource.data.status == 'canceled')
+        );
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+
     match /portalContent/{docId} {
       allow read: if signedIn();
       allow create, update: if isAdmin();
