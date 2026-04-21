@@ -1670,7 +1670,7 @@ body::before{
 .portal-card-study-cafe{
   background:
     linear-gradient(135deg, rgba(255,255,255,.08), transparent 52%),
-    linear-gradient(135deg, #245867, #163b47);
+    linear-gradient(135deg, #7a2f45, #4b182a);
 }
 
 .portal-card-admin{
@@ -2212,7 +2212,6 @@ body::before{
     grid-column:span 2;
   }
 
-  .portal-card-counsel,
   .counsel-grid .portal-card{
     grid-column:span 2;
   }
