@@ -1691,6 +1691,12 @@ body::before{
     linear-gradient(135deg, #6f3a3a, #4a2424);
 }
 
+.portal-card-history{
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.08), transparent 52%),
+    linear-gradient(135deg, #394d64, #253544);
+}
+
 .portal-kicker{
   font-size:.68rem;
   font-weight:700;
@@ -2531,6 +2537,7 @@ body::before{
 
 #portal-screen,
 #counsel-screen,
+#counsel-history-screen,
 #counsel-form-screen,
 #account-screen,
 #password-screen,
@@ -2549,6 +2556,7 @@ body::before{
 
 #portal-screen > .screen-nav,
 #counsel-screen > .screen-nav,
+#counsel-history-screen > .screen-nav,
 #counsel-form-screen > .screen-nav,
 #password-screen > .screen-nav,
 #admin-portal-screen > .screen-nav,
@@ -2734,6 +2742,24 @@ body::before{
 .counsel-form-panel{
   max-width:880px;
   margin:0 auto;
+}
+
+.counsel-history-panel{
+  max-width:880px;
+  margin:18px auto 0;
+}
+
+.counsel-history-list{
+  display:grid;
+  gap:12px;
+}
+
+.counsel-history-item{
+  position:relative;
+}
+
+.counsel-history-actions{
+  justify-content:flex-end;
 }
 
 .counsel-form-grid{

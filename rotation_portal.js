@@ -2548,6 +2548,7 @@ function openCounselPortal(){
     return
   }
   updatePortalUserCard()
+  if(typeof renderCounselPortal === 'function') renderCounselPortal()
   activatePortalScreen('counsel-screen')
 }
 
