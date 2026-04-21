@@ -1667,6 +1667,12 @@ body::before{
     linear-gradient(135deg, #8a5a2b, #5f3c1d);
 }
 
+.portal-card-study-cafe{
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.08), transparent 52%),
+    linear-gradient(135deg, #245867, #163b47);
+}
+
 .portal-card-admin{
   background:
     linear-gradient(135deg, rgba(255,255,255,.05), transparent 52%),
@@ -2536,6 +2542,7 @@ body::before{
 }
 
 #portal-screen,
+#study-cafe-screen,
 #counsel-screen,
 #counsel-history-screen,
 #counsel-form-screen,
@@ -2555,6 +2562,7 @@ body::before{
 }
 
 #portal-screen > .screen-nav,
+#study-cafe-screen > .screen-nav,
 #counsel-screen > .screen-nav,
 #counsel-history-screen > .screen-nav,
 #counsel-form-screen > .screen-nav,
@@ -2742,6 +2750,37 @@ body::before{
 .counsel-form-panel{
   max-width:880px;
   margin:0 auto;
+}
+
+.study-cafe-panel{
+  max-width:1280px;
+  margin:0 auto;
+}
+
+.study-cafe-status{
+  color:var(--ink2);
+  font-size:.95rem;
+  font-weight:700;
+  line-height:1.6;
+}
+
+.study-cafe-frame-shell{
+  margin-top:16px;
+  border:1px solid rgba(24,51,45,.1);
+  border-radius:26px;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at top left, rgba(36,88,103,.10), transparent 32%),
+    linear-gradient(180deg, rgba(255,255,255,.92), rgba(244,247,248,.95));
+  box-shadow:0 24px 40px rgba(18,39,44,.08);
+}
+
+.study-cafe-frame{
+  width:100%;
+  min-height:calc(100vh - 240px);
+  border:0;
+  display:block;
+  background:#f6f2e7;
 }
 
 .counsel-history-panel{
@@ -2964,6 +3003,9 @@ body::before{
   }
   .counsel-form-actions .btn{
     width:100%;
+  }
+  .study-cafe-frame{
+    min-height:72vh;
   }
 }
 

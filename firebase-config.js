@@ -9,5 +9,6 @@ window.ROTATION_FIREBASE_CONFIG = window.ROTATION_FIREBASE_CONFIG || {
 }
 
 window.ROTATION_PORTAL_CONFIG = window.ROTATION_PORTAL_CONFIG || {
-  checkDataUrl: 'check_data.json'
+  checkDataUrl: 'check_data.json',
+  studyLabUrl: 'http://localhost:3000/study-lab'
 }

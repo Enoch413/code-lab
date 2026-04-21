@@ -15,6 +15,9 @@ const PORTAL_COUNSEL_SLOT_COLLECTION = 'counselSlots'
 const PORTAL_COUNSEL_SLOT_MINUTES = 30
 const PORTAL_COUNSEL_START_MINUTES = 16 * 60
 const PORTAL_COUNSEL_END_MINUTES = (22 * 60) - PORTAL_COUNSEL_SLOT_MINUTES
+const PORTAL_STUDY_CAFE_DEFAULT_URL = 'http://localhost:3000/study-lab'
+const PORTAL_STUDY_CAFE_AUTH_REQUEST = 'code-lab-study-auth-request'
+const PORTAL_STUDY_CAFE_AUTH_RESPONSE = 'code-lab-study-auth-response'
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
@@ -36,6 +39,7 @@ const PREP_SCREEN_IDS = [
 
 const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
+  'study-cafe-screen': { title: 'STUDY CAFE', sub: 'STUDY LAB 연결' },
   'counsel-screen': { title: 'COUNSEL', sub: '상담 선택' },
   'counsel-history-screen': { title: 'HISTORY', sub: '상담 신청 내역' },
   'counsel-form-screen': { title: 'COUNSEL', sub: '상담 신청' },
@@ -55,6 +59,7 @@ const CHROME_SCREEN_TITLES = {
 
 const CHROME_BREADCRUMBS = {
   'portal-screen': ['CODE LAB', 'HOME'],
+  'study-cafe-screen': ['CODE LAB', 'STUDY CAFE'],
   'counsel-screen': ['CODE LAB', 'COUNSEL'],
   'counsel-history-screen': ['CODE LAB', 'COUNSEL', 'HISTORY'],
   'counsel-form-screen': ['CODE LAB', 'COUNSEL', 'FORM'],
@@ -173,6 +178,15 @@ portalState.currentCounselType = portalState.currentCounselType || ''
 portalState.currentCounselEditId = portalState.currentCounselEditId || ''
 portalState.currentCounselEditRecord = portalState.currentCounselEditRecord || null
 portalState.myCounselRequests = portalState.myCounselRequests || []
+portalState.studyCafe = portalState.studyCafe || {
+  frameUrl: '',
+  frameOrigin: '',
+  isLoaded: false,
+  isOpen: false,
+  lastStatus: '',
+  lastError: '',
+  viewerKey: ''
+}
 portalState.prepVideoManager = portalState.prepVideoManager || {
   open: false,
   isSaving: false,
@@ -216,6 +230,7 @@ function initPortalEnhancements(){
   bindPasswordSubmitOverride()
   overrideSharedClassListRenderer()
   window.addEventListener('popstate', handleAppPopState)
+  window.addEventListener('message', handleStudyCafeWindowMessage)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
   window.addEventListener('resize', syncCheckJumpButtonVisibility)
   window.addEventListener('resize', syncAppChromeLayout)
@@ -316,6 +331,12 @@ function bindPortalEnhancementEvents(){
       openCounselFormPortal(button.dataset.counselType || '')
     })
   })
+  bindClick('portal-study-cafe-btn', openStudyCafePortal)
+  bindClick('study-cafe-back-btn', showPortalScreen)
+  const studyCafeFrame = document.getElementById('study-cafe-frame')
+  if(studyCafeFrame){
+    studyCafeFrame.addEventListener('load', handleStudyCafeFrameLoad)
+  }
   bindClick('counsel-history-tab-btn', openCounselHistoryTab)
   bindClick('counsel-history-back-btn', openCounselPortal)
   bindClick('counsel-history-home-btn', showPortalScreen)
@@ -540,11 +561,250 @@ function runDrawerAction(action){
   if(action === 'prep') return openPrepPortal()
   if(action === 'check') return openCheckPortal()
   if(action === 'counsel') return openCounselPortal()
+  if(action === 'study-cafe') return openStudyCafePortal()
   if(action === 'admin') return openAdminPortal()
   if(action === 'account') return openAccountScreen()
   if(action === 'password') return openPasswordScreen(false)
   if(action === 'refresh') return refreshPortalData()
   if(action === 'logout') return logoutPortal()
+}
+
+function getStudyCafeRoleLabel(){
+  const profile = portalState.currentProfile || {}
+  const role = String(profile.role || '').trim().toLowerCase()
+  const adminScope = String(profile.adminScope || '').trim().toLowerCase()
+  if(role === 'admin' && adminScope === 'all') return 'ADMIN'
+  if(role === 'admin') return 'TEACHER'
+  return 'STUDENT'
+}
+
+function getStudyCafeEmbedConfig(){
+  const portalConfig = window.ROTATION_PORTAL_CONFIG || {}
+  const rawUrl = String(portalConfig.studyLabUrl || PORTAL_STUDY_CAFE_DEFAULT_URL || '').trim()
+  if(!rawUrl) return null
+  try{
+    const url = new URL(rawUrl, window.location.href)
+    url.searchParams.set('embed', 'code-lab')
+    url.searchParams.set('parentOrigin', window.location.origin)
+    const viewerKey = getStudyCafeViewerKey()
+    if(viewerKey){
+      url.searchParams.set('bridgeKey', viewerKey)
+    }
+    return {
+      url: url.toString(),
+      origin: url.origin
+    }
+  }catch(error){
+    console.warn('study cafe url parse failed:', error && error.message ? error.message : error)
+    return null
+  }
+}
+
+function getStudyCafeFrame(){
+  return document.getElementById('study-cafe-frame')
+}
+
+function getStudyCafeViewerKey(){
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  const rawKey = String(
+    authUser.uid
+    || profile.loginId
+    || profile.studentId
+    || profile.email
+    || ''
+  ).trim()
+  if(!rawKey) return ''
+  try{
+    return window.btoa(unescape(encodeURIComponent(rawKey))).replace(/=+$/g, '')
+  }catch(error){
+    return rawKey
+  }
+}
+
+function setStudyCafeBadge(label){
+  const node = document.getElementById('study-cafe-badge')
+  if(node) node.textContent = String(label || '').trim() || 'LINK'
+}
+
+function setStudyCafeStatus(message, isError){
+  const node = document.getElementById('study-cafe-status')
+  if(!node) return
+  const normalizedMessage = String(message || '').trim()
+  node.textContent = normalizedMessage
+  node.style.color = isError ? 'var(--red)' : 'var(--ink2)'
+  portalState.studyCafe.lastStatus = normalizedMessage
+  portalState.studyCafe.lastError = isError ? normalizedMessage : ''
+}
+
+function setStudyCafeFrameVisibility(shouldShow){
+  const frame = getStudyCafeFrame()
+  if(frame) frame.classList.toggle('hidden', !shouldShow)
+}
+
+function resetStudyCafeEmbed(options){
+  const settings = options && typeof options === 'object' ? options : {}
+  portalState.studyCafe.frameUrl = ''
+  portalState.studyCafe.frameOrigin = ''
+  portalState.studyCafe.isLoaded = false
+  portalState.studyCafe.isOpen = false
+  portalState.studyCafe.lastStatus = ''
+  portalState.studyCafe.lastError = ''
+  portalState.studyCafe.viewerKey = ''
+  const frame = getStudyCafeFrame()
+  if(frame && settings.clearFrame === true){
+    frame.src = 'about:blank'
+  }
+  setStudyCafeFrameVisibility(false)
+}
+
+function isStudyCafeFirebaseBridgeAvailable(){
+  return !!(
+    portalState.firebaseEnabled &&
+    portalState.currentUser &&
+    typeof portalState.currentUser.getIdToken === 'function'
+  )
+}
+
+function openStudyCafePortal(){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+
+  updatePortalUserCard()
+  activatePortalScreen('study-cafe-screen')
+
+  const config = getStudyCafeEmbedConfig()
+  portalState.studyCafe.isOpen = true
+  setStudyCafeBadge(getStudyCafeRoleLabel())
+
+  if(!config){
+    portalState.studyCafe.frameUrl = ''
+    portalState.studyCafe.frameOrigin = ''
+    portalState.studyCafe.isLoaded = false
+    setStudyCafeFrameVisibility(false)
+    setStudyCafeStatus('STUDY LAB 주소가 설정되지 않았습니다. firebase-config.js의 studyLabUrl을 확인해 주세요.', true)
+    return
+  }
+
+  portalState.studyCafe.frameUrl = config.url
+  portalState.studyCafe.frameOrigin = config.origin
+  portalState.studyCafe.viewerKey = getStudyCafeViewerKey()
+
+  if(!isStudyCafeFirebaseBridgeAvailable()){
+    portalState.studyCafe.isLoaded = false
+    setStudyCafeFrameVisibility(false)
+    setStudyCafeStatus('STUDY CAFE는 Firebase 로그인 사용자만 이용할 수 있습니다. 현재는 운영용 Firebase 세션이 확인되지 않습니다.', true)
+    return
+  }
+
+  const frame = getStudyCafeFrame()
+  if(!frame){
+    setStudyCafeStatus('STUDY LAB 프레임을 찾지 못했습니다.', true)
+    return
+  }
+
+  setStudyCafeFrameVisibility(true)
+  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다. 로드 후 Firebase 권한을 자동으로 전달합니다.', false)
+  if(frame.src !== config.url){
+    portalState.studyCafe.isLoaded = false
+    frame.src = config.url
+    return
+  }
+
+  if(portalState.studyCafe.isLoaded){
+    setStudyCafeStatus('STUDY LAB이 열려 있습니다. 학생은 학생 화면만, 강사/관리자는 강사 화면만 표시됩니다.', false)
+  }
+}
+
+function handleStudyCafeFrameLoad(){
+  portalState.studyCafe.isLoaded = true
+  setStudyCafeStatus('STUDY LAB 화면이 열렸습니다. Firebase 권한 요청을 기다리는 중입니다.', false)
+}
+
+async function buildStudyCafeAuthResponsePayload(requestId){
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  const payload = {
+    type: PORTAL_STUDY_CAFE_AUTH_RESPONSE,
+    requestId: String(requestId || '').trim(),
+    ok: false,
+    token: null,
+    name: String(profile.name || authUser.displayName || '').trim() || null,
+    email: String(profile.email || authUser.email || '').trim() || null,
+    role: String(profile.role || '').trim().toLowerCase() === 'admin' ? 'admin' : 'student',
+    adminScope: null,
+    error: ''
+  }
+
+  const normalizedAdminScope = String(profile.adminScope || '').trim().toLowerCase()
+  if(normalizedAdminScope === 'assigned' || normalizedAdminScope === 'all'){
+    payload.adminScope = normalizedAdminScope
+  }
+
+  if(!isStudyCafeFirebaseBridgeAvailable()){
+    payload.error = 'CODE LAB Firebase 로그인 상태를 확인할 수 없습니다.'
+    return payload
+  }
+
+  try{
+    let tokenResult = null
+    if(typeof authUser.getIdTokenResult === 'function'){
+      tokenResult = await authUser.getIdTokenResult(true)
+    }
+    const token = tokenResult && tokenResult.token ? tokenResult.token : await authUser.getIdToken()
+    if(!token){
+      payload.error = 'Firebase ID token을 가져오지 못했습니다.'
+      return payload
+    }
+    const claims = tokenResult && tokenResult.claims ? tokenResult.claims : {}
+    const claimRole = claims.role === 'admin' ? 'admin' : 'student'
+    const claimAdminScope = claims.adminScope === 'all' || claims.adminScope === 'assigned'
+      ? claims.adminScope
+      : null
+    payload.ok = true
+    payload.token = token
+    payload.role = claimRole
+    payload.adminScope = claimRole === 'admin' ? (claimAdminScope || 'assigned') : null
+    payload.error = ''
+    return payload
+  }catch(error){
+    payload.error = String(error && error.message || error || 'Firebase ID token error')
+    return payload
+  }
+}
+
+async function handleStudyCafeWindowMessage(event){
+  const data = event && event.data
+  if(!data || data.type !== PORTAL_STUDY_CAFE_AUTH_REQUEST){
+    return
+  }
+
+  const frame = getStudyCafeFrame()
+  if(!frame || !frame.contentWindow || event.source !== frame.contentWindow){
+    return
+  }
+
+  const requestId = String(data.requestId || '').trim()
+  if(!requestId){
+    return
+  }
+
+  const expectedOrigin = String(portalState.studyCafe.frameOrigin || '').trim()
+  if(expectedOrigin && event.origin && event.origin !== expectedOrigin){
+    return
+  }
+
+  const payload = await buildStudyCafeAuthResponsePayload(requestId)
+  if(payload.ok){
+    setStudyCafeBadge(payload.role === 'admin' && payload.adminScope === 'all' ? 'ADMIN' : payload.role === 'admin' ? 'TEACHER' : 'STUDENT')
+    setStudyCafeStatus('Firebase 로그인 정보를 전달했습니다. STUDY LAB 권한 화면을 불러오는 중입니다.', false)
+  }else if(getCurrentActiveScreenId() === 'study-cafe-screen'){
+    setStudyCafeStatus(payload.error || 'STUDY LAB 인증 정보 전달에 실패했습니다.', true)
+  }
+
+  event.source.postMessage(payload, event.origin || expectedOrigin || '*')
 }
 
 function getCurrentActiveScreenId(){
@@ -849,6 +1109,7 @@ function restoreAppRoute(route){
   }
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
+  if(route.screenId === 'study-cafe-screen') return openStudyCafePortal()
   if(route.screenId === 'counsel-screen') return openCounselPortal()
   if(route.screenId === 'counsel-history-screen') return openCounselHistoryTab()
   if(route.screenId === 'counsel-form-screen') return openCounselFormPortal(route.counselType || 'career')
@@ -9752,7 +10013,16 @@ routePortalAfterState = function(){
     showAuthScreen('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
     return
   }
+  if(!portalState.currentUser){
+    resetStudyCafeEmbed({ clearFrame: true })
+  }
   return originalRoutePortalAfterStateForExamCenter()
+}
+
+const originalLogoutPortalForStudyCafe = logoutPortal
+logoutPortal = async function(){
+  resetStudyCafeEmbed({ clearFrame: true })
+  return originalLogoutPortalForStudyCafe.apply(this, arguments)
 }
 
 const originalRenderAdminScreenForExamCenter = renderAdminScreen
