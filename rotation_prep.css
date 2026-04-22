@@ -2615,6 +2615,10 @@ body::before{
   border-bottom:1px solid rgba(224,219,208,.9);
 }
 
+body.app-screen-study-cafe .app-chrome{
+  width:min(100%, 1440px);
+}
+
 .app-chrome-btn{
   width:42px;
   height:42px;
@@ -2772,12 +2776,61 @@ body::before{
 }
 
 .study-cafe-panel{
-  max-width:1280px;
-  margin:0 auto;
+  max-width:none;
+  margin:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  min-height:calc(100vh - 210px);
+}
+
+#study-cafe-screen{
+  max-width:min(100%, 1440px);
+}
+
+.study-cafe-shell-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+.study-cafe-shell-copy{
+  min-width:0;
+}
+
+.study-cafe-shell-kicker{
+  display:block;
+  margin-bottom:4px;
+  font-size:.7rem;
+  font-weight:800;
+  letter-spacing:.16em;
+  color:#7a8a85;
+  text-transform:uppercase;
+}
+
+.study-cafe-shell-copy h3{
+  font-size:1.1rem;
+  font-weight:800;
+  letter-spacing:-.03em;
+  color:var(--ink);
+}
+
+.study-cafe-shell-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  padding:0 14px;
+  border-radius:999px;
+  background:rgba(13,77,68,.08);
+  color:var(--blue);
+  font-size:.74rem;
+  font-weight:800;
 }
 
 .study-cafe-status{
-  margin-bottom:10px;
+  margin-bottom:0;
   font-size:.83rem;
   font-weight:700;
   line-height:1.6;
@@ -2793,9 +2846,10 @@ body::before{
 }
 
 .study-cafe-frame-shell{
-  margin-top:16px;
+  flex:1;
+  min-height:calc(100vh - 280px);
   border:1px solid rgba(24,51,45,.1);
-  border-radius:26px;
+  border-radius:30px;
   overflow:hidden;
   background:
     radial-gradient(circle at top left, rgba(36,88,103,.10), transparent 32%),
@@ -2805,7 +2859,7 @@ body::before{
 
 .study-cafe-frame{
   width:100%;
-  min-height:calc(100vh - 240px);
+  min-height:calc(100vh - 280px);
   border:0;
   display:block;
   background:#f6f2e7;
@@ -3034,6 +3088,15 @@ body::before{
   }
   .study-cafe-frame{
     min-height:72vh;
+  }
+
+  .study-cafe-panel{
+    min-height:calc(100vh - 190px);
+  }
+
+  .study-cafe-frame-shell{
+    min-height:72vh;
+    border-radius:24px;
   }
 }
 

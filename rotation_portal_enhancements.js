@@ -693,6 +693,9 @@ function openStudyCafePortal(){
 
   updatePortalUserCard()
   activatePortalScreen('study-cafe-screen')
+  if(typeof window.scrollTo === 'function'){
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
 
   const config = getStudyCafeEmbedConfig()
   portalState.studyCafe.isOpen = true
@@ -1046,6 +1049,7 @@ function updateAppChrome(screenId){
   chrome.classList.toggle('hidden', !shouldShow)
   chrome.setAttribute('aria-hidden', shouldShow ? 'false' : 'true')
   menuButton.disabled = !shouldShow
+  document.body.classList.toggle('app-screen-study-cafe', shouldShow && screenId === 'study-cafe-screen')
 
   const meta = getAppChromeMeta(screenId)
   breadcrumbNode.textContent = getAppBreadcrumb(screenId).join(' > ')
