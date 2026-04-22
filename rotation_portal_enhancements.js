@@ -651,19 +651,6 @@ function isStudyCafeFirebaseBridgeAvailable(){
   )
 }
 
-function openStudyCafeWindow(url){
-  if(!url) return null
-  const popup = window.open(url, 'codeLabStudyCafeWindow')
-  if(!popup) return null
-  portalState.studyCafe.windowRef = popup
-  try{
-    popup.focus()
-  }catch(error){
-    console.warn('study cafe focus failed:', error && error.message ? error.message : error)
-  }
-  return popup
-}
-
 function showStudyCafeLaunchFallback(message, isError, state){
   updatePortalUserCard()
   activatePortalScreen('study-cafe-screen')
@@ -678,6 +665,12 @@ function openStudyCafePortal(){
   if(!portalState.currentUser){
     showAuthScreen('')
     return
+  }
+
+  updatePortalUserCard()
+  activatePortalScreen('study-cafe-screen')
+  if(typeof window.scrollTo === 'function'){
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const config = getStudyCafeEmbedConfig()
@@ -700,14 +693,23 @@ function openStudyCafePortal(){
     return
   }
 
-  const popup = openStudyCafeWindow(config.url)
-  if(!popup){
-    showStudyCafeLaunchFallback('브라우저에서 새 창을 차단했습니다. 팝업 차단을 해제한 뒤 다시 시도해 주세요.', true, 'error')
+  const frame = getStudyCafeFrame()
+  if(!frame){
+    setStudyCafeStatus('STUDY LAB 프레임을 찾지 못했습니다.', true, 'error')
     return
   }
 
-  setStudyCafeFrameVisibility(false)
-  setStudyCafeStatus('STUDY LAB 새 창을 열었습니다. 창에서 입장을 진행해 주세요.', false, 'connected')
+  setStudyCafeFrameVisibility(true)
+  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다. 로드 후 Firebase 권한을 자동으로 전달합니다.', false, 'loading')
+  if(frame.src !== config.url){
+    portalState.studyCafe.isLoaded = false
+    frame.src = config.url
+    return
+  }
+
+  if(portalState.studyCafe.isLoaded){
+    setStudyCafeStatus('STUDY LAB이 열려 있습니다. 입장 준비 화면에서 메인룸 입장을 진행해 주세요.', false, 'connected')
+  }
 }
 
 function handleStudyCafeFrameLoad(){
@@ -1104,7 +1106,7 @@ function restoreAppRoute(route){
   }
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
-  if(route.screenId === 'study-cafe-screen') return showPortalScreen()
+  if(route.screenId === 'study-cafe-screen') return openStudyCafePortal()
   if(route.screenId === 'counsel-screen') return openCounselPortal()
   if(route.screenId === 'counsel-history-screen') return openCounselHistoryTab()
   if(route.screenId === 'counsel-form-screen') return openCounselFormPortal(route.counselType || 'career')
