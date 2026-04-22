@@ -2780,20 +2780,21 @@ body.app-screen-study-cafe .app-chrome{
   margin:0;
   display:flex;
   flex-direction:column;
-  gap:14px;
-  min-height:calc(100vh - 210px);
+  gap:0;
+  min-height:calc(100vh - var(--app-chrome-offset,84px));
 }
 
 #study-cafe-screen{
-  max-width:min(100%, 1440px);
+  max-width:none;
+  padding:var(--app-chrome-offset,84px) 0 0;
+}
+
+#study-cafe-screen > .hd{
+  display:none;
 }
 
 .study-cafe-shell-header{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:16px;
-  flex-wrap:wrap;
+  display:none;
 }
 
 .study-cafe-shell-copy{
@@ -2831,6 +2832,7 @@ body.app-screen-study-cafe .app-chrome{
 
 .study-cafe-status{
   margin-bottom:0;
+  padding:0 16px 10px;
   font-size:.83rem;
   font-weight:700;
   line-height:1.6;
@@ -2847,22 +2849,20 @@ body.app-screen-study-cafe .app-chrome{
 
 .study-cafe-frame-shell{
   flex:1;
-  min-height:calc(100vh - 280px);
-  border:1px solid rgba(24,51,45,.1);
-  border-radius:30px;
+  min-height:calc(100vh - var(--app-chrome-offset,84px));
+  border:none;
+  border-radius:0;
   overflow:hidden;
-  background:
-    radial-gradient(circle at top left, rgba(36,88,103,.10), transparent 32%),
-    linear-gradient(180deg, rgba(255,255,255,.92), rgba(244,247,248,.95));
-  box-shadow:0 24px 40px rgba(18,39,44,.08);
+  background:transparent;
+  box-shadow:none;
 }
 
 .study-cafe-frame{
   width:100%;
-  min-height:calc(100vh - 280px);
+  min-height:calc(100vh - var(--app-chrome-offset,84px));
   border:0;
   display:block;
-  background:#f6f2e7;
+  background:transparent;
 }
 
 .counsel-history-panel{
@@ -3091,12 +3091,12 @@ body.app-screen-study-cafe .app-chrome{
   }
 
   .study-cafe-panel{
-    min-height:calc(100vh - 190px);
+    min-height:calc(100vh - var(--app-chrome-offset,84px));
   }
 
   .study-cafe-frame-shell{
     min-height:72vh;
-    border-radius:24px;
+    border-radius:0;
   }
 }
 
