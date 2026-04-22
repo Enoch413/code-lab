@@ -628,10 +628,11 @@ function setStudyCafeBadge(label){
 }
 
 function setStudyCafeStatus(message, isError, state){
-  const node = document.getElementById('study-cafe-status-pill')
+  const node = document.getElementById('study-cafe-status')
   const normalizedMessage = String(message || '').trim()
   const normalizedState = String(state || '').trim().toLowerCase()
   const resolvedState = normalizedState || (isError ? 'error' : 'connected')
+  const shouldHide = !normalizedMessage || resolvedState === 'connected'
   let label = '연결 대기'
 
   if(resolvedState === 'loading'){
@@ -643,11 +644,11 @@ function setStudyCafeStatus(message, isError, state){
   }
 
   if(node){
-    node.textContent = label
+    node.textContent = normalizedMessage
+    node.classList.toggle('hidden', shouldHide)
     node.dataset.state = resolvedState
-    node.dataset.tooltip = normalizedMessage || '상태 정보가 없습니다.'
-    node.title = normalizedMessage || '상태 정보가 없습니다.'
-    node.setAttribute('aria-label', normalizedMessage || '상태 정보가 없습니다.')
+    node.title = normalizedMessage
+    node.setAttribute('aria-label', normalizedMessage)
   }
 
   portalState.studyCafe.lastStatus = normalizedMessage
