@@ -10,5 +10,5 @@ window.ROTATION_FIREBASE_CONFIG = window.ROTATION_FIREBASE_CONFIG || {
 
 window.ROTATION_PORTAL_CONFIG = window.ROTATION_PORTAL_CONFIG || {
   checkDataUrl: 'check_data.json',
-  studyLabUrl: 'http://localhost:3000/study-lab'
+  studyLabUrl: 'https://study-lab--code-lab-2584c.asia-east1.hosted.app/study-lab'
 }

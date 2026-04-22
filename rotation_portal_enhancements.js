@@ -15,7 +15,7 @@ const PORTAL_COUNSEL_SLOT_COLLECTION = 'counselSlots'
 const PORTAL_COUNSEL_SLOT_MINUTES = 30
 const PORTAL_COUNSEL_START_MINUTES = 16 * 60
 const PORTAL_COUNSEL_END_MINUTES = (22 * 60) - PORTAL_COUNSEL_SLOT_MINUTES
-const PORTAL_STUDY_CAFE_DEFAULT_URL = 'http://localhost:3000/study-lab'
+const PORTAL_STUDY_CAFE_DEFAULT_URL = 'https://study-lab--code-lab-2584c.asia-east1.hosted.app/study-lab'
 const PORTAL_STUDY_CAFE_AUTH_REQUEST = 'code-lab-study-auth-request'
 const PORTAL_STUDY_CAFE_AUTH_RESPONSE = 'code-lab-study-auth-response'
 
