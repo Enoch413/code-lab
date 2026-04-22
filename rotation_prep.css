@@ -2793,43 +2793,6 @@ body.app-screen-study-cafe .app-chrome{
   display:none;
 }
 
-.study-cafe-shell-header{
-  display:none;
-}
-
-.study-cafe-shell-copy{
-  min-width:0;
-}
-
-.study-cafe-shell-kicker{
-  display:block;
-  margin-bottom:4px;
-  font-size:.7rem;
-  font-weight:800;
-  letter-spacing:.16em;
-  color:#7a8a85;
-  text-transform:uppercase;
-}
-
-.study-cafe-shell-copy h3{
-  font-size:1.1rem;
-  font-weight:800;
-  letter-spacing:-.03em;
-  color:var(--ink);
-}
-
-.study-cafe-shell-badge{
-  display:inline-flex;
-  align-items:center;
-  min-height:34px;
-  padding:0 14px;
-  border-radius:999px;
-  background:rgba(13,77,68,.08);
-  color:var(--blue);
-  font-size:.74rem;
-  font-weight:800;
-}
-
 .study-cafe-status{
   margin-bottom:0;
   padding:0 16px 10px;
