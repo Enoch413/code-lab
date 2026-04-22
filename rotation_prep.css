@@ -1717,6 +1717,26 @@ body::before{
   letter-spacing:-.05em;
 }
 
+#portal-screen .portal-grid{
+  gap:14px;
+}
+
+#portal-screen .portal-card{
+  min-height:144px;
+  padding:20px 18px;
+  border-radius:24px;
+}
+
+#portal-screen .portal-kicker{
+  font-size:.64rem;
+  letter-spacing:.12em;
+}
+
+#portal-screen .portal-title{
+  margin-top:10px;
+  font-size:1.72rem;
+}
+
 .portal-desc{
   display:none;
   margin-top:10px;
