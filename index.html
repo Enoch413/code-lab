@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260422-study-cafe-clean-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260423-check-open-prep-card-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -53,7 +53,6 @@
   <div class="app-drawer-section">
     <div class="app-drawer-section-title">회원 정보</div>
     <button class="app-drawer-link" type="button" data-drawer-action="account" id="drawer-account-btn"><span>회원정보</span><span>›</span></button>
-    <button class="app-drawer-link" type="button" data-drawer-action="refresh" id="drawer-refresh-btn"><span>현재 페이지 새로고침</span><span>›</span></button>
     <button class="app-drawer-link app-drawer-link-danger" type="button" data-drawer-action="logout" id="drawer-logout-btn"><span>로그아웃</span><span>›</span></button>
   </div>
 </aside>
@@ -154,7 +153,7 @@
     <button class="btn btn-ghost btn-sm" type="button" id="counsel-back-btn">메인</button>
   </div>
 
-  <div class="hd"><h1>COUNSEL</h1><span class="sub" id="counsel-subtitle"></span></div>
+  <div class="hd"><h1>COUNSEL</h1></div>
 
   <div class="portal-grid counsel-grid">
     <button class="portal-card portal-card-career" type="button" data-counsel-type="career">
@@ -186,9 +185,9 @@
     <button class="btn btn-ghost btn-sm" type="button" id="counsel-history-home-btn">메인</button>
   </div>
 
-  <div class="hd"><h1>HISTORY</h1><span class="sub">상담 신청 내역</span></div>
+  <div class="hd"><h1>HISTORY</h1></div>
 
-  <section class="group counsel-history-panel" id="counsel-history-panel">
+  <section class="group counsel-history-panel counsel-history-card" id="counsel-history-panel">
     <div class="group-title">
       <h3>상담 신청 내역</h3>
       <span class="group-count" id="counsel-history-count">0</span>
@@ -203,9 +202,9 @@
     <button class="btn btn-ghost btn-sm" type="button" id="counsel-form-home-btn">메인</button>
   </div>
 
-  <div class="hd"><h1 id="counsel-form-title">COUNSEL</h1><span class="sub" id="counsel-form-subtitle">상담 신청</span></div>
+  <div class="hd"><h1 id="counsel-form-title">COUNSEL</h1></div>
 
-  <section class="group counsel-form-panel">
+  <section class="group counsel-form-panel counsel-form-card">
     <div class="group-title">
       <h3 id="counsel-form-heading">상담 신청서</h3>
       <span class="group-count" id="counsel-form-type-badge">COUNSEL</span>
@@ -266,7 +265,7 @@
 </div>
 
 <div class="screen" id="account-screen">
-  <div class="hd"><h1>회원정보</h1><span class="sub">MY INFO</span></div>
+  <div class="hd"><h1>MY INFO</h1></div>
 
   <section class="group">
     <div class="group-title">
@@ -279,7 +278,6 @@
       <div class="account-row"><span class="account-label">권한</span><strong class="account-value" id="account-role"></strong></div>
     </div>
     <div class="account-actions">
-      <button class="btn btn-ghost hidden" type="button" id="account-admin-btn">ADMIN</button>
       <button class="btn btn-blue" type="button" id="account-password-btn">비밀번호 변경</button>
     </div>
   </section>
@@ -419,19 +417,6 @@
 
   <div class="hd"><h1>PREP</h1><span class="sub" id="passage-subtitle"></span></div>
 
-  <section class="group admin-content-panel hidden" id="prep-passage-admin-set-panel">
-    <div class="group-title">
-      <h3>PREP 영상 관리</h3>
-      <span class="group-count" id="prep-passage-admin-set-count">0</span>
-    </div>
-    <div class="admin-content-toolbar">
-      <div class="admin-content-copy" id="prep-passage-admin-set-hint">관리자는 이곳에서 제목과 유튜브 링크만 입력해 PREP 영상을 바로 올릴 수 있습니다.</div>
-      <button class="btn btn-ghost btn-sm" type="button" id="prep-passage-admin-class-btn">반 변경</button>
-      <button class="btn btn-ghost btn-sm" type="button" id="prep-passage-admin-upload-btn">영상 업로드</button>
-    </div>
-    <div class="admin-content-list" id="prep-passage-admin-set-list"></div>
-  </section>
-
   <div class="class-bar" id="passage-bar">
     <div class="class-bar-copy">
       <div class="class-bar-label">현재 학습 세트</div>
@@ -441,6 +426,10 @@
   </div>
 
   <div class="stats" id="passage-stats"></div>
+  <div class="prep-passage-admin-quick-actions hidden" id="prep-passage-admin-actions" aria-hidden="true">
+    <button class="btn btn-sm" type="button" id="prep-passage-admin-class-btn">반 변경</button>
+    <button class="btn btn-sm" type="button" id="prep-passage-admin-upload-btn">영상 업로드</button>
+  </div>
   <div class="label" id="passage-list-label">지문 선택</div>
   <div class="p-list" id="p-list"></div>
 
@@ -844,8 +833,8 @@
 <script src="./rotation_prep_core.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
-<script src="./rotation_prep_ui.js?v=20260422-study-cafe-hosting-01"></script>
-<script src="./rotation_portal.js?v=20260422-study-cafe-hosting-01"></script>
-<script src="./rotation_portal_enhancements.js?v=20260422-study-cafe-clean-01"></script>
+<script src="./rotation_prep_ui.js?v=20260423-prep-modal-cleanup-01"></script>
+<script src="./rotation_portal.js?v=20260423-check-open-prep-card-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260423-prep-modal-cleanup-01"></script>
 </body>
 </html>

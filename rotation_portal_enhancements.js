@@ -283,8 +283,7 @@ function overrideSharedClassListRenderer(){
 
       return '' +
         '<div class="class-item" onclick="requestClassAccess(' + index + ')">' +
-          '<div class="class-num">' + (visibleIndex + 1) + '</div>' +
-          '<div class="class-body">' +
+        '<div class="class-body">' +
             '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
             '<div class="class-preview">' + escapeHtml(previewText) + '</div>' +
             '<div class="class-tags">' +
@@ -700,7 +699,7 @@ function openStudyCafePortal(){
   }
 
   setStudyCafeFrameVisibility(true)
-  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다. 로드 후 Firebase 권한을 자동으로 전달합니다.', false, 'loading')
+  setStudyCafeStatus('STUDY LAB 화면을 불러오는 중입니다.', false, 'loading')
   if(frame.src !== config.url){
     portalState.studyCafe.isLoaded = false
     frame.src = config.url
@@ -834,7 +833,17 @@ function getCurrentPrepSection(){
   }) || null
 }
 
+function buildCompactPrepBreadcrumb(screenId){
+  const parts = ['HOME', 'PREP']
+  if(screenId === 'study-menu-screen' || screenId === 'study-screen'){
+    const currentPassageEntry = getCurrentPrepPassage()
+    if(currentPassageEntry && currentPassageEntry.title) parts.push(currentPassageEntry.title)
+  }
+  return parts
+}
+
 function buildPrepBreadcrumb(screenId){
+  return buildCompactPrepBreadcrumb(screenId)
   const parts = ['CODE LAB', 'PREP']
   const currentClass = typeof getCurrentClass === 'function' ? getCurrentClass() : null
   const currentSet = typeof getCurrentStudySet === 'function' ? getCurrentStudySet() : null
@@ -887,7 +896,16 @@ function buildPrepBreadcrumb(screenId){
   return parts
 }
 
+function buildCompactCheckBreadcrumb(screenId){
+  const parts = ['HOME', 'CHECK']
+  if(screenId === 'check-set-screen' && portalState.currentCheckSet && portalState.currentCheckSet.title){
+    parts.push(portalState.currentCheckSet.title)
+  }
+  return parts
+}
+
 function buildCheckBreadcrumb(screenId){
+  return buildCompactCheckBreadcrumb(screenId)
   const parts = ['CODE LAB', 'CHECK']
   const activeClassEntry = typeof getActivePortalCheckClass === 'function'
     ? getActivePortalCheckClass()
@@ -957,9 +975,26 @@ function buildCheckClassSelectionBreadcrumb(screenId){
   return parts
 }
 
+function buildCounselBreadcrumb(screenId){
+  const parts = ['HOME', 'COUNSEL']
+  if(screenId === 'counsel-history-screen'){
+    parts.push('HISTORY')
+    return parts
+  }
+  if(screenId === 'counsel-form-screen'){
+    const typeInfo = getCounselTypeInfo(portalState.currentCounselType || '')
+    parts.push(typeInfo && typeInfo.title ? typeInfo.title : 'COUNSEL')
+    return parts
+  }
+  return parts
+}
+
 function getAppBreadcrumb(screenId){
   if((screenId === 'class-screen' || screenId === 'class-auth-screen') && isCheckClassSelectionContext()){
     return buildCheckClassSelectionBreadcrumb(screenId)
+  }
+  if(screenId === 'counsel-screen' || screenId === 'counsel-history-screen' || screenId === 'counsel-form-screen'){
+    return buildCounselBreadcrumb(screenId)
   }
   if(PREP_SCREEN_IDS.indexOf(screenId) >= 0){
     return buildPrepBreadcrumb(screenId)
@@ -967,7 +1002,12 @@ function getAppBreadcrumb(screenId){
   if(screenId === 'check-screen' || screenId === 'check-set-screen'){
     return buildCheckBreadcrumb(screenId)
   }
-  if(screenId === 'portal-screen') return ['CODE LAB', 'HOME']
+  if(screenId === 'portal-screen') return ['HOME']
+  if(screenId === 'study-cafe-screen') return ['HOME', 'STUDY CAFE']
+  if(screenId === 'account-screen') return ['HOME', 'MY INFO']
+  if(screenId === 'password-screen') return ['HOME', 'MY INFO', 'PASSWORD']
+  if(screenId === 'admin-portal-screen') return ['HOME', 'ADMIN', 'TOOLS']
+  if(screenId === 'admin-screen') return ['HOME', 'ADMIN', 'CHECK 통계']
   if(screenId === 'account-screen') return ['CODE LAB', 'HOME', '회원정보']
   if(screenId === 'password-screen') return ['CODE LAB', 'HOME', '비밀번호 변경']
   if(screenId === 'admin-portal-screen') return ['CODE LAB', 'ADMIN', 'TOOLS']
@@ -1025,11 +1065,94 @@ function updateAppChrome(screenId){
   menuButton.disabled = !shouldShow
   document.body.classList.toggle('app-screen-study-cafe', shouldShow && screenId === 'study-cafe-screen')
 
-  const meta = getAppChromeMeta(screenId)
-  breadcrumbNode.textContent = getAppBreadcrumb(screenId).join(' > ')
-  titleNode.textContent = meta.title
-  subNode.textContent = getAppChromeSubText(screenId, meta.sub)
+  breadcrumbNode.textContent = ''
+  renderAppChromeBreadcrumb(titleNode, screenId)
+  subNode.textContent = ''
   queueAppChromeLayoutSync()
+}
+
+function renderAppChromeBreadcrumb(container, screenId){
+  const labels = getAppBreadcrumb(screenId).map(function(label){
+    return String(label || '').trim()
+  }).filter(Boolean)
+  const safeLabels = labels.length ? labels : ['HOME']
+  container.textContent = ''
+  safeLabels.forEach(function(label, index){
+    if(index > 0){
+      const separator = document.createElement('span')
+      separator.className = 'app-crumb-separator'
+      separator.textContent = '>'
+      container.appendChild(separator)
+    }
+    const isLast = index === safeLabels.length - 1
+    if(isLast){
+      const current = document.createElement('span')
+      current.className = 'app-crumb app-crumb-current'
+      current.textContent = label
+      container.appendChild(current)
+      return
+    }
+    const button = document.createElement('button')
+    button.className = 'app-crumb app-crumb-button'
+    button.type = 'button'
+    button.textContent = label
+    button.addEventListener('click', function(){
+      navigateAppChromeBreadcrumb(screenId, index, label)
+    })
+    container.appendChild(button)
+  })
+}
+
+function navigateAppChromeBreadcrumb(screenId, index, label){
+  const target = String(label || '').trim().toUpperCase()
+  if(!target) return
+  if(target === 'HOME' || target === 'CODE LAB'){
+    showPortalScreen()
+    return
+  }
+  if(target === 'PREP'){
+    if(PREP_SCREEN_IDS.indexOf(screenId) >= 0 && typeof showPassageScreen === 'function'){
+      showPassageScreen()
+      return
+    }
+    openPrepPortal()
+    return
+  }
+  if(target === 'CHECK'){
+    openCheckPortal()
+    return
+  }
+  if(target === 'COUNSEL'){
+    openCounselPortal()
+    return
+  }
+  if(target === 'STUDY CAFE'){
+    openStudyCafePortal()
+    return
+  }
+  if(target === 'ADMIN'){
+    openAdminPortal()
+    return
+  }
+  if(target === 'TOOLS' && typeof openToolsPortal === 'function'){
+    openToolsPortal()
+    return
+  }
+  if(label === 'MY INFO'){
+    openAccountScreen()
+    return
+  }
+  if(label === 'PASSWORD'){
+    openPasswordScreen(false)
+    return
+  }
+  if(label === '회원정보'){
+    openAccountScreen()
+    return
+  }
+  if(label === '비밀번호 변경'){
+    openPasswordScreen(false)
+  }
 }
 
 function queueAppChromeLayoutSync(){
@@ -1909,6 +2032,7 @@ function renderCurrentCheckSet(){
   }
   setElementTextSafe('check-current-set-name', checkSet.title)
   setElementTextSafe('check-current-set-meta', getCheckSetDateText(checkSet))
+  setHeadingText('#check-set-screen .hd h1', checkSet.title || 'CHECK')
   renderCheckForm(checkSet, portalState.currentCheckSubmission)
   if(getCurrentActiveScreenId() === 'check-set-screen'){
     updateAppChrome('check-set-screen')
@@ -1938,7 +2062,6 @@ function renderCheckForm(checkSet, submission){
       '<div class="check-progress-top">' +
         '<div class="check-progress-copy">' +
           '<div class="check-progress-title">제출 현황</div>' +
-          '<div class="check-progress-meta">제출한 문항은 잠기며, 남은 문항만 이어서 풀 수 있습니다.</div>' +
         '</div>' +
         '<div class="check-progress-stats">' +
           '<span class="check-progress-chip">전체 ' + checkSet.questions.length + '</span>' +
@@ -1969,19 +2092,21 @@ function renderCheckForm(checkSet, submission){
       ? String(submittedAnswer.userAnswer || '')
       : getCurrentCheckDraftAnswer(question.id)
     const displayNumber = normalizeCheckQuestionNumber(question && question.number, index + 1)
+    const questionTitle = '문항 ' + displayNumber
+    const promptText = String(question.prompt || '').trim()
+    const shouldShowPrompt = !!promptText && promptText !== questionTitle
     const resultClass = submittedAnswer ? ('check-result show ' + (submittedAnswer.isCorrect ? 'correct' : 'wrong')) : 'check-result'
 
     return '' +
       '<section class="group check-form-card">' +
-        '<div class="check-question-meta">' +
-          '<span class="check-chip">' + escapeHtml(question.type) + '</span>' +
-          '<span class="check-chip">' + displayNumber + '번</span>' +
-          '<span class="check-chip">' + escapeHtml(question.problemType || '기타') + '</span>' +
-        '</div>' +
-        '<div class="check-question-title">문항 ' + displayNumber + '</div>' +
-        '<div class="check-question-prompt">' + escapeHtml(question.prompt || ('문항 ' + displayNumber)) + '</div>' +
-        '<div class="check-answer-box">' +
-          renderCheckAnswerField(question, selectedAnswer, !!submittedAnswer) +
+        '<div class="check-question-row">' +
+          '<div class="check-question-copy">' +
+            '<div class="check-question-title">' + questionTitle + '</div>' +
+            (shouldShowPrompt ? '<div class="check-question-prompt">' + escapeHtml(promptText) + '</div>' : '') +
+          '</div>' +
+          '<div class="check-answer-box">' +
+            renderCheckAnswerField(question, selectedAnswer, !!submittedAnswer) +
+          '</div>' +
         '</div>' +
         (submittedAnswer ? (
           '<div class="' + resultClass + '">' +
@@ -2024,11 +2149,13 @@ function bindCheckFormInteractions(checkSet, submission){
           renderCheckSubmitArea(checkSet, submission)
           return
         }
-        setCurrentCheckDraftAnswer(questionId, value)
+        const currentValue = getCurrentCheckDraftAnswer(questionId) || getChoiceGroupAnswer(group)
+        const nextValue = currentValue === value ? '' : value
+        setCurrentCheckDraftAnswer(questionId, nextValue)
         group.querySelectorAll('.check-choice-btn').forEach(function(node){
           node.classList.remove('active')
         })
-        button.classList.add('active')
+        if(nextValue) button.classList.add('active')
         renderCheckSubmitArea(checkSet, submission)
       })
     })
@@ -2106,18 +2233,16 @@ function renderCheckSubmitArea(checkSet, submission){
 
 function renderCheckIssueTools(question, submittedAnswer){
   const existing = portalState.currentQuestionIssues.find(function(entry){
-    return String(entry.questionId || '') === String(question.id || '')
+    return String(entry.questionId || '') === String(question.id || '') && normalizeQuestionIssueStatus(entry) === 'open'
   }) || null
-  const submittedText = submittedAnswer && submittedAnswer.userAnswer ? String(submittedAnswer.userAnswer) : ''
   const buttonClass = existing ? 'check-question-issue-btn done' : 'check-question-issue-btn'
-  const buttonText = existing ? '질문 접수됨' : '질문 있어요'
+  const buttonText = existing ? '질문 접수됨' : '질문 남기기'
   return '' +
     '<div class="check-result-tools">' +
-      '<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')" ' + (existing ? 'disabled' : '') + '>' +
+      '<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')">' +
         escapeHtml(buttonText) +
       '</button>' +
-    '</div>' +
-    (submittedText ? '<div class="check-question-prompt" style="margin-top:8px">내 답: ' + escapeHtml(submittedText) + '</div>' : '')
+    '</div>'
 }
 
 async function submitCurrentCheckSet(){
@@ -2138,7 +2263,7 @@ async function submitCurrentCheckSet(){
     await saveCheckSubmission(checkSet, submission)
     portalState.currentCheckSubmission = submission
     portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, submission)
-    portalState.currentCheckFilter = 'latest'
+    portalState.currentCheckFilter = 'submitted'
     portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
     renderCheckForm(checkSet, submission)
     showToast(batchAnswers.length + '문항을 제출하고 정답과 해설을 표시했습니다.', 'var(--green)')
@@ -2415,6 +2540,30 @@ async function submitCheckQuestionIssueImpl(questionId){
   const submittedAnswer = portalState.currentCheckSubmission.answers.find(function(entry){ return entry.questionId === questionId }) || null
   if(!question || !submittedAnswer) return
 
+  const existing = portalState.currentQuestionIssues.find(function(entry){
+    return String(entry && entry.questionId || '') === String(questionId || '') && normalizeQuestionIssueStatus(entry) === 'open'
+  }) || null
+  if(existing){
+    const canceledAt = new Date().toISOString()
+    const canceledBy = profile.name || profile.loginId || profile.studentId || (portalState.currentUser && portalState.currentUser.email) || 'student'
+    const didSave = await updateQuestionIssueRecord(existing.id, {
+      status: 'resolved',
+      resolvedAt: canceledAt,
+      resolvedBy: canceledBy,
+      canceledAt: canceledAt,
+      canceledBy: canceledBy
+    })
+    if(!didSave){
+      showToast('질문 접수 취소에 실패했습니다.', 'var(--red)')
+      return
+    }
+
+    portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
+    renderCheckForm(checkSet, portalState.currentCheckSubmission)
+    showToast('질문 접수를 취소했습니다.', 'var(--green)')
+    return
+  }
+
   const issueId = simpleHash([
     portalState.currentUser ? portalState.currentUser.uid : '',
     checkSet.id,
@@ -2436,7 +2585,11 @@ async function submitCheckQuestionIssueImpl(questionId){
     prompt: question.prompt,
     userAnswer: submittedAnswer.userAnswer || '',
     createdAt: new Date().toISOString(),
-    status: 'open'
+    status: 'open',
+    resolvedAt: '',
+    resolvedBy: '',
+    canceledAt: '',
+    canceledBy: ''
   }
 
   if(portalState.firebaseEnabled){
@@ -2460,7 +2613,7 @@ async function submitCheckQuestionIssueImpl(questionId){
 
   portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
   renderCheckForm(checkSet, portalState.currentCheckSubmission)
-  showToast('질문이 관리자에게 전달되었습니다.', 'var(--green)')
+  showToast('질문이 접수됐습니다.', 'var(--green)')
 }
 
 function readLocalQuestionIssues(){
@@ -2546,8 +2699,6 @@ function renderCounselForm(typeInfo, existingRecord){
   setElementTextSafe('counsel-form-title', info.title)
   setElementTextSafe('counsel-form-heading', info.label + (isEditMode ? ' 수정서' : ' 신청서'))
   setElementTextSafe('counsel-form-type-badge', info.title)
-  setElementTextSafe('counsel-form-subtitle', isEditMode ? '상담 수정' : info.label)
-
   const reasonSelect = document.getElementById('counsel-reason-select')
   const reasonOtherInput = document.getElementById('counsel-reason-other-input')
   const dateInput = document.getElementById('counsel-date-input')
@@ -4622,32 +4773,37 @@ function isCheckWrongNoteCompleted(submittedAnswer){
 
 function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
   const existing = portalState.currentQuestionIssues.find(function(entry){
-    return String(entry.questionId || '') === String(question.id || '')
+    return String(entry.questionId || '') === String(question.id || '') && normalizeQuestionIssueStatus(entry) === 'open'
   }) || null
-  const submittedText = submittedAnswer && submittedAnswer.userAnswer ? String(submittedAnswer.userAnswer) : ''
   const buttonClass = existing ? 'check-question-issue-btn done' : 'check-question-issue-btn'
   const buttonText = existing ? '질문 접수됨' : '질문 남기기'
+  const editConfirmTool = isEditingAnswer
+    ? '<button class="check-question-edit-btn save" type="button" onclick="submitSingleCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">수정하기</button>'
+    : ''
   const editTool = isEditingAnswer
     ? '<button class="check-question-edit-btn active" type="button" onclick="cancelCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">수정 취소</button>'
     : (canCheckAnswerBeEdited(submittedAnswer)
-        ? '<button class="check-question-edit-btn" type="button" onclick="startCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">답 수정하기 (1회)</button>'
+        ? '<button class="check-question-edit-btn" type="button" onclick="startCheckAnswerEdit(\'' + escapeJs(question.id) + '\')">답 수정</button>'
         : '<span class="check-edit-limit-badge">답 수정 1회 사용 완료</span>')
   const wrongNoteDone = isCheckWrongNoteCompleted(submittedAnswer)
   const wrongNoteTool = submittedAnswer && submittedAnswer.isCorrect === false && !isEditingAnswer
-    ? '<button class="check-wrong-note-btn' + (wrongNoteDone ? ' done' : '') + '" type="button" onclick="completeCheckWrongNote(\'' + escapeJs(question.id) + '\')" ' + (wrongNoteDone ? 'disabled' : '') + '>' +
+    ? '<button class="check-wrong-note-btn' + (wrongNoteDone ? ' done' : '') + '" type="button" onclick="completeCheckWrongNote(\'' + escapeJs(question.id) + '\')">' +
         (wrongNoteDone ? '오답노트 완료됨' : '오답노트 완료') +
       '</button>'
     : ''
+  const issueTool = isEditingAnswer
+    ? ''
+    : ('<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')">' +
+        escapeHtml(buttonText) +
+      '</button>')
 
   return '' +
     '<div class="check-result-tools">' +
+      editConfirmTool +
       editTool +
       wrongNoteTool +
-      '<button class="' + buttonClass + '" type="button" onclick="submitCheckQuestionIssue(\'' + escapeJs(question.id) + '\')" ' + (existing ? 'disabled' : '') + '>' +
-        escapeHtml(buttonText) +
-      '</button>' +
-    '</div>' +
-    (submittedText ? '<div class="check-question-prompt" style="margin-top:8px">' + (isEditingAnswer ? '현재 저장된 답: ' : '내 답: ') + escapeHtml(submittedText) + '</div>' : '')
+      issueTool +
+    '</div>'
 }
 
 window.startCheckAnswerEdit = function(questionId){
@@ -4666,9 +4822,8 @@ window.startCheckAnswerEdit = function(questionId){
 
   setCurrentCheckDraftAnswer(questionId, String(submittedAnswer.userAnswer || '').trim())
   setCheckAnswerEditing(questionId, true)
-  portalState.currentCheckFilter = 'all'
   renderCheckForm(checkSet, submission)
-  showToast('답 수정 모드가 열렸습니다. 답을 다시 선택한 뒤 제출해 주세요.', 'var(--blue)')
+  showToast('답 수정 모드가 열렸습니다. 답을 다시 선택한 뒤 수정하기를 눌러 주세요.', 'var(--blue)')
 }
 
 window.cancelCheckAnswerEdit = function(questionId){
@@ -4686,6 +4841,50 @@ window.cancelCheckAnswerEdit = function(questionId){
   renderCheckForm(checkSet, submission)
 }
 
+window.submitSingleCheckAnswerEdit = function(questionId){
+  submitSingleCheckAnswerEditImpl(questionId)
+}
+
+async function submitSingleCheckAnswerEditImpl(questionId){
+  const checkSet = portalState.currentCheckSet
+  const submission = portalState.currentCheckSubmission
+  const targetId = String(questionId || '').trim()
+  if(portalState.isSubmittingCheck || !checkSet || !submission || !targetId) return
+  if(!isCheckAnswerEditing(targetId)){
+    showToast('먼저 수정 모드를 열어 주세요.', 'var(--blue)')
+    return
+  }
+
+  const batchAnswer = collectCheckBatchAnswers(checkSet, submission).find(function(answer){
+    return String(answer && answer.questionId || '').trim() === targetId
+  }) || null
+  if(!batchAnswer){
+    if(!getCurrentCheckDraftAnswer(targetId)){
+      showToast('답을 다시 고른 뒤 수정해 주세요.', 'var(--blue)')
+    }else{
+      showToast('바뀐 답이 없습니다.', 'var(--blue)')
+    }
+    return
+  }
+
+  portalState.isSubmittingCheck = true
+  try{
+    const nextSubmission = mergeCheckSubmission(submission, [batchAnswer])
+    await saveCheckSubmission(checkSet, nextSubmission)
+    portalState.currentCheckSubmission = nextSubmission
+    setCurrentCheckDraftAnswer(targetId, '')
+    setCheckAnswerEditing(targetId, false)
+    portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
+    renderCheckForm(checkSet, nextSubmission)
+    showToast('답 수정이 반영됐습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    showToast('답 수정 저장에 실패했습니다.', 'var(--red)')
+  }finally{
+    portalState.isSubmittingCheck = false
+  }
+}
+
 window.completeCheckWrongNote = function(questionId){
   completeCheckWrongNoteImpl(questionId)
 }
@@ -4701,17 +4900,14 @@ async function completeCheckWrongNoteImpl(questionId){
     return String(entry && entry.questionId || '') === targetId
   }) || null
   if(!submittedAnswer || submittedAnswer.isCorrect !== false) return
-  if(isCheckWrongNoteCompleted(submittedAnswer)){
-    showToast('이미 오답노트 완료로 표시된 문항입니다.', 'var(--blue)')
-    return
-  }
 
+  const nextCompleted = !isCheckWrongNoteCompleted(submittedAnswer)
   const completedAt = new Date().toISOString()
   const nextAnswers = sortCheckSubmissionAnswers(answers.map(function(answer){
     if(String(answer && answer.questionId || '') !== targetId) return answer
     return Object.assign({}, answer, {
-      wrongNoteCompleted: true,
-      wrongNoteCompletedAt: completedAt
+      wrongNoteCompleted: nextCompleted,
+      wrongNoteCompletedAt: nextCompleted ? completedAt : ''
     })
   }))
   const latestBatchIds = getLatestBatchQuestionIds(submission)
@@ -4732,10 +4928,10 @@ async function completeCheckWrongNoteImpl(questionId){
     await saveCheckSubmission(checkSet, nextSubmission)
     portalState.currentCheckSubmission = nextSubmission
     renderCheckForm(checkSet, nextSubmission)
-    showToast('오답노트 완료로 표시했습니다.', 'var(--green)')
+    showToast(nextCompleted ? '오답노트를 완료로 표시했습니다.' : '오답노트 표시를 취소했습니다.', 'var(--green)')
   }catch(error){
     console.error(error)
-    showToast('오답노트 완료 저장에 실패했습니다.', 'var(--red)')
+    showToast('오답노트 상태 저장에 실패했습니다.', 'var(--red)')
   }
 }
 
@@ -4747,43 +4943,23 @@ function renderCheckForm(checkSet, submission){
   const submittedCount = getSubmittedCheckCount(submission)
   const pendingCount = countPendingCheckQuestions(checkSet, submission)
   const wrongCount = countWrongCheckQuestions(submission)
-  const latestBatchIds = getLatestBatchQuestionIds(submission)
   const openEditCount = countOpenCheckEdits()
   const filterMode = resolveCheckFilterMode(checkSet, submission, portalState.currentCheckFilter)
   portalState.currentCheckFilter = filterMode
   const visibleQuestions = getVisibleCheckQuestions(checkSet, submission, filterMode)
-  const isLatestView = filterMode === 'latest'
 
   const progressHtml =
     '<section class="group check-progress-card">' +
       '<div class="check-progress-top">' +
         '<div class="check-progress-copy">' +
           '<div class="check-progress-title">제출 현황</div>' +
-          '<div class="check-progress-meta">제출한 문항은 정답과 해설을 바로 확인할 수 있고, 문항별 답 수정은 1회만 가능합니다.</div>' +
         '</div>' +
         '<div class="check-progress-stats">' +
-          '<span class="check-progress-chip">전체 ' + checkSet.questions.length + '</span>' +
-          '<span class="check-progress-chip">제출 ' + submittedCount + '</span>' +
-          '<span class="check-progress-chip">남음 ' + pendingCount + '</span>' +
-          '<span class="check-progress-chip">오답 ' + wrongCount + '</span>' +
-          (openEditCount ? '<span class="check-progress-chip">수정 중 ' + openEditCount + '</span>' : '') +
+          renderCheckProgressFilterChip('all', '전체', checkSet.questions.length, filterMode === 'all') +
+          renderCheckProgressFilterChip('submitted', '제출', submittedCount, filterMode === 'submitted') +
+          renderCheckProgressFilterChip('pending', '미제출', pendingCount + openEditCount, filterMode === 'pending') +
+          renderCheckProgressFilterChip('wrong', '오답', wrongCount, filterMode === 'wrong') +
         '</div>' +
-      '</div>' +
-      (
-        isLatestView
-          ? (
-              '<div class="check-latest-banner">' +
-                '<span class="status-badge ok">이번 제출 결과</span>' +
-                '<div class="check-progress-meta">방금 제출한 문항 ' + latestBatchIds.length + '개만 모아 보여줍니다.</div>' +
-              '</div>'
-            )
-          : ''
-      ) +
-      '<div class="check-filter-bar">' +
-        renderCheckFilterButton('all', '전체', checkSet.questions.length, filterMode === 'all') +
-        renderCheckFilterButton('pending', '미제출/수정', pendingCount + openEditCount, filterMode === 'pending', !(pendingCount + openEditCount)) +
-        renderCheckFilterButton('wrong', '틀린 문제', wrongCount, filterMode === 'wrong', !wrongCount) +
-        (latestBatchIds.length ? renderCheckFilterButton('latest', '이번 제출', latestBatchIds.length, filterMode === 'latest') : '') +
       '</div>' +
     '</section>'
 
@@ -4795,25 +4971,30 @@ function renderCheckForm(checkSet, submission){
       ? (getCurrentCheckDraftAnswer(questionId) || String(submittedAnswer.userAnswer || ''))
       : (submittedAnswer ? String(submittedAnswer.userAnswer || '') : getCurrentCheckDraftAnswer(questionId))
     const displayNumber = normalizeCheckQuestionNumber(question && question.number, index + 1)
+    const questionTitle = '문항 ' + displayNumber
+    const promptText = String(question.prompt || '').trim()
+    const shouldShowPrompt = !!promptText && promptText !== questionTitle
     const resultClass = submittedAnswer ? ('check-result show ' + (submittedAnswer.isCorrect ? 'correct' : 'wrong')) : 'check-result'
+    const cardStateClass = submittedAnswer
+      ? (' ' + (submittedAnswer.isCorrect ? 'is-correct' : 'is-wrong') + (isEditingAnswer ? ' is-editing' : ''))
+      : ' is-pending'
     const resultTitle = isEditingAnswer
       ? '답 수정 중'
-      : (submittedAnswer && submittedAnswer.isCorrect ? '정답' : '정답과 해설')
+      : '정답과 해설'
     const editNote = isEditingAnswer
-      ? '<div class="check-edit-note">수정 모드입니다. 답을 다시 고른 뒤 아래 제출 버튼을 누르면 이 문항의 저장된 답이 1회에 한해 바뀝니다.</div>'
+      ? '<div class="check-edit-note">수정 모드입니다. 1회 수정할 수 있습니다.</div>'
       : ''
 
     return '' +
-      '<section class="group check-form-card">' +
-        '<div class="check-question-meta">' +
-          '<span class="check-chip">' + escapeHtml(question.type) + '</span>' +
-          '<span class="check-chip">' + displayNumber + '번</span>' +
-          '<span class="check-chip">' + escapeHtml(question.problemType || '기타') + '</span>' +
-        '</div>' +
-        '<div class="check-question-title">문항 ' + displayNumber + '</div>' +
-        '<div class="check-question-prompt">' + escapeHtml(question.prompt || ('문항 ' + displayNumber)) + '</div>' +
-        '<div class="check-answer-box">' +
-          renderCheckAnswerField(question, selectedAnswer, !!submittedAnswer && !isEditingAnswer) +
+      '<section class="group check-form-card' + cardStateClass + '">' +
+        '<div class="check-question-row">' +
+          '<div class="check-question-copy">' +
+            '<div class="check-question-title">' + questionTitle + '</div>' +
+            (shouldShowPrompt ? '<div class="check-question-prompt">' + escapeHtml(promptText) + '</div>' : '') +
+          '</div>' +
+          '<div class="check-answer-box">' +
+            renderCheckAnswerField(question, selectedAnswer, !!submittedAnswer && !isEditingAnswer) +
+          '</div>' +
         '</div>' +
         (submittedAnswer ? (
           '<div class="' + resultClass + '">' +
@@ -4962,7 +5143,7 @@ async function submitCurrentCheckSet(){
     portalState.currentCheckSubmission = submission
     portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, submission)
     portalState.currentCheckEditTargets = {}
-    portalState.currentCheckFilter = 'latest'
+    portalState.currentCheckFilter = 'submitted'
     portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
     renderCheckForm(checkSet, submission)
     showToast(buildCheckSubmitToastMessage(batchAnswers), 'var(--green)')
@@ -4976,10 +5157,7 @@ async function submitCurrentCheckSet(){
 
 function resolveCheckFilterMode(checkSet, submission, preferredMode){
   const mode = String(preferredMode || 'all').trim() || 'all'
-  if(mode === 'pending' && !countPendingCheckQuestions(checkSet, submission) && !countOpenCheckEdits()) return 'all'
-  if(mode === 'wrong' && !countWrongCheckQuestions(submission)) return 'all'
-  if(mode === 'latest' && !getLatestBatchQuestionIds(submission).length) return 'all'
-  return ['all', 'pending', 'wrong', 'latest'].includes(mode) ? mode : 'all'
+  return ['all', 'submitted', 'pending', 'wrong'].includes(mode) ? mode : 'all'
 }
 
 function getVisibleCheckQuestions(checkSet, submission, filterMode){
@@ -4988,7 +5166,11 @@ function getVisibleCheckQuestions(checkSet, submission, filterMode){
   const submittedIds = new Set((submission && Array.isArray(submission.answers) ? submission.answers : []).map(function(answer){
     return String(answer && answer.questionId || '').trim()
   }).filter(Boolean))
-  const latestIds = new Set(getLatestBatchQuestionIds(submission))
+  if(filterMode === 'submitted'){
+    return questions.filter(function(question){
+      return submittedIds.has(String(question && question.id || '').trim())
+    })
+  }
   if(filterMode === 'pending'){
     return questions.filter(function(question){
       const questionId = String(question && question.id || '').trim()
@@ -5001,12 +5183,11 @@ function getVisibleCheckQuestions(checkSet, submission, filterMode){
       return submittedAnswer && submittedAnswer.isCorrect === false
     })
   }
-  if(filterMode === 'latest'){
-    return questions.filter(function(question){
-      return latestIds.has(String(question && question.id || '').trim())
-    })
-  }
   return questions
+}
+
+function renderCheckProgressFilterChip(mode, label, count, isActive){
+  return '<button class="check-progress-chip check-progress-filter' + (isActive ? ' active' : '') + '" type="button" data-check-filter="' + escapeHtml(mode) + '">' + escapeHtml(label) + '<span>' + Number(count || 0) + '</span></button>'
 }
 
 function collectCheckBatchAnswers(checkSet, submission){
@@ -5808,6 +5989,11 @@ function getPortalPrepVideoInputValue(passageIndex){
   return String(input && input.value || '').trim()
 }
 
+function getPortalPrepVideoTitleInputValue(passageIndex){
+  const input = document.getElementById('prep-video-title-input-' + String(passageIndex))
+  return String(input && input.value || '').trim()
+}
+
 function normalizePortalPrepYouTubeUrl(value){
   const rawValue = String(value || '').trim()
   if(!rawValue) return null
@@ -6322,6 +6508,7 @@ function renderPortalPrepVideoProgressModal(){
     document.body.classList.remove('modal-open')
     listNode.innerHTML = ''
     statusNode.textContent = ''
+    syncPortalPrepProgressHeaderChips(null, null)
     return
   }
 
@@ -6329,12 +6516,14 @@ function renderPortalPrepVideoProgressModal(){
   modal.setAttribute('aria-hidden', 'false')
   document.body.classList.add('modal-open')
   titleNode.textContent = state.title ? ('시청 현황 · ' + state.title) : 'PREP 영상 시청 현황'
+  titleNode.textContent = state.title || 'PREP 영상'
   metaNode.textContent = [state.className || state.classId || '', state.status || ''].filter(Boolean).join(' · ')
   if(noteNode){
     noteNode.textContent = '학생이 영상 완료 버튼을 누른 기록 기준입니다. 유튜브를 실제로 끝까지 봤는지까지 검증하는 기능은 아닙니다.'
   }
 
   if(state.isLoading){
+    syncPortalPrepProgressHeaderChips(null, null)
     listNode.innerHTML = '<div class="empty-box">시청 현황을 불러오는 중입니다...</div>'
     statusNode.textContent = 'Firebase 기록을 확인하고 있습니다.'
     return
@@ -6344,6 +6533,7 @@ function renderPortalPrepVideoProgressModal(){
   const rows = Array.isArray(state.progressRows) ? state.progressRows : []
   const passages = state.currentDoc ? getPortalPrepProgressPassages(state.currentDoc, state.classId) : []
   if(!passages.length){
+    syncPortalPrepProgressHeaderChips(null, null)
     listNode.innerHTML = '<div class="empty-box">' + escapeHtml(state.status || '이 PREP 세트에서 확인할 영상을 찾지 못했습니다.') + '</div>'
     statusNode.textContent = state.status || ''
     return
@@ -6354,6 +6544,7 @@ function renderPortalPrepVideoProgressModal(){
     return sum + countPortalPrepProgressDone(students, rows, passage)
   }, 0)
   statusNode.textContent = '전체 ' + totalSlots + '건 중 완료 ' + doneSlots + '건, 미완료 ' + Math.max(totalSlots - doneSlots, 0) + '건'
+  syncPortalPrepProgressHeaderChips(doneSlots, Math.max(totalSlots - doneSlots, 0))
 
   listNode.innerHTML = passages.map(function(passage){
     const doneCount = countPortalPrepProgressDone(students, rows, passage)
@@ -6374,6 +6565,11 @@ function renderPortalPrepVideoProgressModal(){
         '</div>' +
       '</div>'
   }).join('')
+}
+
+function syncPortalPrepProgressHeaderChips(doneCount, pendingCount){
+  let summaryNode = document.getElementById('prep-video-progress-header-chips')
+  if(summaryNode && summaryNode.parentNode) summaryNode.parentNode.removeChild(summaryNode)
 }
 
 function closePortalPrepVideoProgressModal(){
@@ -6533,8 +6729,7 @@ function renderPortalPrepVideoManager(){
                 '</div>' +
               '</div>' +
               '<div class="prep-video-manager-item-actions">' +
-                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.savePortalPrepPassageVideoUrl(' + passage.index + ')"' + (manager.isUploading ? ' disabled' : '') + '>' + (isUploading ? '저장 중...' : '링크 저장') + '</button>' +
-                '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalPrepPassageVideo(' + passage.index + ')"' + (!passage.hasVideo || manager.isUploading ? ' disabled' : '') + '>영상 삭제</button>' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.savePortalPrepPassageVideoUrl(' + passage.index + ')"' + (manager.isUploading ? ' disabled' : '') + '>' + (isUploading ? '저장 중...' : '저장') + '</button>' +
               '</div>' +
             '</div>' +
             '<div class="prep-video-manager-item-copy">' + escapeHtml(passage.preview || '지문 미리보기가 없습니다.') + '</div>' +
@@ -6577,7 +6772,7 @@ function renderPortalPrepVideoManager(){
       if(statusLabel) statusLabel.textContent = normalizedVideoStatus
 
       if(saveButton){
-        saveButton.textContent = isSaving ? '저장 중...' : '링크 저장'
+        saveButton.textContent = isSaving ? '저장 중...' : '저장'
         saveButton.disabled = !!manager.isSaving
         saveButton.setAttribute('onclick', 'window.savePortalPrepPassageVideoUrl(' + passage.index + ')')
       }
@@ -6587,10 +6782,35 @@ function renderPortalPrepVideoManager(){
         deleteButton.disabled = !passage.hasVideo || !!manager.isSaving
       }
 
-      let fieldNode = itemNode.querySelector('.prep-video-manager-field')
+      let titleFieldNode = itemNode.querySelector('.prep-video-manager-title-field')
+      if(!titleFieldNode){
+        titleFieldNode = document.createElement('label')
+        titleFieldNode.className = 'prep-video-manager-field prep-video-manager-title-field'
+        titleFieldNode.innerHTML = '' +
+          '<span class="prep-video-manager-field-label">영상 이름</span>' +
+          '<input class="prep-video-manager-input prep-video-manager-title-input" type="text">' +
+          '<span class="prep-video-manager-help">학생 화면에 보이는 영상 제목입니다.</span>'
+        const anchorNode = itemNode.querySelector('.prep-video-manager-item-copy')
+        if(anchorNode){
+          itemNode.insertBefore(titleFieldNode, anchorNode)
+        }else{
+          itemNode.appendChild(titleFieldNode)
+        }
+      }
+
+      const titleInputNode = titleFieldNode.querySelector('.prep-video-manager-title-input')
+      if(titleInputNode){
+        titleInputNode.id = 'prep-video-title-input-' + passage.index
+        titleInputNode.setAttribute('data-passage-index', String(passage.index))
+        titleInputNode.placeholder = '영상 이름'
+        titleInputNode.value = passage.videoTitle || passage.title || ''
+        titleInputNode.disabled = !!manager.isSaving
+      }
+
+      let fieldNode = itemNode.querySelector('.prep-video-manager-url-field')
       if(!fieldNode){
         fieldNode = document.createElement('label')
-        fieldNode.className = 'prep-video-manager-field'
+        fieldNode.className = 'prep-video-manager-field prep-video-manager-url-field'
         fieldNode.innerHTML = '' +
           '<span class="prep-video-manager-field-label">유튜브 링크</span>' +
           '<input class="prep-video-manager-input" type="url">' +
@@ -6611,8 +6831,16 @@ function renderPortalPrepVideoManager(){
         inputNode.value = passage.videoUrl || ''
         inputNode.disabled = !!manager.isSaving
       }
+
+      if(externalLink && fieldNode && fieldNode.parentNode){
+        externalLink.textContent = '유튜브 열기'
+        externalLink.classList.add('prep-video-manager-link-below')
+        fieldNode.parentNode.insertBefore(externalLink, fieldNode.nextSibling)
+      }
     })
+    syncPortalPrepVideoManagerFooterActions()
   }else{
+    syncPortalPrepVideoManagerFooterActions()
     const emptyNode = listNode.querySelector('.empty-box')
     if(emptyNode) emptyNode.textContent = '이 PREP 세트에는 지문이 없습니다.'
   }
@@ -6620,6 +6848,24 @@ function renderPortalPrepVideoManager(){
   modal.classList.remove('hidden')
   modal.setAttribute('aria-hidden', 'false')
   document.body.classList.add('modal-open')
+}
+
+function syncPortalPrepVideoManagerFooterActions(){
+  const modal = document.getElementById('prep-video-manager-modal')
+  const footerActions = modal ? modal.querySelector('.prep-video-manager-foot .prep-video-manager-actions') : null
+  const cancelButton = document.getElementById('prep-video-manager-cancel-btn')
+  if(!modal || !footerActions || !cancelButton) return
+
+  Array.from(footerActions.querySelectorAll('.prep-video-footer-save-btn')).forEach(function(button){
+    button.parentNode.removeChild(button)
+  })
+
+  Array.from(modal.querySelectorAll('.prep-video-manager-item-actions .btn')).forEach(function(button){
+    const onclickValue = String(button.getAttribute('onclick') || '')
+    if(onclickValue.indexOf('savePortalPrepPassageVideoUrl') < 0) return
+    button.classList.add('prep-video-footer-save-btn')
+    footerActions.insertBefore(button, cancelButton)
+  })
 }
 
 function closePortalPrepVideoManager(options){
@@ -6832,12 +7078,18 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     return
   }
 
+  const nextTitle = getPortalPrepVideoTitleInputValue(passageIndex) || String(rawPassage.title || '').trim()
+  if(!nextTitle){
+    showToast('영상 이름을 입력해 주세요.', 'var(--red)')
+    return
+  }
+
   const normalizedPassage = buildPassageState(rawPassage, Number(passageIndex))
   const oldStoragePath = String(rawPassage.videoStoragePath || rawPassage.video && rawPassage.video.storagePath || '').trim()
 
   manager.isSaving = true
   manager.pendingPassageIndex = Number(passageIndex)
-  manager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 유튜브 링크 저장 중...'
+  manager.status = '"' + nextTitle + '" 영상 수정 저장 중...'
   renderPortalPrepVideoManager()
 
   try{
@@ -6846,8 +7098,9 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     const nextPayload = clonePlainData(nextDoc.payload) || {}
     const nextPassages = Array.isArray(nextPayload.passages) ? nextPayload.passages.slice() : []
     const nextPassage = Object.assign({}, nextPassages[Number(passageIndex)] || {})
-    const nextVideoTitle = String(nextPassage.videoTitle || nextPassage.title || normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))).trim()
+    const nextVideoTitle = nextTitle
 
+    nextPassage.title = nextTitle
     nextPassage.videoUrl = normalizedUrl.url
     nextPassage.videoEmbedUrl = normalizedUrl.embedUrl
     nextPassage.videoTitle = nextVideoTitle
@@ -6865,6 +7118,10 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     delete nextPassage.video.storagePath
     nextPassages[Number(passageIndex)] = nextPassage
     nextPayload.passages = nextPassages
+    if(isPortalDirectPrepVideoPayload(nextPayload)){
+      nextPayload.title = nextTitle
+      nextDoc.title = nextTitle
+    }
 
     await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
       payload: nextPayload
@@ -6876,10 +7133,10 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     await syncPrepContentAfterLogin(true)
     const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
     portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
-    portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || manager.title || '').trim()
+    portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || (isPortalDirectPrepVideoPayload(nextPayload) ? nextTitle : '') || manager.title || '').trim()
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (Number(passageIndex) + 1))) + '" 유튜브 링크가 저장되었습니다.'
+    portalState.prepVideoManager.status = '"' + nextTitle + '" 영상 수정이 저장되었습니다.'
 
     const targetClass = getPortalUploadTargetClass('prep')
     if(targetClass && targetClass.id){
@@ -6887,14 +7144,14 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     }
     syncPortalAdminSetPanels(getCurrentActiveScreenId())
     renderPortalPrepVideoManager()
-    showToast('PREP 지문 유튜브 링크를 저장했습니다.', 'var(--green)')
+    showToast('PREP 영상 정보를 저장했습니다.', 'var(--green)')
   }catch(error){
     console.error(error)
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
-    portalState.prepVideoManager.status = '유튜브 링크 저장 중 오류가 발생했습니다.'
+    portalState.prepVideoManager.status = '영상 수정 저장 중 오류가 발생했습니다.'
     renderPortalPrepVideoManager()
-    showToast('PREP 유튜브 링크 저장 중 오류가 발생했습니다.', 'var(--red)')
+    showToast('PREP 영상 수정 저장 중 오류가 발생했습니다.', 'var(--red)')
   }
 }
 
@@ -8385,6 +8642,7 @@ window.removePortalManagedSet = removePortalManagedSet
 window.removePortalLegacyPrepSet = removePortalLegacyPrepSet
 window.removePortalPrepPassageVideoFromSet = removePortalPrepPassageVideoFromSet
 window.openPrepClassPicker = openPrepClassPicker
+window.createPortalPrepVideoByPrompt = createPortalPrepVideoByPrompt
 window.openPortalPrepVideoManager = openPortalPrepVideoManager
 window.savePortalPrepPassageVideoUrl = savePortalPrepPassageVideoUrl
 window.removePortalPrepPassageVideo = removePortalPrepPassageVideo

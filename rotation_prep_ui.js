@@ -94,15 +94,20 @@ function renderDirectPrepAdminPassageActions(entry){
   const docId = getDirectPrepManagedDocId(entry && entry.studySet)
   if(!docId) return ''
   const escapedDocId = escapePrepInlineJsValue(docId)
-  const passageIndex = Number(entry && entry.passageIndex)
-  const deleteButton = entry && entry.passage && entry.passage.hasVideo
-    ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="event.stopPropagation(); window.removePortalPrepPassageVideoFromSet(\'' + escapedDocId + '\', ' + passageIndex + ')">영상 삭제</button>'
-    : ''
   return '' +
     '<div class="p-actions" onclick="event.stopPropagation()">' +
-      '<button class="btn btn-ghost btn-sm" type="button" onclick="event.stopPropagation(); window.openPortalPrepVideoManager(\'' + escapedDocId + '\')">영상 관리</button>' +
-      deleteButton +
+      '<button class="btn btn-ghost btn-sm" type="button" onclick="event.preventDefault(); event.stopPropagation(); window.openPortalPrepVideoProgressModal && window.openPortalPrepVideoProgressModal(\'' + escapedDocId + '\')">시청 현황</button>' +
+      '<button class="btn btn-ghost btn-sm" type="button" onclick="event.preventDefault(); event.stopPropagation(); window.openPortalPrepVideoManager && window.openPortalPrepVideoManager(\'' + escapedDocId + '\')">영상 수정</button>' +
+      '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="event.preventDefault(); event.stopPropagation(); window.removePortalManagedSet && window.removePortalManagedSet(\'prep\', \'' + escapedDocId + '\')">삭제</button>' +
     '</div>'
+}
+
+function updatePrepPassageAdminQuickActions(){
+  const actions = document.getElementById('prep-passage-admin-actions')
+  if(!actions) return
+  const shouldShow = typeof isPortalAdmin === 'function' && isPortalAdmin()
+  actions.classList.toggle('hidden', !shouldShow)
+  actions.setAttribute('aria-hidden', shouldShow ? 'false' : 'true')
 }
 
 function renderClassList(){
@@ -129,7 +134,6 @@ function renderClassList(){
 
     return '' +
       '<div class="class-item" onclick="requestClassAccess(' + index + ')">' +
-        '<div class="class-num">' + (visibleIndex + 1) + '</div>' +
         '<div class="class-body">' +
           '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
           '<div class="class-preview">' + studyCount + '개의 학습 세트가 준비되어 있습니다.</div>' +
@@ -203,6 +207,7 @@ function renderPassageScreen(){
   const currentSet = getCurrentStudySet()
   const assignment = currentSet ? getCurrentClassAssignments(currentSet) : null
   const container = document.getElementById('p-list')
+  updatePrepPassageAdminQuickActions()
 
   if(shouldUseDirectPrepPassageFlow()){
     renderDirectPrepPassageScreen()
@@ -223,7 +228,6 @@ function renderPassageScreen(){
   }).length
 
   document.getElementById('passage-stats').innerHTML = [
-    renderStat(assignment.passageIndexes.length, '지문'),
     renderStat(totalQuestions, '영상'),
     renderStat(doneCount, '완료'),
     renderStat(Math.max(assignment.passageIndexes.length - doneCount, 0), '남음')
@@ -263,6 +267,7 @@ function renderPassageScreen(){
 
 function renderDirectPrepPassageScreen(){
   const container = document.getElementById('p-list')
+  updatePrepPassageAdminQuickActions()
   const passageEntries = getVisiblePrepPassageEntries()
   const doneCount = passageEntries.filter(function(entry){
     return getPassageProgress(entry.passageIndex, entry.setIndex).done
@@ -271,7 +276,6 @@ function renderDirectPrepPassageScreen(){
   if(!passageEntries.length){
     document.getElementById('passage-bar').style.display = 'none'
     document.getElementById('passage-stats').innerHTML = [
-      renderStat(0, '지문'),
       renderStat(0, '영상'),
       renderStat(0, '완료'),
       renderStat(0, '남음')
@@ -285,7 +289,6 @@ function renderDirectPrepPassageScreen(){
 
   document.getElementById('passage-bar').style.display = 'none'
   document.getElementById('passage-stats').innerHTML = [
-    renderStat(passageEntries.length, '지문'),
     renderStat(passageEntries.filter(function(entry){ return entry.passage.hasVideo }).length, '영상'),
     renderStat(doneCount, '완료'),
     renderStat(Math.max(passageEntries.length - doneCount, 0), '남음')
@@ -775,7 +778,7 @@ function renderStageActions(){
   const state = getPassageProgress(currentPassage)
   document.getElementById('stage-actions').innerHTML =
     '<button class="btn ' + (state.done ? 'btn-ghost' : 'btn-green') + '" type="button" onclick="markPassageDone()">' +
-      (state.done ? '영상 완료 취소' : '영상 완료') +
+      (state.done ? '영상 시청 완료 취소' : '영상 시청 완료') +
     '</button>' +
     '<button class="btn btn-ghost" type="button" onclick="showPassageScreen()">목록으로 돌아가기</button>' +
     ''
