@@ -2136,7 +2136,7 @@ body::before{
 }
 
 .admin-check-analysis-bar{
-  margin-top:-10px;
+  margin-top:18px;
   margin-bottom:18px;
 }
 
@@ -5423,6 +5423,17 @@ body.app-screen-study-cafe .app-chrome{
   font-size:1rem;
 }
 
+#app-menu-btn.app-chrome-btn{
+  background:#0d4d44;
+  color:#fffdf7;
+  box-shadow:0 10px 22px rgba(13,77,68,.24);
+}
+
+#app-menu-btn.app-chrome-btn:hover{
+  background:#0a3f38;
+  box-shadow:0 14px 28px rgba(13,77,68,.30);
+}
+
 .app-chrome-copy{
   gap:0;
   justify-content:center;
@@ -5749,9 +5760,9 @@ body.app-screen-study-cafe .app-chrome{
   margin:0;
   color:#132621;
   font-size:1.04rem;
-  font-weight:900;
+  font-weight:800;
   letter-spacing:-.04em;
-  line-height:1.45;
+  line-height:1.5;
 }
 
 #check-screen #check-set-list .set-meta{
@@ -6567,6 +6578,7 @@ body::before{
 
 #counsel-form-screen .counsel-field{
   gap:9px;
+  align-content:start;
 }
 
 #counsel-form-screen .counsel-field span,
@@ -6600,12 +6612,19 @@ body::before{
 }
 
 #counsel-form-screen #counsel-reason-select,
-#counsel-form-screen .counsel-datetime-grid input,
-#counsel-form-screen .counsel-datetime-grid select{
+#counsel-form-screen #counsel-date-input,
+#counsel-form-screen #counsel-time-select{
+  display:block;
+  box-sizing:border-box;
+  width:100%;
   height:54px;
   min-height:54px;
-  padding-top:0;
-  padding-bottom:0;
+  padding:0 16px;
+  line-height:normal;
+}
+
+#counsel-form-screen .counsel-field-help:empty{
+  display:none;
 }
 
 #counsel-form-screen .counsel-field textarea{

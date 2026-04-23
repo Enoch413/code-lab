@@ -1022,11 +1022,11 @@ function getAppBreadcrumb(screenId){
   if(screenId === 'account-screen') return ['HOME', 'MY INFO']
   if(screenId === 'password-screen') return ['HOME', 'MY INFO', 'PASSWORD']
   if(screenId === 'admin-portal-screen') return ['HOME', 'ADMIN', 'TOOLS']
-  if(screenId === 'admin-screen') return ['HOME', 'ADMIN', 'CHECK 통계']
+  if(screenId === 'admin-screen') return ['HOME', 'ADMIN']
   if(screenId === 'account-screen') return ['CODE LAB', 'HOME', '회원정보']
   if(screenId === 'password-screen') return ['CODE LAB', 'HOME', '비밀번호 변경']
   if(screenId === 'admin-portal-screen') return ['CODE LAB', 'ADMIN', 'TOOLS']
-  if(screenId === 'admin-screen') return ['CODE LAB', 'ADMIN', 'CHECK 통계']
+  if(screenId === 'admin-screen') return ['HOME', 'ADMIN']
   return CHROME_BREADCRUMBS[screenId] || ['CODE LAB']
 }
 
@@ -3735,7 +3735,6 @@ function syncAdminCollapsibleSectionState(section){
 function ensureAdminCollapsibleSections(){
   ;[
     { groupId: 'admin-type-group', listId: 'admin-type-list', bodyId: 'admin-type-body' },
-    { groupId: 'admin-student-group', listId: 'admin-student-list', bodyId: 'admin-student-body' },
     { groupId: 'admin-response-group', listId: 'admin-response-list', bodyId: 'admin-response-body' },
     { groupId: 'admin-issue-group', listId: 'admin-issue-list', bodyId: 'admin-issue-body' },
     { groupId: 'admin-counsel-group', listId: 'admin-counsel-list', bodyId: 'admin-counsel-body' }

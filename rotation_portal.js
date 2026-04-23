@@ -1942,8 +1942,11 @@ function buildRankItems(rows, selector){
 }
 
 function renderAdminRankList(listId, countId, items, renderer){
-  document.getElementById(countId).textContent = String(items.length)
-  document.getElementById(listId).innerHTML = items.length
+  const countNode = document.getElementById(countId)
+  const listNode = document.getElementById(listId)
+  if(!countNode || !listNode) return
+  countNode.textContent = String(items.length)
+  listNode.innerHTML = items.length
     ? items.map(renderer).join('')
     : '<div class="empty-box">표시할 데이터가 없습니다.</div>'
 }
