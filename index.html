@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260423-check-editor-question-count-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260423-admin-menu-button-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -616,7 +616,6 @@
     <div class="class-bar-copy">
       <div class="class-bar-label">통계 범위</div>
       <div class="class-bar-name" id="admin-filter-name">전체</div>
-      <div class="class-bar-meta" id="admin-filter-meta">전체 또는 반별로 제출 결과를 나눠서 볼 수 있습니다.</div>
     </div>
     <div class="admin-filter-wrap">
       <select id="admin-class-filter" class="admin-select" onchange="window.handleAdminClassFilterChange && window.handleAdminClassFilterChange(this.value)">
@@ -628,7 +627,6 @@
     <div class="class-bar-copy">
       <div class="class-bar-label">CHECK 세트 분석</div>
       <div class="class-bar-name" id="admin-set-filter-name">전체 세트</div>
-      <div class="class-bar-meta" id="admin-set-filter-meta">세트를 선택하면 문항별 오답/미제출 통계를 확인할 수 있습니다.</div>
     </div>
     <div class="admin-filter-actions">
       <div class="admin-filter-wrap admin-set-filter-wrap">
@@ -714,10 +712,6 @@
     <section class="group">
       <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
       <div class="admin-list" id="admin-type-list"></div>
-    </section>
-    <section class="group">
-      <div class="group-title"><h3>학생별 오답</h3><span class="group-count" id="admin-student-count">0</span></div>
-      <div class="admin-list" id="admin-student-list"></div>
     </section>
     <section class="group">
       <div class="group-title"><h3>학생별 틀린 문항</h3><span class="group-count" id="admin-response-count">0</span></div>
@@ -821,7 +815,7 @@
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260423-prep-modal-cleanup-01"></script>
-<script src="./rotation_portal.js?v=20260423-check-modal-set-editor-01"></script>
-<script src="./rotation_portal_enhancements.js?v=20260423-check-editor-question-count-01"></script>
+<script src="./rotation_portal.js?v=20260423-admin-remove-student-rank-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260423-admin-breadcrumb-menu-01"></script>
 </body>
 </html>
