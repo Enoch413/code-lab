@@ -4099,9 +4099,8 @@ body.app-screen-study-cafe .app-chrome{
 }
 
 #admin-screen #admin-tools-entry-btn.admin-tools-launch:hover{
-  transform:translateY(-2px);
+  transform:translateY(-1px);
   box-shadow:0 18px 34px rgba(30,44,42,.12);
-  background:linear-gradient(135deg,#f3f8f7,#e2efec);
 }
 
 #admin-screen #admin-tools-entry-btn.admin-tools-launch:active{
@@ -4566,6 +4565,9 @@ body.app-screen-study-cafe .app-chrome{
 }
 
 #admin-screen #admin-tools-entry-btn.admin-tools-launch{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
   min-height:122px;
   border-radius:30px;
   background:
@@ -4573,6 +4575,38 @@ body.app-screen-study-cafe .app-chrome{
     linear-gradient(135deg,#143f38,#1d6d60);
   color:#fff;
   box-shadow:0 24px 54px rgba(16,77,69,.20);
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch::before{
+  content:'';
+  position:absolute;
+  inset:-45% auto -45% -44%;
+  width:36%;
+  background:
+    radial-gradient(circle at 36% 24%, rgba(255,255,255,.96) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 58%, rgba(245,238,205,.82) 0 1.5px, transparent 3px),
+    linear-gradient(105deg,
+      transparent 0%,
+      rgba(255,255,255,.02) 24%,
+      rgba(255,255,255,.54) 43%,
+      rgba(245,238,205,.64) 50%,
+      rgba(255,255,255,.38) 57%,
+      rgba(255,255,255,.02) 76%,
+      transparent 100%);
+  filter:blur(.1px);
+  opacity:0;
+  transform:translateX(0) skewX(-16deg);
+  pointer-events:none;
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch:hover::before{
+  opacity:.82;
+  animation:adminToolsSparkleSweep .95s ease-out both;
+}
+
+@keyframes adminToolsSparkleSweep{
+  from{transform:translateX(0) skewX(-16deg)}
+  to{transform:translateX(400%) skewX(-16deg)}
 }
 
 .superadmin-cycle-card,
