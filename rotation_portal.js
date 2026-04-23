@@ -1034,6 +1034,9 @@ function renderCheckScreen(){
     : (getProfileClassNames()[0] || '반 미지정')
   const visibleClassEntries = getVisiblePortalPrepClassEntries()
   const checkChangeClassBtn = document.getElementById('check-change-class-btn')
+  const checkAdminActions = document.getElementById('check-admin-actions')
+  const checkAdminClassBtn = document.getElementById('check-admin-class-btn')
+  const checkAdminUploadBtn = document.getElementById('check-admin-upload-btn')
   const activeCount = checkSets.filter(function(entry){
     return entry.status === 'active' || entry.status === 'always'
   }).length
@@ -1044,7 +1047,13 @@ function renderCheckScreen(){
   document.getElementById('check-class-meta').textContent = ''
   if(checkChangeClassBtn){
     const canChangeClass = visibleClassEntries.length > 1 && !(typeof window.isPortalStudentLockedClass === 'function' && window.isPortalStudentLockedClass())
-    checkChangeClassBtn.classList.toggle('hidden', !canChangeClass)
+    checkChangeClassBtn.classList.add('hidden')
+    if(checkAdminActions){
+      checkAdminActions.classList.toggle('hidden', !isPortalAdmin())
+      checkAdminActions.setAttribute('aria-hidden', isPortalAdmin() ? 'false' : 'true')
+    }
+    if(checkAdminClassBtn) checkAdminClassBtn.classList.toggle('hidden', !canChangeClass)
+    if(checkAdminUploadBtn) checkAdminUploadBtn.classList.toggle('hidden', !isPortalAdmin() || !activeClassEntry)
   }
   document.getElementById('check-stats').innerHTML = [
     renderStat(checkSets.length, '세트'),
@@ -1068,20 +1077,36 @@ function renderCheckScreen(){
     const assignmentText = isPortalAdmin() ? buildCheckSetAssignmentMetaText(entry) : ''
     const metaBits = [entry.questions.length + '문항', getCheckSetListDateText(entry)]
     const statusLabel = entry.isAccessible ? '&rsaquo;' : (entry.status === 'ended' ? '종료' : '예정')
+    const managementActions = typeof window.buildPortalCheckSetCardActionsHtml === 'function'
+      ? window.buildPortalCheckSetCardActionsHtml(entry)
+      : ''
+    const inlineEditor = typeof window.buildPortalCheckSetInlineEditorHtml === 'function'
+      ? window.buildPortalCheckSetInlineEditorHtml(entry)
+      : ''
+    if(managementActions) itemClasses.push('has-admin-actions')
+    if(inlineEditor) itemClasses.push('is-editing-check-set')
     if(assignmentText) metaBits.push(assignmentText)
     return '' +
       '<div class="' + itemClasses.join(' ') + '"' + (entry.isAccessible ? ' onclick="openCheckSetPortal(\'' + escapeJs(entry.id) + '\')"' : '') + '>' +
-        '<div class="set-num">' + (index + 1) + '</div>' +
-        '<div class="set-body">' +
-          '<div class="set-title">' + escapeHtml(entry.title) + '</div>' +
-          '<div class="set-preview">' + escapeHtml(entry.description || '모든 답안을 작성한 뒤 한 번에 제출합니다.') + '</div>' +
-          '<div class="set-meta">' +
-            metaBits.map(function(bit){
-              return '<span class="set-badge">' + escapeHtml(bit) + '</span>'
-            }).join('') +
+        '<div class="set-item-main">' +
+          '<div class="set-num">' + (index + 1) + '</div>' +
+          '<div class="set-body">' +
+            '<div class="set-title">' + escapeHtml(entry.title) + '</div>' +
+            '<div class="set-preview">' + escapeHtml(entry.description || '모든 답안을 작성한 뒤 한 번에 제출합니다.') + '</div>' +
+            '<div class="set-meta">' +
+              metaBits.map(function(bit){
+                return '<span class="set-badge">' + escapeHtml(bit) + '</span>'
+              }).join('') +
+            '</div>' +
+          '</div>' +
+          '<div class="set-item-right">' +
+            (managementActions
+              ? '<div class="set-item-actions" onclick="event.stopPropagation()">' + managementActions + '</div>'
+              : '') +
+            '<div class="p-arrow">' + statusLabel + '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="p-arrow">' + statusLabel + '</div>' +
+        inlineEditor +
       '</div>'
   }).join('')
 }
