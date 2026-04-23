@@ -1037,9 +1037,6 @@ function renderCheckScreen(){
   const activeCount = checkSets.filter(function(entry){
     return entry.status === 'active' || entry.status === 'always'
   }).length
-  const upcomingCount = checkSets.filter(function(entry){
-    return entry.status === 'upcoming'
-  }).length
   const endedCount = checkSets.filter(function(entry){
     return entry.status === 'ended'
   }).length
@@ -1052,7 +1049,6 @@ function renderCheckScreen(){
   document.getElementById('check-stats').innerHTML = [
     renderStat(checkSets.length, '세트'),
     renderStat(activeCount, '진행 중'),
-    renderStat(upcomingCount, '예정'),
     renderStat(endedCount, '종료')
   ].join('')
 
@@ -1063,12 +1059,18 @@ function renderCheckScreen(){
   }
 
   list.innerHTML = checkSets.map(function(entry, index){
-    const disabledClass = entry.isAccessible ? '' : ' disabled'
+    const itemClasses = ['set-item', entry.status]
+    if(entry.isAccessible){
+      itemClasses.push('active')
+    }else{
+      itemClasses.push('disabled')
+    }
     const assignmentText = isPortalAdmin() ? buildCheckSetAssignmentMetaText(entry) : ''
-    const metaBits = [entry.questions.length + '문항', getCheckSetDateText(entry)]
+    const metaBits = [entry.questions.length + '문항', getCheckSetListDateText(entry)]
+    const statusLabel = entry.isAccessible ? '&rsaquo;' : (entry.status === 'ended' ? '종료' : '예정')
     if(assignmentText) metaBits.push(assignmentText)
     return '' +
-      '<div class="set-item' + disabledClass + '"' + (entry.isAccessible ? ' onclick="openCheckSetPortal(\'' + escapeJs(entry.id) + '\')"' : '') + '>' +
+      '<div class="' + itemClasses.join(' ') + '"' + (entry.isAccessible ? ' onclick="openCheckSetPortal(\'' + escapeJs(entry.id) + '\')"' : '') + '>' +
         '<div class="set-num">' + (index + 1) + '</div>' +
         '<div class="set-body">' +
           '<div class="set-title">' + escapeHtml(entry.title) + '</div>' +
@@ -1079,7 +1081,7 @@ function renderCheckScreen(){
             }).join('') +
           '</div>' +
         '</div>' +
-        '<div class="p-arrow">' + (entry.isAccessible ? '&rsaquo;' : '예정') + '</div>' +
+        '<div class="p-arrow">' + statusLabel + '</div>' +
       '</div>'
   }).join('')
 }
@@ -1125,6 +1127,20 @@ function getCheckSetDateText(entry){
   if(entry.availableFrom && entry.availableTo) return entry.availableFrom + ' ~ ' + entry.availableTo
   if(entry.availableFrom) return entry.availableFrom + '부터'
   if(entry.availableTo) return entry.availableTo + '까지'
+  return '상시 열림'
+}
+
+function formatShortCheckDate(value){
+  const raw = String(value || '').trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if(match) return match[1].slice(2) + '-' + match[2] + '-' + match[3]
+  return raw
+}
+
+function getCheckSetListDateText(entry){
+  if(entry.availableFrom && entry.availableTo) return formatShortCheckDate(entry.availableFrom) + ' ~ ' + formatShortCheckDate(entry.availableTo)
+  if(entry.availableFrom) return formatShortCheckDate(entry.availableFrom) + '부터'
+  if(entry.availableTo) return formatShortCheckDate(entry.availableTo) + '까지'
   return '상시 열림'
 }
 
@@ -1500,13 +1516,10 @@ function renderSubmittedCheckAnswer(question, selectedAnswer){
 }
 
 function renderCheckResultBody(question, submittedAnswer){
-  if(normalizeCheckQuestionType(question.type) === '주관식'){
-    const userState = submittedAnswer ? String(submittedAnswer.userAnswer || '').trim() : ''
-    return '자기 점검: ' + escapeHtml(userState || '미선택') +
-      (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
-  }
-
-  return '정답: ' + escapeHtml(question.answer || '등록된 정답 없음') +
+  const answerText = normalizeCheckQuestionType(question.type) === '객관식'
+    ? formatChoiceAnswer(question.answer)
+    : String(question.answer || '').trim()
+  return '정답: ' + escapeHtml(answerText || '등록된 정답 없음') +
     (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
 }
 
@@ -1561,13 +1574,10 @@ function renderSubmittedCheckAnswer(question, selectedAnswer){
 }
 
 function renderCheckResultBody(question, submittedAnswer){
-  if(normalizeCheckQuestionType(question.type) === '주관식'){
-    const userState = submittedAnswer ? String(submittedAnswer.userAnswer || '').trim() : ''
-    return '자기 점검: ' + escapeHtml(userState || '미선택') +
-      (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
-  }
-
-  return '정답: ' + escapeHtml(formatChoiceAnswer(question.answer) || '등록된 정답 없음') +
+  const answerText = normalizeCheckQuestionType(question.type) === '객관식'
+    ? formatChoiceAnswer(question.answer)
+    : String(question.answer || '').trim()
+  return '정답: ' + escapeHtml(answerText || '등록된 정답 없음') +
     (question.explanation ? '<br><br>해설: ' + escapeHtml(question.explanation).replace(/\n/g, '<br>') : '')
 }
 
