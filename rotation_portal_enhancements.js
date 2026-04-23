@@ -218,6 +218,8 @@ portalState.checkSetEditor = portalState.checkSetEditor || {
   savingScope: '',
   docId: '',
   title: '',
+  startDate: '',
+  endDate: '',
   currentDoc: null,
   questions: [],
   initialDigest: ''
@@ -405,6 +407,7 @@ function bindPortalEnhancementEvents(){
   bindClick('prep-admin-upload-btn', createPortalPrepVideoByPrompt)
   bindClick('prep-passage-admin-upload-btn', createPortalPrepVideoByPrompt)
   bindClick('prep-passage-admin-class-btn', openPrepClassPicker)
+  bindClick('check-admin-class-btn', openCheckClassPicker)
   bindClick('check-admin-upload-btn', function(){
     const input = document.getElementById('check-set-upload-input')
     if(input) input.click()
@@ -488,6 +491,18 @@ function bindPortalEnhancementEvents(){
     checkSetEditorList.dataset.bound = 'true'
     checkSetEditorList.addEventListener('input', handlePortalManagedCheckSetEditorFieldChange)
     checkSetEditorList.addEventListener('change', handlePortalManagedCheckSetEditorFieldChange)
+  }
+  const checkAdminSetList = document.getElementById('check-admin-set-list')
+  if(checkAdminSetList && checkAdminSetList.dataset.inlineEditorBound !== 'true'){
+    checkAdminSetList.dataset.inlineEditorBound = 'true'
+    checkAdminSetList.addEventListener('input', handlePortalManagedCheckSetEditorFieldChange)
+    checkAdminSetList.addEventListener('change', handlePortalManagedCheckSetEditorFieldChange)
+  }
+  const checkSetList = document.getElementById('check-set-list')
+  if(checkSetList && checkSetList.dataset.inlineEditorBound !== 'true'){
+    checkSetList.dataset.inlineEditorBound = 'true'
+    checkSetList.addEventListener('input', handlePortalManagedCheckSetEditorFieldChange)
+    checkSetList.addEventListener('change', handlePortalManagedCheckSetEditorFieldChange)
   }
   ensurePortalManagedCheckSetEditorGroupSaveButton()
   bindClick('check-set-editor-save-group-btn', savePortalManagedCheckSetEditorForSourceGroup)
@@ -5723,9 +5738,23 @@ async function loadPortalCheckDataFromSources(){
     prepClassEntries,
     portalState.checkData && portalState.checkData.classes ? portalState.checkData.classes : []
   )
-  const legacySets = legacyData ? legacyData.checkSets.slice() : []
+  const legacySets = legacyData ? legacyData.checkSets.slice().map(function(checkSet){
+    return Object.assign({}, checkSet, {
+      docId: '',
+      isManaged: false,
+      updatedAt: '',
+      fileName: ''
+    })
+  }) : []
   const uploadedSets = setDocs.map(function(doc){
-    return normalizeStoredCheckSet(doc.payload)
+    const checkSet = normalizeStoredCheckSet(doc.payload)
+    if(!checkSet) return null
+    return Object.assign({}, checkSet, {
+      docId: doc.docId,
+      isManaged: true,
+      updatedAt: doc.updatedAt,
+      fileName: doc.fileName
+    })
   }).filter(Boolean)
 
   portalState.checkSetInventory = buildPortalCheckSetInventory(legacySets, setDocs)
@@ -7347,6 +7376,9 @@ function buildPortalManagedCheckSetEditorSavePayload(editor){
   applyPortalManagedCheckSetEditorDraftsToPayload(nextPayload, draftMap)
   nextPayload.id = String(nextPayload.id || editor && editor.docId || '').trim()
   nextPayload.title = String(nextPayload.title || editor && editor.title || 'CHECK ?명듃').trim()
+  nextPayload.title = String(editor && editor.title || nextPayload.title || 'CHECK 세트').trim()
+  nextPayload.availableFrom = String(editor && editor.startDate || '').trim()
+  nextPayload.availableTo = String(editor && editor.endDate || '').trim()
   if(!Array.isArray(nextPayload.classIds) || !nextPayload.classIds.length){
     nextPayload.classIds = Array.isArray(editor && editor.currentDoc && editor.currentDoc.classIds)
       ? editor.currentDoc.classIds.slice()
@@ -7405,10 +7437,22 @@ function serializePortalManagedCheckSetEditorQuestions(questions){
   }))
 }
 
+function serializePortalManagedCheckSetEditorState(editor){
+  const currentEditor = editor || {}
+  return JSON.stringify({
+    title: String(currentEditor.title || '').trim(),
+    startDate: String(currentEditor.startDate || '').trim(),
+    endDate: String(currentEditor.endDate || '').trim(),
+    questions: (Array.isArray(currentEditor.questions) ? currentEditor.questions : []).map(function(question){
+      return serializePortalManagedCheckSetEditorQuestion(question)
+    })
+  })
+}
+
 function hasPortalManagedCheckSetEditorChanges(){
   const editor = portalState.checkSetEditor || {}
   if(!editor.open) return false
-  return serializePortalManagedCheckSetEditorQuestions(editor.questions) !== String(editor.initialDigest || '')
+  return serializePortalManagedCheckSetEditorState(editor) !== String(editor.initialDigest || '')
 }
 
 function getPortalManagedCheckSetEditorQuestionAnswer(question){
@@ -7443,7 +7487,6 @@ function buildPortalManagedCheckSetEditorItemHtml(question){
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="check-set-editor-prompt">' + escapeHtml(promptText).replace(/\n/g, '<br>') + '</div>' +
       '<div class="check-set-editor-grid">' +
         '<label class="check-set-editor-field">' +
           '<span class="check-set-editor-label">' + (isChoice ? '정답 번호' : '정답') + '</span>' +
@@ -7453,10 +7496,49 @@ function buildPortalManagedCheckSetEditorItemHtml(question){
         '<label class="check-set-editor-field">' +
           '<span class="check-set-editor-label">해설</span>' +
           '<textarea data-editor-field="explanation" data-question-id="' + escapeHtml(questionId) + '" placeholder="학생에게 보여줄 해설을 입력해 주세요.">' + escapeHtml(String(question && question.explanation || '')) + '</textarea>' +
-          '<span class="check-set-editor-help">학생이 제출 후 확인하는 정답과 해설 영역에 그대로 노출됩니다.</span>' +
         '</label>' +
       '</div>' +
     '</section>'
+}
+
+function buildPortalManagedCheckSetInlineEditorHtml(){
+  const editor = portalState.checkSetEditor || {}
+  const titleValue = String(editor.title || '').trim()
+  const startDate = String(editor.startDate || '').trim()
+  const endDate = String(editor.endDate || '').trim()
+  const questions = Array.isArray(editor.questions) ? editor.questions : []
+  return '' +
+    '<div class="check-inline-set-editor" id="check-set-editor-inline" onclick="event.stopPropagation()">' +
+      '<div class="check-inline-set-editor-section">' +
+        '<label class="check-set-editor-field check-inline-name-field">' +
+          '<span class="check-set-editor-label">이름</span>' +
+          '<input class="check-set-editor-input" type="text" data-editor-field="title" value="' + escapeHtml(titleValue) + '" placeholder="CHECK 세트 이름">' +
+        '</label>' +
+      '</div>' +
+      '<div class="check-inline-set-editor-section">' +
+        '<div class="check-inline-section-title">기간</div>' +
+        '<div class="check-inline-date-grid">' +
+          '<label class="check-set-editor-field">' +
+            '<span class="check-set-editor-label">시작일</span>' +
+            '<input class="check-set-editor-input" type="date" data-editor-field="startDate" value="' + escapeHtml(startDate) + '">' +
+            '<span class="check-set-editor-help">비우면 시작 제한 없이 열립니다.</span>' +
+          '</label>' +
+          '<label class="check-set-editor-field">' +
+            '<span class="check-set-editor-label">종료일</span>' +
+            '<input class="check-set-editor-input" type="date" data-editor-field="endDate" value="' + escapeHtml(endDate) + '">' +
+            '<span class="check-set-editor-help">비우면 종료 제한 없이 열립니다.</span>' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+      '<div class="check-inline-set-editor-section">' +
+        '<div class="check-inline-section-title check-inline-question-title">문항<span class="check-inline-set-editor-count">' + escapeHtml(String(questions.length)) + '문항</span></div>' +
+        '<div class="check-inline-question-list">' +
+          (questions.length
+            ? questions.map(function(question){ return buildPortalManagedCheckSetEditorItemHtml(question) }).join('')
+            : '<div class="admin-content-item-empty">수정할 문항이 없습니다.</div>') +
+        '</div>' +
+      '</div>' +
+    '</div>'
 }
 
 function syncPortalManagedCheckSetEditorControls(){
@@ -7538,10 +7620,21 @@ function handlePortalManagedCheckSetEditorFieldChange(event){
   if(!target || !target.dataset) return
   const field = String(target.dataset.editorField || '').trim()
   const questionId = String(target.dataset.questionId || '').trim()
-  if(!field || !questionId) return
+  if(!field) return
 
   const editor = portalState.checkSetEditor || {}
   if(!editor.open || editor.isSaving) return
+  if(field === 'title'){
+    editor.title = String(target.value || '').trim()
+    syncPortalManagedCheckSetEditorControls()
+    return
+  }
+  if(field === 'startDate' || field === 'endDate'){
+    editor[field] = String(target.value || '').trim()
+    syncPortalManagedCheckSetEditorControls()
+    return
+  }
+  if(!questionId) return
   const targetQuestion = (Array.isArray(editor.questions) ? editor.questions : []).find(function(question){
     return String(question && question.id || '').trim() === questionId
   })
@@ -8638,6 +8731,328 @@ async function removePortalManagedSet(kind, docId){
 
 window.renamePortalManagedSet = renamePortalManagedSet
 window.changePortalManagedSetDates = changePortalManagedSetDates
+function buildPortalManagedSetItemHtml(kind, record){
+  const isManaged = !!(record && record.isManaged)
+  const isCheck = kind === 'check'
+  const isPrep = kind === 'prep'
+  const isRegrading = isCheck && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
+  const editorOpen = isCheck &&
+    isManaged &&
+    portalState.checkSetEditor &&
+    portalState.checkSetEditor.open &&
+    String(portalState.checkSetEditor.docId || '').trim() === String(record && record.docId || '').trim()
+  const prepChip = isPrep
+    ? '<span class="admin-content-chip ' + (isManaged ? 'live' : 'legacy') + '">' + escapeHtml(isManaged ? (record.isDirectVideo ? '영상 업로드' : '직접 업로드') : '기존 마스터') + '</span>'
+    : ''
+  const checkEditButton = isCheck && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(record.docId) + '\')">' + (editorOpen ? '수정 중' : '세트 수정') + '</button>'
+    : ''
+  const prepVideoButton = isPrep && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoManager(\'' + escapeJs(record.docId) + '\')">' + (record.isDirectVideo ? '링크 수정' : '영상 관리') + '</button>'
+    : ''
+  const prepProgressButton = isPrep && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoProgressModal(\'' + escapeJs(record.docId) + '\')">시청 현황</button>'
+    : ''
+  const regradeButton = isCheck && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
+    : ''
+  const renameButton = isPrep && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
+    : ''
+  const dateButton = isPrep && isManaged
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.changePortalManagedSetDates(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">기간 변경</button>'
+    : ''
+  const deleteButton = isManaged
+    ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">삭제</button>'
+    : (isPrep && record && !record.isManaged && record.legacyIndex != null
+      ? '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalLegacyPrepSet(' + Number(record.legacyIndex) + ')">삭제</button>'
+      : '')
+  const inlineEditor = editorOpen ? buildPortalManagedCheckSetInlineEditorHtml() : ''
+
+  return '' +
+    '<div class="admin-content-item' + (editorOpen ? ' is-editing-check-set' : '') + '">' +
+      '<div class="admin-content-item-main">' +
+        '<div class="admin-content-item-body">' +
+          '<div class="admin-content-item-title">' + escapeHtml(record && record.title || '') + '</div>' +
+          '<div class="admin-content-item-meta">' + escapeHtml(buildPortalManagedSetMetaText(kind, record)) + '</div>' +
+        '</div>' +
+        '<div class="admin-content-item-actions">' +
+          prepChip +
+          checkEditButton +
+          prepVideoButton +
+          prepProgressButton +
+          regradeButton +
+          renameButton +
+          dateButton +
+          deleteButton +
+        '</div>' +
+      '</div>' +
+      inlineEditor +
+    '</div>'
+}
+
+function renderCheckAdminSetPanel(activeScreenId){
+  const panel = document.getElementById('check-admin-set-panel')
+  const list = document.getElementById('check-admin-set-list')
+  const countNode = document.getElementById('check-admin-set-count')
+  const hintNode = document.getElementById('check-admin-set-hint')
+  if(!panel || !list || !countNode || !hintNode) return
+
+  const shouldShow = isPortalAdmin() && activeScreenId === 'check-screen'
+  panel.classList.toggle('hidden', !shouldShow)
+  if(!shouldShow) return
+
+  const activeEntry = typeof getActivePortalCheckClass === 'function' ? getActivePortalCheckClass() : null
+  const classInfo = activeEntry && activeEntry.classInfo ? activeEntry.classInfo : null
+  const records = getVisiblePortalManagedSetRecords('check', classInfo && classInfo.id)
+  countNode.textContent = String(records.length)
+  hintNode.textContent = classInfo
+    ? (classInfo.name + ' 반 CHECK 세트입니다. 세트 수정에서 이름, 기간, 문항을 한 박스 안에서 관리합니다.')
+    : '먼저 반을 선택하면 CHECK 세트를 확인할 수 있습니다.'
+
+  list.innerHTML = records.length
+    ? records.map(function(record){
+        return buildPortalManagedSetItemHtml('check', record)
+      }).join('')
+    : '<div class="admin-content-item-empty">이 반에 연결된 CHECK 세트가 아직 없습니다.</div>'
+  syncPortalManagedCheckSetEditorControls()
+}
+
+function syncPortalManagedCheckSetEditorControls(){
+  const editor = portalState.checkSetEditor || {}
+  const saveButton = document.getElementById('check-set-editor-save-btn')
+  const cancelButton = document.getElementById('check-set-editor-cancel-btn')
+  const statusNode = document.getElementById('check-set-editor-status')
+  if(!saveButton || !cancelButton || !statusNode) return
+
+  const hasQuestions = Array.isArray(editor.questions) && editor.questions.length > 0
+  const hasChanges = hasPortalManagedCheckSetEditorChanges()
+  const hasTitle = !!String(editor.title || '').trim()
+  const startDate = String(editor.startDate || '').trim()
+  const endDate = String(editor.endDate || '').trim()
+  const hasDateError = !!(startDate && endDate && startDate > endDate)
+  saveButton.disabled = !editor.open || editor.isSaving || !hasQuestions || !hasChanges || !hasTitle || hasDateError
+  cancelButton.disabled = !!editor.isSaving
+  saveButton.textContent = editor.isSaving ? '저장 중...' : '저장'
+  statusNode.textContent = editor.isSaving
+    ? '세트 수정 내용을 저장하고 있습니다.'
+    : (!hasTitle
+        ? '세트 이름을 입력해 주세요.'
+        : (hasDateError
+            ? '종료일은 시작일보다 빠를 수 없습니다.'
+            : (!hasQuestions
+                ? '수정할 문항이 없습니다.'
+                : (hasChanges ? '변경 사항이 있습니다.' : '변경 없음'))))
+}
+
+function renderPortalManagedCheckSetEditor(){
+  const modal = document.getElementById('check-set-editor-modal')
+  const titleNode = document.getElementById('check-set-editor-title')
+  const metaNode = document.getElementById('check-set-editor-meta')
+  const listNode = document.getElementById('check-set-editor-list')
+  const editor = portalState.checkSetEditor || {}
+  if(!modal || !titleNode || !metaNode || !listNode){
+    if(getCurrentActiveScreenId() === 'check-screen' && typeof renderCheckScreen === 'function') renderCheckScreen()
+    return
+  }
+
+  if(!editor.open){
+    modal.classList.add('hidden')
+    modal.setAttribute('aria-hidden', 'true')
+    document.body.classList.remove('modal-open')
+    listNode.innerHTML = ''
+    if(getCurrentActiveScreenId() === 'check-screen' && typeof renderCheckScreen === 'function') renderCheckScreen()
+    return
+  }
+
+  if(getCurrentActiveScreenId() === 'check-screen' && typeof renderCheckScreen === 'function') renderCheckScreen()
+  titleNode.textContent = editor.title || 'CHECK 세트 수정'
+  metaNode.textContent = ''
+  listNode.innerHTML = buildPortalManagedCheckSetInlineEditorHtml()
+  modal.classList.remove('hidden')
+  modal.setAttribute('aria-hidden', 'false')
+  document.body.classList.add('modal-open')
+  syncPortalManagedCheckSetEditorControls()
+}
+
+function closePortalManagedCheckSetEditor(options){
+  const settings = options || {}
+  const editor = portalState.checkSetEditor || {}
+  if(!editor.open) return true
+  if(editor.isSaving && !settings.force) return false
+  if(!settings.force && hasPortalManagedCheckSetEditorChanges()){
+    if(typeof window.confirm === 'function' && !window.confirm('저장하지 않은 변경이 있습니다. 닫을까요?')) return false
+  }
+  portalState.checkSetEditor = {
+    open: false,
+    isSaving: false,
+    savingScope: '',
+    docId: '',
+    title: '',
+    startDate: '',
+    endDate: '',
+    currentDoc: null,
+    questions: [],
+    initialDigest: ''
+  }
+  renderPortalManagedCheckSetEditor()
+  return true
+}
+
+async function openPortalManagedCheckSetEditor(docId){
+  if(!isPortalAdmin()){
+    showToast('관리자만 CHECK 세트를 수정할 수 있습니다.', 'var(--red)')
+    return
+  }
+
+  const targetId = String(docId || '').trim()
+  if(!targetId) return
+  if(portalState.checkSetEditor && portalState.checkSetEditor.open){
+    const currentId = String(portalState.checkSetEditor.docId || '').trim()
+    if(currentId === targetId) return
+    if(!closePortalManagedCheckSetEditor()) return
+  }
+
+  try{
+    const currentDoc = await getCloudSetDoc('check', targetId)
+    if(!currentDoc || !currentDoc.payload){
+      showToast('수정할 CHECK 세트를 찾지 못했습니다.', 'var(--red)')
+      return
+    }
+
+    const questions = buildPortalManagedCheckSetEditorQuestions(currentDoc.payload.questions)
+    if(!questions.length){
+      showToast('이 세트에는 수정할 문항이 없습니다.', 'var(--red)')
+      return
+    }
+
+    const nextEditor = {
+      open: true,
+      isSaving: false,
+      savingScope: '',
+      docId: String(currentDoc.docId || '').trim(),
+      title: String(currentDoc.title || currentDoc.payload.title || 'CHECK 세트').trim(),
+      startDate: String(currentDoc.payload.availableFrom || '').trim(),
+      endDate: String(currentDoc.payload.availableTo || '').trim(),
+      currentDoc: clonePlainData(currentDoc),
+      questions: questions,
+      initialDigest: ''
+    }
+    nextEditor.initialDigest = serializePortalManagedCheckSetEditorState(nextEditor)
+    portalState.checkSetEditor = nextEditor
+    renderPortalManagedCheckSetEditor()
+  }catch(error){
+    console.error(error)
+    showToast('CHECK 세트를 불러오는 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+async function savePortalManagedCheckSetEditor(){
+  const editor = portalState.checkSetEditor || {}
+  if(!editor.open || editor.isSaving) return
+  if(!editor.currentDoc || !editor.docId){
+    showToast('저장할 세트 정보를 찾지 못했습니다.', 'var(--red)')
+    return
+  }
+
+  const title = String(editor.title || '').trim()
+  if(!title){
+    showToast('세트 이름을 입력해 주세요.', 'var(--red)')
+    return
+  }
+  const startDate = String(editor.startDate || '').trim()
+  const endDate = String(editor.endDate || '').trim()
+  if(startDate && endDate && startDate > endDate){
+    showToast('종료일은 시작일보다 빠를 수 없습니다.', 'var(--red)')
+    return
+  }
+
+  const invalidQuestion = (Array.isArray(editor.questions) ? editor.questions : []).find(function(question){
+    return !getPortalManagedCheckSetEditorQuestionAnswer(question)
+  }) || null
+  if(invalidQuestion){
+    showToast(String(invalidQuestion.number || '') + '번 문항 정답을 확인해 주세요.', 'var(--red)')
+    return
+  }
+  if(!hasPortalManagedCheckSetEditorChanges()){
+    showToast('변경된 내용이 없습니다.', 'var(--blue)')
+    return
+  }
+
+  editor.isSaving = true
+  syncPortalManagedCheckSetEditorControls()
+
+  try{
+    const nextPayload = buildPortalManagedCheckSetEditorSavePayload(editor)
+    await saveCloudSetDoc('check', editor.docId, Object.assign({}, editor.currentDoc, {
+      title: title,
+      payload: nextPayload
+    }))
+
+    await ensureCheckData(true)
+    const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
+    if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId === editor.docId){
+      await openCheckSetPortal(editor.docId, { preserveHistory: true })
+    }else{
+      renderCheckScreen()
+    }
+    editor.isSaving = false
+    closePortalManagedCheckSetEditor({ force: true })
+    syncPortalAdminSetPanels('check-screen')
+    showToast('CHECK 세트를 저장했습니다.', 'var(--green)')
+  }catch(error){
+    console.error(error)
+    editor.isSaving = false
+    syncPortalManagedCheckSetEditorControls()
+    showToast('CHECK 세트 저장 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+function resolvePortalManagedCheckSetRecord(entry){
+  if(entry && entry.isManaged && String(entry.docId || '').trim()) return entry
+  const title = String(entry && entry.title || '').trim()
+  const questionCount = Number(Array.isArray(entry && entry.questions) ? entry.questions.length : entry && entry.questionCount || 0)
+  const startDate = String(entry && (entry.availableFrom || entry.startDate) || '').trim()
+  const endDate = String(entry && (entry.availableTo || entry.endDate) || '').trim()
+  const classIds = Array.isArray(entry && entry.classIds)
+    ? entry.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+    : []
+  return (Array.isArray(portalState.checkSetInventory) ? portalState.checkSetInventory : []).find(function(record){
+    if(!record || !record.isManaged || !String(record.docId || '').trim()) return false
+    if(title && String(record.title || '').trim() !== title) return false
+    if(questionCount && Number(record.questionCount || 0) !== questionCount) return false
+    if(startDate !== String(record.startDate || '').trim()) return false
+    if(endDate !== String(record.endDate || '').trim()) return false
+    if(classIds.length){
+      const recordClassIds = Array.isArray(record.classIds)
+        ? record.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+        : []
+      return classIds.some(function(classId){ return recordClassIds.indexOf(classId) >= 0 })
+    }
+    return true
+  }) || null
+}
+
+function buildPortalCheckSetCardActionsHtml(entry){
+  if(!isPortalAdmin()) return ''
+  const record = resolvePortalManagedCheckSetRecord(entry)
+  const docId = String(record && record.docId || '').trim()
+  if(!docId) return ''
+  const isRegrading = String(portalState.checkSetRegradeDocId || '').trim() === docId
+  const editorOpen = portalState.checkSetEditor &&
+    portalState.checkSetEditor.open &&
+    String(portalState.checkSetEditor.docId || '').trim() === docId
+  return [
+    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(docId) + '\')">' + (editorOpen ? '수정 중' : '세트 수정') + '</button>',
+    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>',
+    '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalManagedSet(\'check\', \'' + escapeJs(docId) + '\')">삭제</button>'
+  ].join('')
+}
+
+function buildPortalCheckSetInlineEditorHtml(entry){
+  return ''
+}
+
 window.removePortalManagedSet = removePortalManagedSet
 window.removePortalLegacyPrepSet = removePortalLegacyPrepSet
 window.removePortalPrepPassageVideoFromSet = removePortalPrepPassageVideoFromSet
@@ -8650,6 +9065,10 @@ window.openPortalPrepVideoProgressModal = openPortalPrepVideoProgressModal
 window.closePortalPrepVideoProgressModal = closePortalPrepVideoProgressModal
 window.savePortalPrepVideoProgress = savePortalPrepVideoProgress
 window.openPortalManagedCheckSetEditor = openPortalManagedCheckSetEditor
+window.closePortalManagedCheckSetEditor = closePortalManagedCheckSetEditor
+window.savePortalManagedCheckSetEditor = savePortalManagedCheckSetEditor
+window.buildPortalCheckSetCardActionsHtml = buildPortalCheckSetCardActionsHtml
+window.buildPortalCheckSetInlineEditorHtml = buildPortalCheckSetInlineEditorHtml
 window.regradePortalManagedCheckSet = regradePortalManagedCheckSet
 
 async function getFirebaseUserProfileSnapshot(uid){

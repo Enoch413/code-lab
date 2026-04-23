@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260423-check-open-prep-card-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260423-check-editor-question-count-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -516,19 +516,11 @@
     <button class="btn btn-ghost btn-sm hidden" type="button" id="check-change-class-btn">반 변경</button>
   </div>
 
-  <section class="group admin-content-panel hidden" id="check-admin-set-panel">
-    <div class="group-title">
-      <h3>CHECK 세트 관리</h3>
-      <span class="group-count" id="check-admin-set-count">0</span>
-    </div>
-    <div class="admin-content-toolbar">
-      <div class="admin-content-copy" id="check-admin-set-hint">현재 반에 올린 CHECK 세트가 여기에 쌓입니다.</div>
-      <button class="btn btn-ghost btn-sm" type="button" id="check-admin-upload-btn">세트 업로드</button>
-    </div>
-    <div class="admin-content-list" id="check-admin-set-list"></div>
-  </section>
-
   <div class="stats" id="check-stats"></div>
+  <div class="prep-passage-admin-quick-actions hidden" id="check-admin-actions" aria-hidden="true">
+    <button class="btn btn-sm" type="button" id="check-admin-class-btn">반 변경</button>
+    <button class="btn btn-sm" type="button" id="check-admin-upload-btn">세트 업로드</button>
+  </div>
   <div class="label">CHECK 세트 선택</div>
   <div class="set-list" id="check-set-list"></div>
 </div>
@@ -806,22 +798,17 @@
     <div class="check-set-editor-head">
       <div class="check-set-editor-copy">
         <div class="check-set-editor-kicker">CHECK SET EDITOR</div>
-        <h2 class="check-set-editor-title" id="check-set-editor-title">CHECK 세트 문항 수정</h2>
+        <h2 class="check-set-editor-title" id="check-set-editor-title">CHECK 세트 수정</h2>
         <p class="check-set-editor-meta" id="check-set-editor-meta"></p>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" id="check-set-editor-close-btn">닫기</button>
-    </div>
-    <div class="check-set-editor-note" id="check-set-editor-note">
-      저장하면 이후 제출부터 수정된 정답과 해설이 사용됩니다. 이미 제출한 학생 결과는 자동으로 바뀌지 않습니다.
-    </div>
-    <div class="check-set-editor-list" id="check-set-editor-list"></div>
-    <div class="check-set-editor-foot">
-      <div class="check-set-editor-status" id="check-set-editor-status">변경 없음</div>
-      <div class="check-set-editor-actions">
+      <div class="check-set-editor-top-actions">
+        <span class="check-set-editor-status" id="check-set-editor-status">변경 없음</span>
         <button class="btn btn-ghost btn-sm" type="button" id="check-set-editor-cancel-btn">취소</button>
         <button class="btn btn-blue btn-sm" type="button" id="check-set-editor-save-btn">저장</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="check-set-editor-close-btn">닫기</button>
       </div>
     </div>
+    <div class="check-set-editor-list" id="check-set-editor-list"></div>
   </div>
 </div>
 <footer class="prep-footer global">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
@@ -834,7 +821,7 @@
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260423-prep-modal-cleanup-01"></script>
-<script src="./rotation_portal.js?v=20260423-check-open-prep-card-01"></script>
-<script src="./rotation_portal_enhancements.js?v=20260423-prep-modal-cleanup-01"></script>
+<script src="./rotation_portal.js?v=20260423-check-modal-set-editor-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260423-check-editor-question-count-01"></script>
 </body>
 </html>

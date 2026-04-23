@@ -6922,3 +6922,405 @@ body::before{
   box-shadow:0 12px 30px rgba(39,50,46,.045) !important;
   filter:saturate(.74) !important;
 }
+
+/* CHECK set admin now edits inline: name -> period -> questions. */
+.admin-content-item-main{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex:1;
+  min-width:0;
+  width:100%;
+}
+
+#check-admin-set-panel .admin-content-toolbar{
+  margin-bottom:16px;
+}
+
+#check-admin-set-panel .admin-content-item{
+  display:block;
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(24,64,58,.10);
+  border-radius:24px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(246,241,229,.82)),
+    radial-gradient(circle at top right, rgba(183,121,50,.12), transparent 36%);
+  box-shadow:0 18px 46px rgba(39,50,46,.08);
+}
+
+#check-admin-set-panel .admin-content-item-main{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding:16px 18px;
+}
+
+#check-admin-set-panel .admin-content-item.is-editing-check-set{
+  border-color:rgba(15,93,81,.22);
+  box-shadow:0 24px 62px rgba(15,93,81,.13);
+}
+
+.check-inline-set-editor{
+  display:grid;
+  gap:16px;
+  padding:18px;
+  border-top:1px solid rgba(24,64,58,.10);
+  background:
+    linear-gradient(180deg, rgba(255,252,244,.82), rgba(239,246,242,.72));
+}
+
+.check-inline-set-editor-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.check-inline-set-editor-kicker{
+  color:#0f5d51;
+  font-size:.74rem;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+
+.check-inline-set-editor-title{
+  margin-top:4px;
+  color:#132621;
+  font-size:1rem;
+  font-weight:900;
+  letter-spacing:-.03em;
+}
+
+.check-inline-set-editor-count{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(15,93,81,.14);
+  background:rgba(15,93,81,.08);
+  color:#0f5d51;
+  font-size:.7rem;
+  font-weight:900;
+}
+
+.check-inline-set-editor-note,
+.check-inline-section-title{
+  color:#5f716a;
+  font-size:.78rem;
+  font-weight:800;
+  line-height:1.7;
+}
+
+.check-inline-section-title{
+  margin-bottom:8px;
+  color:#132621;
+  letter-spacing:.08em;
+}
+
+.check-inline-question-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.check-inline-date-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.check-inline-question-list{
+  display:grid;
+  gap:12px;
+}
+
+.check-inline-set-editor .check-set-editor-item{
+  border-color:rgba(24,64,58,.10);
+  background:rgba(255,255,255,.72);
+  box-shadow:none;
+}
+
+.check-inline-set-editor .check-set-editor-foot{
+  margin-top:2px;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+
+.check-inline-set-editor #check-set-editor-save-btn{
+  border:0;
+  background:linear-gradient(135deg,#0f5d51,#147464);
+  color:#fff;
+  box-shadow:0 14px 28px rgba(15,93,81,.16);
+}
+
+@media (max-width:720px){
+  #check-admin-set-panel .admin-content-item-main{
+    flex-direction:column;
+  }
+
+  #check-admin-set-panel .admin-content-item-actions{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .check-inline-date-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+/* CHECK management lives on the real set cards, matching PREP's direct-card controls. */
+#check-screen #check-admin-set-panel{
+  display:none !important;
+}
+
+#check-screen #check-admin-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin:14px 0 16px;
+}
+
+#check-screen #check-admin-actions.hidden{
+  display:none !important;
+}
+
+#check-screen #check-admin-actions .btn{
+  min-height:48px;
+  border:0;
+  border-radius:18px;
+  background:linear-gradient(135deg, #0f5d51, #147464);
+  color:#fff;
+  font-weight:900;
+  box-shadow:0 16px 34px rgba(15,93,81,.16);
+}
+
+#check-screen #check-set-list .set-item{
+  display:block;
+}
+
+#check-screen #check-set-list .set-item-main{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  width:100%;
+}
+
+#check-screen #check-set-list .set-item-right{
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px;
+  margin-left:auto;
+}
+
+#check-screen #check-set-list .set-item.has-admin-actions .set-item-right{
+  display:grid;
+  grid-template-columns:minmax(270px,max-content) 58px;
+  min-width:340px;
+}
+
+#check-screen #check-set-list .set-item-actions{
+  display:flex;
+  min-width:270px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-direction:row;
+  gap:8px;
+}
+
+#check-screen #check-set-list .set-item-right .p-arrow{
+  min-width:58px;
+  text-align:right;
+}
+
+#check-screen #check-set-list .set-item-actions .btn{
+  min-height:34px;
+  padding:7px 12px;
+  border-radius:999px;
+  font-size:.72rem;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+#check-screen #check-set-list .set-item.is-editing-check-set{
+  border-color:rgba(15,93,81,.22) !important;
+  box-shadow:0 24px 62px rgba(15,93,81,.13) !important;
+}
+
+#check-screen #check-set-list .check-inline-set-editor{
+  margin:16px -2px -2px;
+  border-top:1px solid rgba(24,64,58,.10);
+  border-radius:0 0 22px 22px;
+}
+
+#check-set-editor-modal .check-inline-set-editor{
+  margin:0;
+  border:0;
+  border-radius:24px;
+}
+
+#check-set-editor-modal .check-set-editor-list{
+  padding-right:4px;
+}
+
+#check-set-editor-modal .check-inline-set-editor-head{
+  justify-content:flex-end;
+}
+
+#check-set-editor-modal #check-set-editor-meta{
+  display:none !important;
+}
+
+#check-set-editor-modal .check-set-editor-top-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  margin-left:auto;
+  flex-wrap:wrap;
+}
+
+#check-set-editor-modal .check-set-editor-top-actions .check-set-editor-status{
+  min-height:0;
+  margin-right:4px;
+  color:#6f7f77;
+  font-size:.74rem;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+#check-set-editor-modal #check-set-editor-save-btn{
+  border:0;
+  background:linear-gradient(135deg,#0f5d51,#147464);
+  color:#fff;
+  box-shadow:0 12px 24px rgba(15,93,81,.15);
+}
+
+#check-set-editor-modal .check-set-editor-item .check-set-editor-grid{
+  grid-template-columns:minmax(0,1fr);
+}
+
+#check-set-editor-modal .check-set-editor-item .check-set-editor-field{
+  grid-template-columns:220px 160px minmax(0,1fr);
+  align-items:start;
+  column-gap:12px;
+}
+
+#check-set-editor-modal .check-set-editor-item .check-set-editor-label{
+  grid-column:1;
+  padding-top:12px;
+}
+
+#check-set-editor-modal .check-set-editor-item .check-set-editor-input,
+#check-set-editor-modal .check-set-editor-item .check-set-editor-select{
+  grid-column:2;
+  width:160px;
+  min-width:0;
+  max-width:160px;
+}
+
+#check-set-editor-modal .check-set-editor-item .check-set-editor-help{
+  grid-column:3;
+  align-self:center;
+  max-width:none;
+  padding-top:0;
+  white-space:nowrap;
+}
+
+#check-set-editor-modal .check-set-editor-item textarea{
+  grid-column:2 / 4;
+  width:100%;
+}
+
+#check-set-editor-modal .check-set-editor-item-head > div{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+#check-set-editor-modal .check-set-editor-item-meta{
+  margin-top:0;
+}
+
+@media (max-width:720px){
+  #check-set-editor-modal .check-set-editor-head{
+    align-items:flex-start;
+  }
+
+  #check-set-editor-modal .check-set-editor-top-actions{
+    width:100%;
+    justify-content:flex-start;
+    margin-left:0;
+  }
+
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-field{
+    grid-template-columns:1fr;
+  }
+
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-label,
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-input,
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-select,
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-help,
+  #check-set-editor-modal .check-set-editor-item textarea{
+    grid-column:1;
+  }
+
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-input,
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-select{
+    width:100%;
+    max-width:none;
+  }
+
+  #check-set-editor-modal .check-set-editor-item .check-set-editor-help{
+    white-space:normal;
+  }
+}
+
+@media (max-width:720px){
+  #check-screen #check-set-list .set-item-main{
+    align-items:flex-start;
+  }
+
+  #check-screen #check-set-list .set-item-actions{
+    align-items:stretch;
+    width:100%;
+    margin-left:0;
+  }
+
+  #check-screen #check-set-list .set-item-right{
+    align-items:stretch;
+    justify-content:flex-start;
+  }
+
+  #check-screen #check-set-list .set-item.has-admin-actions .set-item-right{
+    width:100%;
+    min-width:0;
+    grid-template-columns:1fr auto;
+    margin-left:56px;
+  }
+
+  #check-screen #check-set-list .set-item-actions{
+    min-width:0;
+    justify-content:flex-start;
+    flex-wrap:wrap;
+  }
+
+  #check-screen #check-set-list .set-item.has-admin-actions .set-item-main{
+    flex-wrap:wrap;
+  }
+
+  #check-screen #check-set-list .set-item.has-admin-actions .set-body{
+    flex-basis:calc(100% - 58px);
+  }
+
+  #check-screen #check-set-list .set-item-actions .btn{
+    width:100%;
+  }
+}
