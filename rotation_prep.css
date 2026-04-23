@@ -6976,7 +6976,7 @@ body::before{
   filter:saturate(.74) !important;
 }
 
-/* CHECK set admin now edits inline: name -> period -> questions. */
+/* CHECK set editor layout: name -> period -> questions. */
 .admin-content-item-main{
   display:flex;
   align-items:flex-start;
@@ -6985,35 +6985,6 @@ body::before{
   flex:1;
   min-width:0;
   width:100%;
-}
-
-#check-admin-set-panel .admin-content-toolbar{
-  margin-bottom:16px;
-}
-
-#check-admin-set-panel .admin-content-item{
-  display:block;
-  padding:0;
-  overflow:hidden;
-  border:1px solid rgba(24,64,58,.10);
-  border-radius:24px;
-  background:
-    linear-gradient(135deg, rgba(255,255,255,.96), rgba(246,241,229,.82)),
-    radial-gradient(circle at top right, rgba(183,121,50,.12), transparent 36%);
-  box-shadow:0 18px 46px rgba(39,50,46,.08);
-}
-
-#check-admin-set-panel .admin-content-item-main{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:14px;
-  padding:16px 18px;
-}
-
-#check-admin-set-panel .admin-content-item.is-editing-check-set{
-  border-color:rgba(15,93,81,.22);
-  box-shadow:0 24px 62px rgba(15,93,81,.13);
 }
 
 .check-inline-set-editor{
@@ -7112,25 +7083,12 @@ body::before{
 }
 
 @media (max-width:720px){
-  #check-admin-set-panel .admin-content-item-main{
-    flex-direction:column;
-  }
-
-  #check-admin-set-panel .admin-content-item-actions{
-    width:100%;
-    justify-content:flex-start;
-  }
-
   .check-inline-date-grid{
     grid-template-columns:1fr;
   }
 }
 
 /* CHECK management lives on the real set cards, matching PREP's direct-card controls. */
-#check-screen #check-admin-set-panel{
-  display:none !important;
-}
-
 #check-screen #check-admin-actions{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
