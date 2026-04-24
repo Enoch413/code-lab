@@ -108,6 +108,16 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /pdfLabSharedLibraryImports/{docId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /pdfLabSharedLibraryProblems/{docId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /questionIssues/{issueId} {
       allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;

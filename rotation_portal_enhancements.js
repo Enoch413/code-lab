@@ -224,6 +224,32 @@ portalState.checkSetEditor = portalState.checkSetEditor || {
   questions: [],
   initialDigest: ''
 }
+portalState.buttonIconObserver = portalState.buttonIconObserver || null
+portalState.buttonIconRefreshHandle = portalState.buttonIconRefreshHandle || 0
+
+const PORTAL_BUTTON_ICON_TEXT = {
+  press: '•',
+  home: '⌂',
+  back: '←',
+  refresh: '↻',
+  launch: '↗',
+  logout: '↘',
+  upload: '↑',
+  download: '↓',
+  edit: '✎',
+  delete: '✕',
+  confirm: '✓',
+  close: '×',
+  regrade: '↺',
+  class: '▦',
+  tools: '◫',
+  password: '◇',
+  history: '◷',
+  issue: '?',
+  note: '!',
+  expand: '+',
+  user: '◎'
+}
 
 document.addEventListener('DOMContentLoaded', initPortalEnhancements)
 
@@ -231,6 +257,7 @@ function initPortalEnhancements(){
   bindPortalEnhancementEvents()
   bindPasswordSubmitOverride()
   overrideSharedClassListRenderer()
+  setupPortalButtonIconEnhancements()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('message', handleStudyCafeWindowMessage)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
@@ -250,6 +277,176 @@ function initPortalEnhancements(){
       showAuthScreen('')
     }
   }, 0)
+}
+
+function setupPortalButtonIconEnhancements(){
+  applyPortalButtonIcons(document)
+  if(portalState.buttonIconObserver || !document.body || typeof MutationObserver !== 'function') return
+
+  portalState.buttonIconObserver = new MutationObserver(function(mutations){
+    for(let index = 0; index < mutations.length; index += 1){
+      const mutation = mutations[index]
+      if(mutation.type === 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length)){
+        schedulePortalButtonIconRefresh()
+        return
+      }
+    }
+  })
+
+  portalState.buttonIconObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+}
+
+function schedulePortalButtonIconRefresh(){
+  if(portalState.buttonIconRefreshHandle) return
+  portalState.buttonIconRefreshHandle = window.requestAnimationFrame(function(){
+    portalState.buttonIconRefreshHandle = 0
+    applyPortalButtonIcons(document)
+  })
+}
+
+function applyPortalButtonIcons(root){
+  if(!root || typeof root.querySelectorAll !== 'function') return
+  const nodes = root.querySelectorAll('button, [role="button"]')
+  for(let index = 0; index < nodes.length; index += 1){
+    decoratePortalButtonIcon(nodes[index])
+  }
+}
+
+function decoratePortalButtonIcon(node){
+  if(!node || !node.classList) return
+  if(node.matches('.app-crumb')){
+    removePortalButtonIcon(node)
+    return
+  }
+  if(node.matches('.portal-card')){
+    removePortalButtonIcon(node)
+    return
+  }
+  if(node.dataset.uiIconSkip === 'true') return
+  if(node.classList.contains('app-chrome-btn')) return
+  if(node.classList.contains('load-box')) return
+
+  const iconKey = inferPortalButtonIconKey(node)
+  if(!iconKey) return
+
+  const variant = node.matches('.portal-card, .admin-portal-card, .admin-tools-launch') ? 'card' : 'inline'
+  const iconText = PORTAL_BUTTON_ICON_TEXT[iconKey] || PORTAL_BUTTON_ICON_TEXT.press
+  const host = getPortalButtonIconHost(node, variant)
+  if(!host) return
+
+  node.dataset.uiIcon = iconKey
+  node.dataset.uiIconVariant = variant
+  node.classList.add('ui-button-has-icon')
+
+  let iconNode = null
+  for(let index = 0; index < host.children.length; index += 1){
+    const child = host.children[index]
+    if(child.classList && child.classList.contains('ui-action-icon')){
+      iconNode = child
+      break
+    }
+  }
+
+  if(!iconNode){
+    iconNode = document.createElement('span')
+    iconNode.className = 'ui-action-icon'
+    iconNode.setAttribute('aria-hidden', 'true')
+    if(variant === 'card'){
+      host.appendChild(iconNode)
+    }else{
+      host.insertBefore(iconNode, host.firstChild)
+    }
+  }
+
+  iconNode.textContent = iconText
+  iconNode.dataset.uiIcon = iconKey
+}
+
+function removePortalButtonIcon(node){
+  if(!node || !node.classList) return
+  const icons = node.querySelectorAll('.ui-action-icon')
+  for(let index = 0; index < icons.length; index += 1){
+    const icon = icons[index]
+    if(icon && icon.parentNode) icon.parentNode.removeChild(icon)
+  }
+  delete node.dataset.uiIcon
+  delete node.dataset.uiIconVariant
+  node.classList.remove('ui-button-has-icon')
+}
+
+function getPortalButtonIconHost(node, variant){
+  if(variant !== 'card' && node.classList.contains('app-drawer-link') && node.firstElementChild){
+    return node.firstElementChild
+  }
+  return node
+}
+
+function inferPortalButtonIconKey(node){
+  const id = String(node.id || '').toLowerCase()
+  const classes = typeof node.className === 'string' ? node.className.toLowerCase() : ''
+  const action = String((node.getAttribute && node.getAttribute('data-drawer-action')) || '').toLowerCase()
+  const label = getPortalInteractiveButtonLabel(node).toLowerCase()
+
+  if(label.indexOf('tools') >= 0 || id.indexOf('admin-portal-home') >= 0 || (id.indexOf('tools') >= 0 && id.indexOf('entry') >= 0)) return 'tools'
+  if(action === 'logout' || label.indexOf('로그아웃') >= 0 || id.indexOf('logout') >= 0) return 'logout'
+  if(action === 'home' || label.indexOf('메인') >= 0 || label.indexOf('홈') >= 0 || label === 'home' || id.indexOf('home') >= 0) return 'home'
+  if(action === 'account' || label.indexOf('회원정보') >= 0 || id.indexOf('account') >= 0) return 'user'
+  if(label.indexOf('이전') >= 0 || label.indexOf('반 목록으로') >= 0 || label.indexOf('상담 선택') >= 0 || id.indexOf('back') >= 0) return 'back'
+  if(label.indexOf('새로고침') >= 0 || id.indexOf('refresh') >= 0) return 'refresh'
+  if(label.indexOf('비밀번호') >= 0 || id.indexOf('password') >= 0) return 'password'
+  if(label.indexOf('반 변경') >= 0 || id.indexOf('change-class') >= 0 || id.indexOf('class-btn') >= 0 || id.indexOf('class-picker') >= 0) return 'class'
+  if(label.indexOf('업로드') >= 0 || id.indexOf('upload') >= 0) return 'upload'
+  if(label.indexOf('다운로드') >= 0 || label.indexOf('엑셀') >= 0 || label.indexOf('json') >= 0 || id.indexOf('download') >= 0 || id.indexOf('archive') >= 0) return 'download'
+  if(label.indexOf('삭제') >= 0 || id.indexOf('delete') >= 0 || id.indexOf('remove') >= 0 || classes.indexOf('danger') >= 0) return 'delete'
+  if(label.indexOf('재채점') >= 0 || id.indexOf('regrade') >= 0) return 'regrade'
+  if(label.indexOf('수정') >= 0 || label.indexOf('변경') >= 0 || id.indexOf('edit') >= 0 || id.indexOf('rename') >= 0) return 'edit'
+  if(label.indexOf('닫기') >= 0 || label.indexOf('취소') >= 0 || id.indexOf('close') >= 0 || id.indexOf('cancel') >= 0) return 'close'
+  if(label.indexOf('저장') >= 0 || label.indexOf('제출') >= 0 || label.indexOf('입장') >= 0 || label.indexOf('완료') >= 0 || label.indexOf('반영') >= 0 || label.indexOf('실행') >= 0 || label.indexOf('계속') >= 0 || label.indexOf('보기') >= 0 || id.indexOf('submit') >= 0 || id.indexOf('save') >= 0 || id.indexOf('apply') >= 0 || id.indexOf('continue') >= 0) return 'confirm'
+  if(label.indexOf('현황') >= 0 || label.indexOf('history') >= 0 || id.indexOf('history') >= 0 || id.indexOf('progress') >= 0) return 'history'
+  if(label.indexOf('질문') >= 0 || label.indexOf('문의') >= 0 || label.indexOf('이슈') >= 0 || classes.indexOf('issue') >= 0) return 'issue'
+  if(label.indexOf('오답노트') >= 0) return 'note'
+  if(label.indexOf('펼치기') >= 0 || label.indexOf('더 보기') >= 0 || id.indexOf('expand') >= 0 || classes.indexOf('toggle') >= 0) return 'expand'
+  if(id.indexOf('tools') >= 0 || action === 'admin') return 'tools'
+  if(node.matches('.portal-card, .admin-portal-card, .admin-tools-launch')) return 'launch'
+  return 'press'
+}
+
+function getPortalInteractiveButtonLabel(node){
+  const parts = []
+  const ariaLabel = String((node.getAttribute && node.getAttribute('aria-label')) || '').trim()
+  if(ariaLabel) parts.push(ariaLabel)
+
+  if(typeof document.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined'){
+    const fallback = String(node.textContent || '').replace(/\s+/g, ' ').trim()
+    return (parts.join(' ') + ' ' + fallback).replace(/\s+/g, ' ').trim()
+  }
+
+  const walker = document.createTreeWalker(
+    node,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: function(candidate){
+        if(candidate.nodeType === 1){
+          return candidate.classList && candidate.classList.contains('ui-action-icon')
+            ? NodeFilter.FILTER_REJECT
+            : NodeFilter.FILTER_SKIP
+        }
+        return NodeFilter.FILTER_ACCEPT
+      }
+    }
+  )
+
+  let current = walker.nextNode()
+  while(current){
+    const value = String(current.nodeValue || '').replace(/\s+/g, ' ').trim()
+    if(value) parts.push(value)
+    current = walker.nextNode()
+  }
+
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
 }
 
 function overrideSharedClassListRenderer(){
@@ -1107,19 +1304,34 @@ function renderAppChromeBreadcrumb(container, screenId){
     if(isLast){
       const current = document.createElement('span')
       current.className = 'app-crumb app-crumb-current'
-      current.textContent = label
+      current.dataset.uiIconSkip = 'true'
+      appendAppChromeBreadcrumbLabel(current, label)
       container.appendChild(current)
       return
     }
     const button = document.createElement('button')
     button.className = 'app-crumb app-crumb-button'
     button.type = 'button'
-    button.textContent = label
+    button.dataset.uiIconSkip = 'true'
+    appendAppChromeBreadcrumbLabel(button, label)
     button.addEventListener('click', function(){
       navigateAppChromeBreadcrumb(screenId, index, label)
     })
     container.appendChild(button)
   })
+}
+
+function appendAppChromeBreadcrumbLabel(node, label){
+  const text = String(label || '').trim()
+  if(!node || !text) return
+  if(text.toUpperCase() === 'HOME'){
+    const icon = document.createElement('span')
+    icon.className = 'app-crumb-home-icon'
+    icon.setAttribute('aria-hidden', 'true')
+    icon.textContent = PORTAL_BUTTON_ICON_TEXT.home || '⌂'
+    node.appendChild(icon)
+  }
+  node.appendChild(document.createTextNode(text))
 }
 
 function navigateAppChromeBreadcrumb(screenId, index, label){
