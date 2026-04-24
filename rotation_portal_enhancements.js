@@ -46,7 +46,7 @@ const CHROME_SCREEN_TITLES = {
   'account-screen': { title: 'CODE LAB', sub: '회원정보' },
   'password-screen': { title: 'CODE LAB', sub: '비밀번호 변경' },
   'admin-portal-screen': { title: 'TOOLS', sub: '허브' },
-  'class-screen': { title: 'PREP', sub: '반 선택' },
+  'class-screen': { title: 'PREP', sub: '반 변경' },
   'class-auth-screen': { title: 'PREP', sub: '반 비밀번호' },
   'home-screen': { title: 'PREP', sub: '학습 세트' },
   'passage-screen': { title: 'PREP', sub: '지문 선택' },
@@ -66,7 +66,7 @@ const CHROME_BREADCRUMBS = {
   'account-screen': ['CODE LAB', '회원정보'],
   'password-screen': ['CODE LAB', '비밀번호 변경'],
   'admin-portal-screen': ['CODE LAB', 'TOOLS'],
-  'class-screen': ['CODE LAB', 'PREP', '반 선택'],
+  'class-screen': ['CODE LAB', 'PREP', '반 변경'],
   'class-auth-screen': ['CODE LAB', 'PREP', '반 비밀번호'],
   'home-screen': ['CODE LAB', 'PREP', '학습 세트'],
   'passage-screen': ['CODE LAB', 'PREP', '지문 선택'],
@@ -850,6 +850,16 @@ function getCurrentPrepSection(){
 
 function buildCompactPrepBreadcrumb(screenId){
   const parts = ['HOME', 'PREP']
+  if(screenId === 'class-screen'){
+    parts.push('반 변경')
+    return parts
+  }
+  if(screenId === 'class-auth-screen'){
+    const pendingClass = getPendingPrepClass()
+    if(pendingClass && pendingClass.name) parts.push(pendingClass.name)
+    parts.push('입장 인증')
+    return parts
+  }
   if(screenId === 'study-menu-screen' || screenId === 'study-screen'){
     const currentPassageEntry = getCurrentPrepPassage()
     if(currentPassageEntry && currentPassageEntry.title) parts.push(currentPassageEntry.title)
@@ -867,7 +877,7 @@ function buildPrepBreadcrumb(screenId){
   const pendingClass = getPendingPrepClass()
 
   if(screenId === 'class-screen'){
-    parts.push('반 선택')
+    parts.push('반 변경')
     return parts
   }
 
@@ -977,7 +987,7 @@ function buildCheckClassSelectionBreadcrumb(screenId){
   const pendingClass = getPendingPrepClass()
 
   if(screenId === 'class-screen'){
-    parts.push('반 선택')
+    parts.push('반 변경')
     return parts
   }
 
@@ -8235,7 +8245,7 @@ function buildPortalManagedSetItemHtml(kind, record){
     : ''
   const isRegrading = kind === 'check' && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
   const regradeButton = kind === 'check' && record && record.isManaged
-    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>'
     : ''
   const renameButton = record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
@@ -8349,7 +8359,7 @@ function renderCheckAdminSetPanel(activeScreenId){
   const records = getVisiblePortalManagedSetRecords('check', classInfo && classInfo.id)
   countNode.textContent = String(records.length)
   hintNode.textContent = classInfo
-    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 문항 수정, 결과 재채점, 이름/기간 변경과 삭제가 가능합니다.')
+    ? (classInfo.name + ' 반에 배정된 CHECK 세트입니다. 직접 업로드한 세트만 문항 수정, 재채점, 이름/기간 변경과 삭제가 가능합니다.')
     : '먼저 반을 선택하면 CHECK 세트를 올릴 수 있습니다.'
 
   list.innerHTML = records.length
@@ -8753,7 +8763,7 @@ function buildPortalManagedSetItemHtml(kind, record){
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoProgressModal(\'' + escapeJs(record.docId) + '\')">시청 현황</button>'
     : ''
   const regradeButton = isCheck && isManaged
-    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>'
     : ''
   const renameButton = isPrep && isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
@@ -9043,7 +9053,7 @@ function buildPortalCheckSetCardActionsHtml(entry){
     String(portalState.checkSetEditor.docId || '').trim() === docId
   return [
     '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(docId) + '\')">' + (editorOpen ? '수정 중' : '세트 수정') + '</button>',
-    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>',
+    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>',
     '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalManagedSet(\'check\', \'' + escapeJs(docId) + '\')">삭제</button>'
   ].join('')
 }
@@ -10533,11 +10543,9 @@ async function renderSuperAdminExamCenter(){
   }
 
   section.classList.remove('hidden')
-  const [examState, users, responses, issues, prepSets, checkSets] = await Promise.all([
+  const [examState, users, prepSets, checkSets] = await Promise.all([
     loadPortalExamState(false),
     fetchAllPortalUsersForSuperAdmin(),
-    fetchAllCheckResponses(),
-    fetchAllQuestionIssues(),
     loadCloudSetDocs('prep'),
     loadCloudSetDocs('check')
   ])
@@ -10572,7 +10580,7 @@ async function renderSuperAdminExamCenter(){
     overviewNode.innerHTML = [
       '<div class="superadmin-exam-overview-card"><strong>반 / 관리자</strong><span>반 ' + prepClasses.length + '개 · 담당 관리자 ' + assignedAdmins + '명</span></div>',
       '<div class="superadmin-exam-overview-card"><strong>학생 현황</strong><span>재원 ' + activeStudents + '명 · 비활성 ' + disabledStudents + '명</span></div>',
-      '<div class="superadmin-exam-overview-card"><strong>운영 데이터</strong><span>CHECK 제출 ' + responses.length + '건 · 질문 ' + issues.length + '건 · PREP 세트 ' + prepSets.length + '개 · CHECK 세트 ' + checkSets.length + '개</span></div>'
+      '<div class="superadmin-exam-overview-card"><strong>운영 데이터</strong><span>PREP 세트 ' + prepSets.length + '개 · CHECK 세트 ' + checkSets.length + '개</span></div>'
     ].join('')
   }
 
