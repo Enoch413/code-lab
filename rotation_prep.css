@@ -5501,6 +5501,7 @@ body.app-screen-study-cafe .app-chrome{
 .app-crumb{
   display:inline-flex;
   align-items:center;
+  gap:6px;
   max-width:18ch;
   overflow:hidden;
   border:0;
@@ -5531,6 +5532,18 @@ body.app-screen-study-cafe .app-chrome{
 
 .app-crumb-separator{
   color:rgba(75,87,79,.54);
+}
+
+.app-crumb-home-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:1.05em;
+  min-width:1.05em;
+  line-height:1;
+  font-size:.98em;
+  opacity:.82;
+  transform:translateY(-.03em);
 }
 
 @media (max-width:520px){
@@ -7334,5 +7347,115 @@ body::before{
   #check-screen #check-set-list .set-item-actions .btn{
     width:auto;
     flex:0 0 auto;
+  }
+}
+
+button.ui-button-has-icon,
+[role="button"].ui-button-has-icon{
+  position:relative;
+}
+
+.ui-action-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  width:1.1em;
+  min-width:1.1em;
+  line-height:1;
+  font-family:'Lexend','Noto Sans KR',sans-serif;
+  font-size:1em;
+  font-weight:800;
+  letter-spacing:-.04em;
+  pointer-events:none;
+  opacity:.9;
+  transform:translateY(-.02em);
+}
+
+.btn.ui-button-has-icon,
+.check-question-edit-btn.ui-button-has-icon,
+.check-wrong-note-btn.ui-button-has-icon,
+.check-question-issue-btn.ui-button-has-icon,
+.check-filter-btn.ui-button-has-icon,
+.check-progress-chip.ui-button-has-icon,
+.admin-tools-launch.ui-button-has-icon,
+.check-jump-btn.ui-button-has-icon{
+  gap:8px;
+}
+
+.btn.btn-sm.ui-button-has-icon,
+.check-filter-btn.ui-button-has-icon,
+.check-progress-chip.ui-button-has-icon{
+  gap:7px;
+}
+
+.btn.ui-button-has-icon:disabled .ui-action-icon,
+.check-question-edit-btn.ui-button-has-icon:disabled .ui-action-icon,
+.check-wrong-note-btn.ui-button-has-icon:disabled .ui-action-icon,
+.check-question-issue-btn.ui-button-has-icon:disabled .ui-action-icon,
+.check-filter-btn.ui-button-has-icon:disabled .ui-action-icon,
+.check-progress-chip.ui-button-has-icon:disabled .ui-action-icon{
+  opacity:.5;
+}
+
+.app-drawer-link.ui-button-has-icon span:first-child{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+}
+
+.app-drawer-link.ui-button-has-icon .ui-action-icon{
+  font-size:1rem;
+  opacity:.86;
+}
+
+.admin-portal-card.ui-button-has-icon,
+.admin-tools-launch.ui-button-has-icon{
+  position:relative;
+}
+
+.admin-portal-card.ui-button-has-icon .ui-action-icon,
+.admin-tools-launch.ui-button-has-icon .ui-action-icon{
+  position:absolute;
+  width:34px;
+  height:34px;
+  min-width:34px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.14);
+  color:#fff;
+  font-size:1rem;
+  font-weight:800;
+  opacity:.96;
+  box-shadow:0 10px 22px rgba(18,31,28,.14);
+  backdrop-filter:blur(10px);
+}
+
+.admin-portal-card.ui-button-has-icon .ui-action-icon,
+.admin-tools-launch.ui-button-has-icon .ui-action-icon{
+  top:16px;
+  right:16px;
+}
+
+.admin-portal-card.ui-button-has-icon .ui-action-icon{
+  border-color:rgba(13,77,68,.12);
+  background:rgba(13,77,68,.08);
+  color:#173d36;
+  box-shadow:0 10px 22px rgba(17,32,31,.08);
+}
+
+#admin-screen #admin-tools-entry-btn.admin-tools-launch.ui-button-has-icon .ui-action-icon{
+  border-color:rgba(13,77,68,.12);
+  background:rgba(13,77,68,.08);
+  color:#173d36;
+  box-shadow:0 10px 22px rgba(17,32,31,.08);
+}
+
+@media (min-width:720px){
+  #admin-screen #admin-tools-entry-btn.admin-tools-launch.ui-button-has-icon .ui-action-icon{
+    border-color:rgba(255,255,255,.16);
+    background:rgba(255,255,255,.16);
+    color:#fff;
+    box-shadow:0 10px 22px rgba(18,31,28,.14);
   }
 }
