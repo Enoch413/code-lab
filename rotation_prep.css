@@ -2281,10 +2281,12 @@ body::before{
 }
 
 .superadmin-exam-center-meta{
+  display:block;
   margin-top:8px;
   color:var(--muted);
   font-size:14px;
   line-height:1.6;
+  word-break:keep-all;
 }
 
 .superadmin-exam-overview{
@@ -2512,10 +2514,6 @@ body::before{
   }
 
   .superadmin-exam-card.is-wide{
-    grid-column:1 / -1;
-  }
-
-  .superadmin-cycle-card-danger{
     grid-column:1 / -1;
   }
 }
@@ -7151,10 +7149,10 @@ body::before{
 }
 
 #check-screen #check-set-list .set-item-actions .btn{
-  min-height:34px;
-  padding:7px 12px;
+  min-height:38px;
+  padding:8px 14px;
   border-radius:999px;
-  font-size:.72rem;
+  font-size:.78rem;
   font-weight:900;
   white-space:nowrap;
 }
@@ -7300,27 +7298,29 @@ body::before{
   }
 
   #check-screen #check-set-list .set-item-actions{
-    align-items:stretch;
-    width:100%;
+    align-items:center;
+    width:auto;
     margin-left:0;
   }
 
   #check-screen #check-set-list .set-item-right{
-    align-items:stretch;
+    align-items:center;
     justify-content:flex-start;
   }
 
   #check-screen #check-set-list .set-item.has-admin-actions .set-item-right{
     width:100%;
     min-width:0;
-    grid-template-columns:1fr auto;
+    grid-template-columns:minmax(0,max-content) auto;
+    align-items:center;
+    column-gap:10px;
     margin-left:56px;
   }
 
   #check-screen #check-set-list .set-item-actions{
     min-width:0;
     justify-content:flex-start;
-    flex-wrap:wrap;
+    flex-wrap:nowrap;
   }
 
   #check-screen #check-set-list .set-item.has-admin-actions .set-item-main{
@@ -7332,6 +7332,7 @@ body::before{
   }
 
   #check-screen #check-set-list .set-item-actions .btn{
-    width:100%;
+    width:auto;
+    flex:0 0 auto;
   }
 }

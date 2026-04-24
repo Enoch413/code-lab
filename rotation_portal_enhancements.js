@@ -46,7 +46,7 @@ const CHROME_SCREEN_TITLES = {
   'account-screen': { title: 'CODE LAB', sub: '회원정보' },
   'password-screen': { title: 'CODE LAB', sub: '비밀번호 변경' },
   'admin-portal-screen': { title: 'TOOLS', sub: '허브' },
-  'class-screen': { title: 'PREP', sub: '반 선택' },
+  'class-screen': { title: 'PREP', sub: '반 변경' },
   'class-auth-screen': { title: 'PREP', sub: '반 비밀번호' },
   'home-screen': { title: 'PREP', sub: '학습 세트' },
   'passage-screen': { title: 'PREP', sub: '지문 선택' },
@@ -66,7 +66,7 @@ const CHROME_BREADCRUMBS = {
   'account-screen': ['CODE LAB', '회원정보'],
   'password-screen': ['CODE LAB', '비밀번호 변경'],
   'admin-portal-screen': ['CODE LAB', 'TOOLS'],
-  'class-screen': ['CODE LAB', 'PREP', '반 선택'],
+  'class-screen': ['CODE LAB', 'PREP', '반 변경'],
   'class-auth-screen': ['CODE LAB', 'PREP', '반 비밀번호'],
   'home-screen': ['CODE LAB', 'PREP', '학습 세트'],
   'passage-screen': ['CODE LAB', 'PREP', '지문 선택'],
@@ -844,6 +844,16 @@ function getCurrentPrepSection(){
 
 function buildCompactPrepBreadcrumb(screenId){
   const parts = ['HOME', 'PREP']
+  if(screenId === 'class-screen'){
+    parts.push('반 변경')
+    return parts
+  }
+  if(screenId === 'class-auth-screen'){
+    const pendingClass = getPendingPrepClass()
+    if(pendingClass && pendingClass.name) parts.push(pendingClass.name)
+    parts.push('입장 인증')
+    return parts
+  }
   if(screenId === 'study-menu-screen' || screenId === 'study-screen'){
     const currentPassageEntry = getCurrentPrepPassage()
     if(currentPassageEntry && currentPassageEntry.title) parts.push(currentPassageEntry.title)
@@ -861,7 +871,7 @@ function buildPrepBreadcrumb(screenId){
   const pendingClass = getPendingPrepClass()
 
   if(screenId === 'class-screen'){
-    parts.push('반 선택')
+    parts.push('반 변경')
     return parts
   }
 
@@ -971,7 +981,7 @@ function buildCheckClassSelectionBreadcrumb(screenId){
   const pendingClass = getPendingPrepClass()
 
   if(screenId === 'class-screen'){
-    parts.push('반 선택')
+    parts.push('반 변경')
     return parts
   }
 
@@ -1578,6 +1588,7 @@ async function openCheckPortal(){
     showAuthScreen('')
     return
   }
+  await syncPrepContentAfterLogin(false)
   await ensureCheckData(false)
   if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
   renderCheckScreen()
@@ -5510,6 +5521,53 @@ function mergePortalPrepClasses(){
   return merged
 }
 
+function buildPortalPrepClassMap(){
+  const map = new Map()
+  Array.from(arguments).forEach(function(list){
+    normalizePortalPrepClassList(list).forEach(function(entry){
+      const id = String(entry && entry.id || '').trim()
+      if(!id) return
+      const existing = map.get(id) || { id: id, name: id, password: '' }
+      map.set(id, {
+        id: id,
+        name: String(entry && entry.name || '').trim() || existing.name || id,
+        password: String(entry && entry.password || '').trim() || existing.password || ''
+      })
+    })
+  })
+  return map
+}
+
+function buildPortalPrepClassEntriesFromIds(classIds, classMap){
+  return normalizeCheckAssignmentValues(classIds).map(function(classId){
+    const id = String(classId || '').trim()
+    if(!id) return null
+    const existing = classMap instanceof Map ? classMap.get(id) : null
+    return {
+      id: id,
+      name: String(existing && existing.name || id).trim() || id,
+      password: String(existing && existing.password || '').trim()
+    }
+  }).filter(Boolean)
+}
+
+async function loadPortalScopedPrepClassEntries(classMap){
+  if(isPortalSuperAdmin()){
+    const users = await fetchAllPortalUsersForSuperAdmin()
+    const classIds = []
+    ;(Array.isArray(users) ? users : []).forEach(function(user){
+      normalizeCheckAssignmentValues(user && user.classIds).forEach(function(classId){
+        classIds.push(classId)
+      })
+    })
+    return buildPortalPrepClassEntriesFromIds(classIds, classMap)
+  }
+  return buildPortalPrepClassEntriesFromIds(
+    typeof getProfileClassIds === 'function' ? getProfileClassIds() : [],
+    classMap
+  )
+}
+
 function normalizePortalPrepConfig(){
   const next = {
     pageTitle: APP_CONFIG.defaultTitle,
@@ -5683,11 +5741,17 @@ async function loadPortalPrepBundleFromSources(){
     ? catalogDoc.payload
     : {}
   const legacyBundle = legacyDoc && legacyDoc.payload ? normalizeBundleData(legacyDoc.payload) : null
-  const classes = mergePortalPrepClasses(
-    catalogPayload.classes,
-    legacyBundle ? legacyBundle.classes : [],
-    prepClasses
+  const catalogClasses = normalizePortalPrepClassList(catalogPayload.classes)
+  const legacyClasses = normalizePortalPrepClassList(legacyBundle ? legacyBundle.classes : [])
+  const fallbackClasses = mergePortalPrepClasses(legacyClasses, prepClasses)
+  const baseClasses = catalogClasses.length ? catalogClasses : fallbackClasses
+  const classMap = buildPortalPrepClassMap(
+    PORTAL_CLASS_REFERENCE,
+    baseClasses,
+    portalState.checkData && portalState.checkData.classes ? portalState.checkData.classes : []
   )
+  const scopedClasses = await loadPortalScopedPrepClassEntries(classMap)
+  const classes = mergePortalPrepClasses(baseClasses, scopedClasses)
   const prepConfig = normalizePortalPrepConfig(
     bundleData && bundleData.prepConfig ? bundleData.prepConfig : null,
     legacyBundle ? legacyBundle.prepConfig : null,
@@ -7825,7 +7889,7 @@ function buildPortalManagedSetItemHtml(kind, record){
     : ''
   const isRegrading = kind === 'check' && String(portalState.checkSetRegradeDocId || '').trim() === String(record && record.docId || '').trim()
   const regradeButton = kind === 'check' && record && record.isManaged
-    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>'
     : ''
   const renameButton = record && record.isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
@@ -7923,10 +7987,10 @@ function renderPrepPassageAdminSetPanel(activeScreenId){
     : '<div class="admin-content-item-empty">아직 연결된 PREP 영상이 없습니다. 영상 업로드 버튼으로 제목과 유튜브 링크를 넣어 주세요.</div>'
 }
 
-function syncPortalAdminSetPanels(screenId){
-  renderPrepAdminSetPanel(screenId)
-  renderPrepPassageAdminSetPanel(screenId)
-}
+ function syncPortalAdminSetPanels(screenId){
+   renderPrepAdminSetPanel(screenId)
+   renderPrepPassageAdminSetPanel(screenId)
+ }
 
 async function renamePortalManagedSet(kind, docId){
   if(!isPortalAdmin()){
@@ -8316,7 +8380,7 @@ function buildPortalManagedSetItemHtml(kind, record){
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalPrepVideoProgressModal(\'' + escapeJs(record.docId) + '\')">시청 현황</button>'
     : ''
   const regradeButton = isCheck && isManaged
-    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>'
+    ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(record.docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>'
     : ''
   const renameButton = isPrep && isManaged
     ? '<button class="btn btn-ghost btn-sm" type="button" onclick="window.renamePortalManagedSet(\'' + escapeJs(kind) + '\', \'' + escapeJs(record.docId) + '\')">이름 변경</button>'
@@ -8646,7 +8710,7 @@ function buildPortalCheckSetCardActionsHtml(entry){
     String(portalState.checkSetEditor.docId || '').trim() === docId
   return [
     '<button class="btn btn-ghost btn-sm" type="button" onclick="window.openPortalManagedCheckSetEditor(\'' + escapeJs(docId) + '\')">' + (editorOpen ? '수정 중' : '세트 수정') + '</button>',
-    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '결과 재채점') + '</button>',
+    '<button class="btn btn-ghost btn-sm" type="button" onclick="window.regradePortalManagedCheckSet(\'' + escapeJs(docId) + '\')"' + (isRegrading ? ' disabled' : '') + '>' + (isRegrading ? '재채점 중...' : '재채점') + '</button>',
     '<button class="btn btn-ghost btn-sm admin-content-action-danger" type="button" onclick="window.removePortalManagedSet(\'check\', \'' + escapeJs(docId) + '\')">삭제</button>'
   ].join('')
 }
@@ -10136,11 +10200,9 @@ async function renderSuperAdminExamCenter(){
   }
 
   section.classList.remove('hidden')
-  const [examState, users, responses, issues, prepSets, checkSets] = await Promise.all([
+  const [examState, users, prepSets, checkSets] = await Promise.all([
     loadPortalExamState(false),
     fetchAllPortalUsersForSuperAdmin(),
-    fetchAllCheckResponses(),
-    fetchAllQuestionIssues(),
     loadCloudSetDocs('prep'),
     loadCloudSetDocs('check')
   ])
@@ -10175,7 +10237,7 @@ async function renderSuperAdminExamCenter(){
     overviewNode.innerHTML = [
       '<div class="superadmin-exam-overview-card"><strong>반 / 관리자</strong><span>반 ' + prepClasses.length + '개 · 담당 관리자 ' + assignedAdmins + '명</span></div>',
       '<div class="superadmin-exam-overview-card"><strong>학생 현황</strong><span>재원 ' + activeStudents + '명 · 비활성 ' + disabledStudents + '명</span></div>',
-      '<div class="superadmin-exam-overview-card"><strong>운영 데이터</strong><span>CHECK 제출 ' + responses.length + '건 · 질문 ' + issues.length + '건 · PREP 세트 ' + prepSets.length + '개 · CHECK 세트 ' + checkSets.length + '개</span></div>'
+      '<div class="superadmin-exam-overview-card"><strong>운영 데이터</strong><span>PREP 세트 ' + prepSets.length + '개 · CHECK 세트 ' + checkSets.length + '개</span></div>'
     ].join('')
   }
 
