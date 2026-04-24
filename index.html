@@ -35,7 +35,7 @@
     <div>
       <div class="app-drawer-kicker">CODE LAB MENU</div>
       <div class="app-drawer-user" id="drawer-user-name">학생</div>
-      <div class="app-drawer-meta" id="drawer-user-meta"></div>
+      <div class="app-drawer-meta hidden" id="drawer-user-meta"></div>
     </div>
     <button class="app-chrome-btn app-chrome-btn-close" type="button" id="app-drawer-close-btn" aria-label="메뉴 닫기">×</button>
   </div>
@@ -640,8 +640,8 @@
   <section class="group admin-wide hidden" id="superadmin-exam-center">
     <div class="group-title">
       <h3>시험 운영 센터</h3>
-      <span class="group-count" id="superadmin-exam-center-meta">SUPERADMIN ONLY</span>
     </div>
+    <div class="superadmin-exam-center-meta" id="superadmin-exam-center-meta">SUPERADMIN ONLY</div>
     <div class="superadmin-overview" id="superadmin-exam-overview">
       <div class="superadmin-overview-title">현재 시험 정보를 불러오는 중입니다.</div>
       <div class="superadmin-overview-meta">최고 관리자만 시험 종료 아카이브, 반/학생 정리, 새 시험 초기화를 진행할 수 있습니다.</div>
@@ -650,7 +650,6 @@
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 1</div>
         <h4>시험 종료 아카이브</h4>
-        <p>현재 CODE LAB 운영 데이터 전체를 엑셀과 JSON 스냅샷으로 저장합니다.</p>
         <label class="superadmin-field">
           <span>시험명</span>
           <input class="admin-select superadmin-text-input" type="text" id="superadmin-archive-exam-name" placeholder="예: 2026 1학기 중간고사">
@@ -666,7 +665,6 @@
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 2</div>
         <h4>반 / 관리자 재배정</h4>
-        <p>현재 반 목록과 각 반 담당 관리자 배정을 CSV로 내려받아 수정한 뒤 다시 업로드합니다.</p>
         <div class="superadmin-inline-actions">
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-download-class-admin-template-btn">현재 CSV 다운로드</button>
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-upload-class-admin-btn">CSV 업로드</button>
@@ -678,7 +676,6 @@
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 3</div>
         <h4>학생 변동 반영</h4>
-        <p>신규 학생 추가, 기존 학생 수정, 탈퇴 학생 disabled 처리를 CSV로 일괄 반영합니다.</p>
         <div class="superadmin-inline-actions">
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-download-student-template-btn">현재 CSV 다운로드</button>
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-upload-student-btn">CSV 업로드</button>
@@ -690,7 +687,6 @@
       <section class="superadmin-cycle-card superadmin-cycle-card-danger">
         <div class="superadmin-step">STEP 4</div>
         <h4>새 시험 시작 초기화</h4>
-        <p>반 / 학생 / 문제 라이브러리를 제외한 시험 운영 데이터만 비우고 새 시험 key를 발급합니다.</p>
         <label class="superadmin-field">
           <span>다음 시험명</span>
           <input class="admin-select superadmin-text-input" type="text" id="superadmin-next-exam-name" placeholder="예: 2026 1학기 기말고사">
