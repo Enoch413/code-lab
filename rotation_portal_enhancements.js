@@ -1594,6 +1594,7 @@ async function openCheckPortal(){
     showAuthScreen('')
     return
   }
+  await syncPrepContentAfterLogin(false)
   await ensureCheckData(false)
   if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
   renderCheckScreen()
@@ -5526,6 +5527,53 @@ function mergePortalPrepClasses(){
   return merged
 }
 
+function buildPortalPrepClassMap(){
+  const map = new Map()
+  Array.from(arguments).forEach(function(list){
+    normalizePortalPrepClassList(list).forEach(function(entry){
+      const id = String(entry && entry.id || '').trim()
+      if(!id) return
+      const existing = map.get(id) || { id: id, name: id, password: '' }
+      map.set(id, {
+        id: id,
+        name: String(entry && entry.name || '').trim() || existing.name || id,
+        password: String(entry && entry.password || '').trim() || existing.password || ''
+      })
+    })
+  })
+  return map
+}
+
+function buildPortalPrepClassEntriesFromIds(classIds, classMap){
+  return normalizeCheckAssignmentValues(classIds).map(function(classId){
+    const id = String(classId || '').trim()
+    if(!id) return null
+    const existing = classMap instanceof Map ? classMap.get(id) : null
+    return {
+      id: id,
+      name: String(existing && existing.name || id).trim() || id,
+      password: String(existing && existing.password || '').trim()
+    }
+  }).filter(Boolean)
+}
+
+async function loadPortalScopedPrepClassEntries(classMap){
+  if(isPortalSuperAdmin()){
+    const users = await fetchAllPortalUsersForSuperAdmin()
+    const classIds = []
+    ;(Array.isArray(users) ? users : []).forEach(function(user){
+      normalizeCheckAssignmentValues(user && user.classIds).forEach(function(classId){
+        classIds.push(classId)
+      })
+    })
+    return buildPortalPrepClassEntriesFromIds(classIds, classMap)
+  }
+  return buildPortalPrepClassEntriesFromIds(
+    typeof getProfileClassIds === 'function' ? getProfileClassIds() : [],
+    classMap
+  )
+}
+
 function normalizePortalPrepConfig(){
   const next = {
     pageTitle: APP_CONFIG.defaultTitle,
@@ -5699,11 +5747,17 @@ async function loadPortalPrepBundleFromSources(){
     ? catalogDoc.payload
     : {}
   const legacyBundle = legacyDoc && legacyDoc.payload ? normalizeBundleData(legacyDoc.payload) : null
-  const classes = mergePortalPrepClasses(
-    catalogPayload.classes,
-    legacyBundle ? legacyBundle.classes : [],
-    prepClasses
+  const catalogClasses = normalizePortalPrepClassList(catalogPayload.classes)
+  const legacyClasses = normalizePortalPrepClassList(legacyBundle ? legacyBundle.classes : [])
+  const fallbackClasses = mergePortalPrepClasses(legacyClasses, prepClasses)
+  const baseClasses = catalogClasses.length ? catalogClasses : fallbackClasses
+  const classMap = buildPortalPrepClassMap(
+    PORTAL_CLASS_REFERENCE,
+    baseClasses,
+    portalState.checkData && portalState.checkData.classes ? portalState.checkData.classes : []
   )
+  const scopedClasses = await loadPortalScopedPrepClassEntries(classMap)
+  const classes = mergePortalPrepClasses(baseClasses, scopedClasses)
   const prepConfig = normalizePortalPrepConfig(
     bundleData && bundleData.prepConfig ? bundleData.prepConfig : null,
     legacyBundle ? legacyBundle.prepConfig : null,
