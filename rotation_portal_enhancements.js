@@ -9055,6 +9055,32 @@ function parsePortalCsvText(text){
 
 function readPortalTextFileFromBrowser(file){
   return new Promise(function(resolve, reject){
+    if(file && typeof file.arrayBuffer === 'function'){
+      file.arrayBuffer().then(function(buffer){
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0)
+        if(typeof TextDecoder === 'function'){
+          const utf8Text = new TextDecoder('utf-8').decode(bytes)
+          if(utf8Text.indexOf('\ufffd') < 0){
+            resolve(utf8Text)
+            return
+          }
+          try{
+            resolve(new TextDecoder('euc-kr').decode(bytes))
+            return
+          }catch(error){}
+          resolve(utf8Text)
+          return
+        }
+        let fallback = ''
+        for(let index = 0; index < bytes.length; index += 1){
+          fallback += String.fromCharCode(bytes[index])
+        }
+        resolve(fallback)
+      }).catch(function(error){
+        reject(error || new Error('File read failed.'))
+      })
+      return
+    }
     const reader = new FileReader()
     reader.onload = function(){ resolve(String(reader.result || '')) }
     reader.onerror = function(){ reject(reader.error || new Error('File read failed.')) }
@@ -9478,16 +9504,16 @@ async function downloadSuperAdminClassAdminTemplate(){
   const users = await fetchAllPortalUsersForSuperAdmin()
   const classes = normalizePortalPrepClassList(prepClasses)
   const rows = buildSuperAdminClassAdminTemplateRows(users, classes)
-  downloadAdminTextFile('class-admin-template.csv', buildPortalCsvText(SUPERADMIN_CLASS_ADMIN_HEADERS, rows), 'text/csv;charset=utf-8')
-  setPortalExamCenterStatus('superadmin-class-admin-status', '반/관리자 템플릿 CSV를 내려받았습니다.', 'success')
+  downloadAdminTextFile('class-admin-template-utf8.csv', buildPortalCsvText(SUPERADMIN_CLASS_ADMIN_HEADERS, rows), 'text/csv;charset=utf-8')
+  setPortalExamCenterStatus('superadmin-class-admin-status', '반/관리자 템플릿 CSV를 UTF-8로 내려받았습니다.', 'success')
 }
 
 async function downloadSuperAdminStudentTemplate(){
   const users = await fetchAllPortalUsersForSuperAdmin()
   const classes = normalizePortalPrepClassList(prepClasses)
   const rows = buildSuperAdminStudentTemplateRows(users, classes)
-  downloadAdminTextFile('student-roster-template.csv', buildPortalCsvText(SUPERADMIN_STUDENT_HEADERS, rows), 'text/csv;charset=utf-8')
-  setPortalExamCenterStatus('superadmin-student-status', '학생 변동 템플릿 CSV를 내려받았습니다.', 'success')
+  downloadAdminTextFile('student-roster-template-utf8.csv', buildPortalCsvText(SUPERADMIN_STUDENT_HEADERS, rows), 'text/csv;charset=utf-8')
+  setPortalExamCenterStatus('superadmin-student-status', '학생 변동 템플릿 CSV를 UTF-8로 내려받았습니다.', 'success')
 }
 
 function normalizeSuperAdminClassAdminRows(rows){
@@ -9496,16 +9522,31 @@ function normalizeSuperAdminClassAdminRows(rows){
   }))
 
   return (Array.isArray(rows) ? rows : []).map(function(row){
-    const classId = sanitizeId(String(row && row.classid || '').trim() || ('class-' + String(row && row.classname || '').trim()))
-    const className = String(row && row.classname || classNameById.get(classId) || '').trim()
+    const rawClassId = String(
+      row && (
+        row.classid ||
+        row.classId
+      ) || ''
+    ).trim()
+    const rawClassName = String(
+      row && (
+        row.classname ||
+        row.className
+      ) || ''
+    ).trim()
+    const classId = sanitizeId(rawClassId || ('class-' + rawClassName))
+    const className = String(rawClassName || classNameById.get(classId) || '').trim()
     return {
       classId: classId,
       className: className,
-      managerUid: String(row && row.manageruid || '').trim(),
-      managerLoginId: derivePortalLoginId({ loginId: row && row.managerloginid, email: row && row.manageremail }),
-      managerName: String(row && row.managername || '').trim(),
-      managerEmail: String(row && row.manageremail || '').trim().toLowerCase(),
-      managerScope: normalizeAdminScopeValue(row && row.managerscope)
+      managerUid: String(row && (row.manageruid || row.managerUid) || '').trim(),
+      managerLoginId: derivePortalLoginId({
+        loginId: row && (row.managerloginid || row.managerLoginId),
+        email: row && (row.manageremail || row.managerEmail)
+      }),
+      managerName: String(row && (row.managername || row.managerName) || '').trim(),
+      managerEmail: String(row && (row.manageremail || row.managerEmail) || '').trim().toLowerCase(),
+      managerScope: normalizeAdminScopeValue(row && (row.managerscope || row.managerScope))
     }
   }).filter(function(entry){
     return entry.classId || entry.className || entry.managerUid || entry.managerLoginId || entry.managerEmail
@@ -9518,17 +9559,20 @@ function normalizeSuperAdminStudentRows(rows){
   }))
 
   return (Array.isArray(rows) ? rows : []).map(function(row){
-    const loginId = derivePortalLoginId({ loginId: row && row.loginid, email: row && row.email })
-    const classId = sanitizeId(String(row && row.classid || '').trim())
+    const loginId = derivePortalLoginId({
+      loginId: row && (row.loginid || row.loginId),
+      email: row && row.email
+    })
+    const classId = sanitizeId(String(row && (row.classid || row.classId) || '').trim())
     return {
       uid: String(row && row.uid || '').trim(),
       status: normalizePortalRosterStatus(row && row.status),
       loginId: loginId,
       name: String(row && row.name || '').trim(),
-      studentId: String(row && row.studentid || loginId || '').trim(),
+      studentId: String(row && (row.studentid || row.studentId) || loginId || '').trim(),
       email: String(row && row.email || toPortalLoginEmail(loginId) || '').trim().toLowerCase(),
       classId: classId,
-      className: String(row && row.classname || classNameById.get(classId) || '').trim()
+      className: String(row && (row.classname || row.className) || classNameById.get(classId) || '').trim()
     }
   }).filter(function(entry){
     return entry.uid || entry.loginId || entry.email || entry.name || entry.studentId
