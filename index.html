@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260423-admin-tools-sparkle-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260427-install-prompt-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -88,7 +88,13 @@
     <button class="btn btn-ghost btn-sm" type="button" id="portal-logout-btn">로그아웃</button>
   </div>
 
-  <div class="hd"><h1>CODE LAB</h1><span class="sub" id="portal-subtitle"></span></div>
+  <div class="hd portal-home-head">
+    <h1>CODE LAB</h1>
+    <button class="portal-install-btn hidden" type="button" id="portal-install-btn" data-ui-icon-skip="true" aria-label="홈 화면에 CODE LAB 추가" title="홈 화면에 추가">
+      <span class="portal-install-phone" aria-hidden="true"></span>
+    </button>
+    <span class="sub" id="portal-subtitle"></span>
+  </div>
 
   <div class="portal-user-card">
     <div>
@@ -812,6 +818,6 @@
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260423-prep-modal-cleanup-01"></script>
 <script src="./rotation_portal.js?v=20260423-admin-remove-student-rank-01"></script>
-<script src="./rotation_portal_enhancements.js?v=20260423-admin-breadcrumb-menu-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260427-install-prompt-01"></script>
 </body>
 </html>
