@@ -226,6 +226,8 @@ portalState.checkSetEditor = portalState.checkSetEditor || {
 }
 portalState.buttonIconObserver = portalState.buttonIconObserver || null
 portalState.buttonIconRefreshHandle = portalState.buttonIconRefreshHandle || 0
+portalState.installPromptEvent = portalState.installPromptEvent || null
+portalState.installPromptSetupDone = !!portalState.installPromptSetupDone
 
 const PORTAL_BUTTON_ICON_TEXT = {
   press: '•',
@@ -258,6 +260,7 @@ function initPortalEnhancements(){
   bindPasswordSubmitOverride()
   overrideSharedClassListRenderer()
   setupPortalButtonIconEnhancements()
+  setupPortalInstallPrompt()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('message', handleStudyCafeWindowMessage)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
@@ -272,6 +275,7 @@ function initPortalEnhancements(){
   updateAppChrome(getCurrentActiveScreenId())
   syncAppChromeLayout()
   syncCheckJumpButtonVisibility()
+  syncPortalInstallButton()
   setTimeout(function(){
     if(!bundleData && !portalState.currentUser){
       showAuthScreen('')
@@ -517,6 +521,7 @@ function bindPortalEnhancementEvents(){
   bindClick('app-menu-btn', openAppDrawer)
   bindClick('app-drawer-close-btn', closeAppDrawer)
   bindClick('app-drawer-backdrop', closeAppDrawer)
+  bindClick('portal-install-btn', handlePortalInstallClick)
 
   Array.from(document.querySelectorAll('[data-drawer-action]')).forEach(function(button){
     button.addEventListener('click', function(){
@@ -707,6 +712,90 @@ function bindPortalEnhancementEvents(){
 function bindClick(id, handler){
   const node = document.getElementById(id)
   if(node) node.addEventListener('click', handler)
+}
+
+function setupPortalInstallPrompt(){
+  if(portalState.installPromptSetupDone) return
+  portalState.installPromptSetupDone = true
+
+  window.addEventListener('beforeinstallprompt', function(event){
+    event.preventDefault()
+    portalState.installPromptEvent = event
+    syncPortalInstallButton()
+  })
+
+  window.addEventListener('appinstalled', function(){
+    portalState.installPromptEvent = null
+    syncPortalInstallButton()
+    showToast('CODE LAB 앱이 설치되었습니다.', 'var(--green)')
+  })
+
+  registerPortalServiceWorker()
+}
+
+function registerPortalServiceWorker(){
+  if(!('serviceWorker' in navigator)) return
+  const host = String(window.location.hostname || '').toLowerCase()
+  const canRegister = window.location.protocol === 'https:' || host === 'localhost' || host === '127.0.0.1'
+  if(!canRegister) return
+
+  navigator.serviceWorker.register('./service-worker.js').catch(function(error){
+    console.warn('CODE LAB service worker registration failed:', error && error.message ? error.message : error)
+  })
+}
+
+function isPortalInstalledDisplayMode(){
+  const standaloneMedia = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(display-mode: standalone)')
+    : null
+  return !!(
+    (standaloneMedia && standaloneMedia.matches) ||
+    window.navigator.standalone === true
+  )
+}
+
+function isPortalIosDevice(){
+  const userAgent = String(window.navigator.userAgent || '').toLowerCase()
+  return /iphone|ipad|ipod/.test(userAgent) ||
+    (window.navigator.platform === 'MacIntel' && Number(window.navigator.maxTouchPoints || 0) > 1)
+}
+
+function syncPortalInstallButton(){
+  const button = document.getElementById('portal-install-btn')
+  if(!button) return
+  const shouldHide = isPortalInstalledDisplayMode()
+  button.classList.toggle('hidden', shouldHide)
+  button.disabled = shouldHide
+}
+
+async function handlePortalInstallClick(){
+  if(isPortalInstalledDisplayMode()){
+    showToast('이미 홈 화면 앱으로 열려 있습니다.', 'var(--green)')
+    syncPortalInstallButton()
+    return
+  }
+
+  const installPrompt = portalState.installPromptEvent
+  if(installPrompt && typeof installPrompt.prompt === 'function'){
+    try{
+      installPrompt.prompt()
+      const choice = await installPrompt.userChoice
+      portalState.installPromptEvent = null
+      syncPortalInstallButton()
+      if(choice && choice.outcome === 'accepted'){
+        showToast('CODE LAB 앱 설치를 시작합니다.', 'var(--green)')
+      }
+      return
+    }catch(error){
+      console.warn('CODE LAB install prompt failed:', error && error.message ? error.message : error)
+    }
+  }
+
+  if(isPortalIosDevice()){
+    showToast('공유 버튼을 누른 뒤 홈 화면에 추가를 선택해 주세요.', 'var(--blue)')
+  }else{
+    showToast('브라우저 메뉴에서 앱 설치 또는 홈 화면에 추가를 선택해 주세요.', 'var(--blue)')
+  }
 }
 
 function handlePortalPrepVideoManagerKeydown(event){
@@ -1497,6 +1586,7 @@ window.onAppScreenActivated = function(screenId){
   syncAppHistoryState(screenId, false)
   syncCheckJumpButtonVisibility()
   syncPortalAdminSetPanels(screenId)
+  syncPortalInstallButton()
 }
 
 function activatePortalScreen(screenId){
