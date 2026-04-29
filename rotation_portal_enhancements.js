@@ -18,6 +18,7 @@ const PORTAL_COUNSEL_END_MINUTES = (22 * 60) - PORTAL_COUNSEL_SLOT_MINUTES
 const PORTAL_STUDY_CAFE_DEFAULT_URL = 'https://study-lab--code-lab-2584c.asia-east1.hosted.app/study-lab'
 const PORTAL_STUDY_CAFE_AUTH_REQUEST = 'code-lab-study-auth-request'
 const PORTAL_STUDY_CAFE_AUTH_RESPONSE = 'code-lab-study-auth-response'
+const PORTAL_STUDY_CAFE_DISABLED = true
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
@@ -96,7 +97,7 @@ const ADMIN_PORTAL_LAB_BUTTON_IDS = {
 }
 
 const ADMIN_PORTAL_LAB_OWNER_IDS = {
-  'MERGER LAB': ['passion413']
+  'MERGER LAB': ['passion413', 'khe2016']
 }
 const ADMIN_PORTAL_LAB_COUNT = 6
 const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
@@ -261,6 +262,7 @@ function initPortalEnhancements(){
   overrideSharedClassListRenderer()
   setupPortalButtonIconEnhancements()
   setupPortalInstallPrompt()
+  syncStudyCafeDisabledState()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('message', handleStudyCafeWindowMessage)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
@@ -714,6 +716,20 @@ function bindClick(id, handler){
   if(node) node.addEventListener('click', handler)
 }
 
+function syncStudyCafeDisabledState(){
+  const nodes = [
+    document.getElementById('portal-study-cafe-btn'),
+    document.getElementById('drawer-study-cafe-btn')
+  ]
+  nodes.forEach(function(node){
+    if(!node) return
+    node.disabled = PORTAL_STUDY_CAFE_DISABLED
+    node.setAttribute('aria-disabled', PORTAL_STUDY_CAFE_DISABLED ? 'true' : 'false')
+    node.classList.toggle('portal-card-disabled', PORTAL_STUDY_CAFE_DISABLED && node.classList.contains('portal-card'))
+    node.classList.toggle('app-drawer-link-disabled', PORTAL_STUDY_CAFE_DISABLED && node.classList.contains('app-drawer-link'))
+  })
+}
+
 function setupPortalInstallPrompt(){
   if(portalState.installPromptSetupDone) return
   portalState.installPromptSetupDone = true
@@ -956,6 +972,10 @@ function showStudyCafeLaunchFallback(message, isError, state){
 }
 
 function openStudyCafePortal(){
+  if(PORTAL_STUDY_CAFE_DISABLED){
+    syncStudyCafeDisabledState()
+    return
+  }
   if(!portalState.currentUser){
     showAuthScreen('')
     return

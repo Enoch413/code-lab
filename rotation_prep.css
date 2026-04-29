@@ -4260,6 +4260,21 @@ body.app-screen-study-cafe .app-chrome{
   border-color:rgba(255,255,255,.14);
 }
 
+.app-drawer-link:disabled,
+.app-drawer-link[aria-disabled="true"],
+.app-drawer-link-disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+
+.app-drawer-link:disabled:hover,
+.app-drawer-link[aria-disabled="true"]:hover,
+.app-drawer-link-disabled:hover{
+  transform:none;
+  background:rgba(255,255,255,.045);
+  border-color:rgba(255,255,255,.07);
+}
+
 .logo{
   letter-spacing:-.07em;
   color:var(--primary);
@@ -4542,6 +4557,23 @@ body.app-screen-study-cafe .app-chrome{
   transform:translateY(-3px);
   box-shadow:0 32px 72px rgba(34,37,30,.24);
   filter:saturate(1.06);
+}
+
+#portal-screen .portal-card:disabled,
+#portal-screen .portal-card[aria-disabled="true"],
+#portal-screen .portal-card-disabled{
+  opacity:.46;
+  cursor:not-allowed;
+  filter:saturate(.55);
+  box-shadow:0 16px 34px rgba(34,37,30,.10);
+}
+
+#portal-screen .portal-card:disabled:hover,
+#portal-screen .portal-card[aria-disabled="true"]:hover,
+#portal-screen .portal-card-disabled:hover{
+  transform:none;
+  filter:saturate(.55);
+  box-shadow:0 16px 34px rgba(34,37,30,.10);
 }
 
 .portal-card-prep{
