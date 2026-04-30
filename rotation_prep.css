@@ -2140,6 +2140,15 @@ body::before{
   margin-bottom:18px;
 }
 
+.admin-check-analysis-bar .admin-filter-actions{
+  flex-wrap:nowrap;
+}
+
+.admin-check-analysis-bar .admin-set-filter-wrap{
+  width:min(220px,100%);
+  flex:0 0 min(220px,100%);
+}
+
 .admin-student-filter-wrap{
   width:100%;
   margin:8px 0 14px;
@@ -2260,6 +2269,15 @@ body::before{
 
   .admin-filter-actions .btn{
     width:100%;
+  }
+
+  .admin-check-analysis-bar .admin-filter-actions{
+    flex-wrap:wrap;
+  }
+
+  .admin-check-analysis-bar .admin-set-filter-wrap{
+    width:100%;
+    flex:0 0 auto;
   }
 }
 
