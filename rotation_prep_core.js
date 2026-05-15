@@ -429,6 +429,9 @@ function updateSetProgressContext(){
   }
   progressKey = baseProgressKey + '_' + sanitizeId(currentClass.id)
   loadProgress()
+  if(typeof window.applyPortalPrepVideoProgressRowsToCurrentPrepClass === 'function'){
+    window.applyPortalPrepVideoProgressRowsToCurrentPrepClass()
+  }
 }
 
 function loadProgress(){

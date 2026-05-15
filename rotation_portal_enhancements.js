@@ -213,6 +213,9 @@ portalState.prepVideoProgressModal = portalState.prepVideoProgressModal || {
   progressRows: [],
   status: ''
 }
+portalState.currentPrepVideoProgressRows = Array.isArray(portalState.currentPrepVideoProgressRows)
+  ? portalState.currentPrepVideoProgressRows
+  : []
 portalState.checkSetEditor = portalState.checkSetEditor || {
   open: false,
   isSaving: false,
@@ -6165,7 +6168,9 @@ async function syncPrepContentAfterLogin(forceReload){
     if(typeof window.applyPrepSessionData === 'function'){
       window.applyPrepSessionData(bundle, { source: 'remote', skipRoute: true })
     }
-    return true
+    return refreshPortalPrepVideoProgressForCurrentUser(false).then(function(){
+      return true
+    })
   }).catch(function(error){
     console.error(error)
     return false
@@ -6561,12 +6566,18 @@ function getPortalPrepProgressPassageId(passage, passageIndex){
   )
 }
 
+function normalizePortalPrepProgressIndex(value){
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0
+}
+
 function buildPortalPrepVideoProgressDocId(userId, setId, passageId, passageIndex){
+  const normalizedPassageIndex = normalizePortalPrepProgressIndex(passageIndex)
   return [
     sanitizePortalPrepProgressSegment(userId),
     sanitizePortalPrepProgressSegment(setId),
     sanitizePortalPrepProgressSegment(passageId),
-    sanitizePortalPrepProgressSegment(typeof passageIndex === 'number' ? passageIndex : 0)
+    sanitizePortalPrepProgressSegment(normalizedPassageIndex)
   ].join('__')
 }
 
@@ -6599,9 +6610,10 @@ function normalizePortalPrepVideoProgressRecord(source){
   const setId = String(source.setId || '').trim()
   const passageId = String(source.passageId || '').trim()
   const userId = String(source.userId || '').trim()
+  const passageIndex = normalizePortalPrepProgressIndex(source.passageIndex)
   if(!setId || !passageId || !userId) return null
   return {
-    id: id || buildPortalPrepVideoProgressDocId(userId, setId, passageId, Number(source.passageIndex || 0)),
+    id: id || buildPortalPrepVideoProgressDocId(userId, setId, passageId, passageIndex),
     userId: userId,
     loginId: String(source.loginId || '').trim(),
     email: String(source.email || '').trim().toLowerCase(),
@@ -6612,7 +6624,7 @@ function normalizePortalPrepVideoProgressRecord(source){
     setId: setId,
     setTitle: String(source.setTitle || '').trim(),
     passageId: passageId,
-    passageIndex: Number(source.passageIndex || 0),
+    passageIndex: passageIndex,
     passageTitle: String(source.passageTitle || '').trim(),
     videoTitle: String(source.videoTitle || '').trim(),
     videoUrl: String(source.videoUrl || '').trim(),
@@ -6623,13 +6635,37 @@ function normalizePortalPrepVideoProgressRecord(source){
   }
 }
 
+function getPortalPrepVideoProgressUserId(){
+  const profile = portalState.currentProfile || {}
+  const authUser = portalState.currentUser || {}
+  return String(authUser.uid || profile.uid || profile.id || '').trim()
+}
+
+function mergePortalPrepVideoProgressCache(record){
+  const normalized = normalizePortalPrepVideoProgressRecord(record)
+  if(!normalized) return
+  const rows = Array.isArray(portalState.currentPrepVideoProgressRows)
+    ? portalState.currentPrepVideoProgressRows.slice()
+    : []
+  const nextId = String(normalized.id || '').trim()
+  const existingIndex = rows.findIndex(function(row){
+    return String(row && row.id || '').trim() === nextId
+  })
+  if(existingIndex >= 0){
+    rows[existingIndex] = normalized
+  }else{
+    rows.push(normalized)
+  }
+  portalState.currentPrepVideoProgressRows = rows
+}
+
 async function savePortalPrepVideoProgress(options){
   const settings = options || {}
   const studySet = settings.studySet || null
   const passage = settings.passage || null
   const profile = portalState.currentProfile || {}
   const authUser = portalState.currentUser || {}
-  const userId = String(authUser.uid || profile.uid || profile.id || '').trim()
+  const userId = getPortalPrepVideoProgressUserId()
   if(!userId || !studySet || !passage) return false
 
   const classIds = typeof getProfileClassIds === 'function'
@@ -6638,7 +6674,7 @@ async function savePortalPrepVideoProgress(options){
   const currentClass = typeof getCurrentClass === 'function' ? getCurrentClass() : null
   const classId = String(currentClass && currentClass.id || classIds[0] || '').trim()
   const setId = getPortalPrepProgressSetId(studySet, settings.setIndex)
-  const passageIndex = Number(settings.passageIndex || 0)
+  const passageIndex = normalizePortalPrepProgressIndex(settings.passageIndex)
   const passageId = getPortalPrepProgressPassageId(passage, passageIndex)
   const docId = buildPortalPrepVideoProgressDocId(userId, setId, passageId, passageIndex)
   const now = new Date().toISOString()
@@ -6666,6 +6702,7 @@ async function savePortalPrepVideoProgress(options){
   })
   if(!record) return false
 
+  mergePortalPrepVideoProgressCache(record)
   if(portalState.firebaseEnabled && portalState.db){
     await portalState.db.collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION).doc(docId).set(record, { merge: true })
   }else{
@@ -6707,6 +6744,126 @@ async function fetchPortalPrepVideoProgressRows(filters){
     }
     return true
   })
+}
+
+async function fetchCurrentPortalPrepVideoProgressRows(){
+  const userId = getPortalPrepVideoProgressUserId()
+  if(!userId || isPortalAdmin()) return []
+
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      const snapshot = await portalState.db
+        .collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
+        .where('userId', '==', userId)
+        .get()
+      return snapshot.docs.map(function(doc){
+        return normalizePortalPrepVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+      }).filter(Boolean)
+    }catch(error){
+      console.warn('current prep video progress read fallback:', error && error.message ? error.message : error)
+    }
+  }
+
+  return readLocalPortalPrepVideoProgressRows().filter(function(row){
+    return String(row && row.userId || '').trim() === userId
+  })
+}
+
+function getPortalPrepVideoProgressRowTime(row){
+  const candidates = [
+    row && row.updatedAt,
+    row && row.completedAt,
+    row && row.clearedAt
+  ]
+  for(let index = 0; index < candidates.length; index += 1){
+    const time = new Date(String(candidates[index] || '')).getTime()
+    if(!Number.isNaN(time)) return time
+  }
+  return 0
+}
+
+function findPortalPrepVideoProgressRow(rows, setId, passageId, passageIndex){
+  const targetSetId = String(setId || '').trim()
+  const targetPassageId = String(passageId || '').trim()
+  const targetPassageIndex = normalizePortalPrepProgressIndex(passageIndex)
+  return (Array.isArray(rows) ? rows : []).reduce(function(best, row){
+    if(String(row && row.setId || '').trim() !== targetSetId) return best
+    if(String(row && row.passageId || '').trim() !== targetPassageId) return best
+    if(normalizePortalPrepProgressIndex(row && row.passageIndex) !== targetPassageIndex) return best
+    if(!best) return row
+    return getPortalPrepVideoProgressRowTime(row) >= getPortalPrepVideoProgressRowTime(best) ? row : best
+  }, null)
+}
+
+function applyPortalPrepVideoProgressRowsToCurrentPrepClass(){
+  const userId = getPortalPrepVideoProgressUserId()
+  const rows = (Array.isArray(portalState.currentPrepVideoProgressRows) ? portalState.currentPrepVideoProgressRows : [])
+    .filter(function(row){
+      return String(row && row.userId || '').trim() === userId
+    })
+  if(!userId || !rows.length) return false
+  if(typeof getCurrentClass !== 'function' || typeof getPassageProgressStorageKey !== 'function') return false
+  if(typeof progressKey === 'undefined' || !progressKey) return false
+
+  const currentClass = getCurrentClass()
+  const currentClassId = String(currentClass && currentClass.id || '').trim()
+  if(!currentClassId) return false
+  if(!progress.done || typeof progress.done !== 'object') progress.done = {}
+
+  let changed = false
+  ;(Array.isArray(studySets) ? studySets : []).forEach(function(studySet, setIndex){
+    const assignments = Array.isArray(studySet && studySet.classAssignments) ? studySet.classAssignments : []
+    const assignment = assignments.find(function(entry){
+      return String(entry && entry.classId || '').trim() === currentClassId
+    }) || null
+    const passageIndexes = Array.isArray(assignment && assignment.passageIndexes) ? assignment.passageIndexes : []
+    if(!assignment || !passageIndexes.length) return
+
+    passageIndexes.forEach(function(rawPassageIndex){
+      const passageIndex = normalizePortalPrepProgressIndex(rawPassageIndex)
+      const passage = studySet && studySet.passages ? studySet.passages[passageIndex] : null
+      if(!passage) return
+      const setId = getPortalPrepProgressSetId(studySet, setIndex)
+      const passageId = getPortalPrepProgressPassageId(passage, passageIndex)
+      const row = findPortalPrepVideoProgressRow(rows, setId, passageId, passageIndex)
+      if(!row) return
+
+      const storageKey = getPassageProgressStorageKey(setIndex, passageIndex)
+      const nextDone = !!row.done
+      const currentDone = !!(progress.done && progress.done[storageKey])
+      if(currentDone === nextDone) return
+
+      if(nextDone){
+        progress.done[storageKey] = true
+      }else{
+        delete progress.done[storageKey]
+      }
+      changed = true
+    })
+  })
+
+  if(changed && typeof saveProgress === 'function') saveProgress()
+  return changed
+}
+
+function refreshVisiblePortalPrepProgressAfterHydration(changed){
+  if(!changed) return
+  const activeScreenId = typeof getCurrentActiveScreenId === 'function' ? getCurrentActiveScreenId() : ''
+  if(activeScreenId === 'passage-screen' && typeof renderPassageScreen === 'function'){
+    renderPassageScreen()
+    return
+  }
+  if(activeScreenId === 'study-screen' && typeof renderStudy === 'function'){
+    renderStudy()
+  }
+}
+
+async function refreshPortalPrepVideoProgressForCurrentUser(){
+  const rows = await fetchCurrentPortalPrepVideoProgressRows()
+  portalState.currentPrepVideoProgressRows = rows
+  const changed = applyPortalPrepVideoProgressRowsToCurrentPrepClass()
+  refreshVisiblePortalPrepProgressAfterHydration(changed)
+  return rows
 }
 
 async function fetchAllPortalPrepVideoProgress(){
@@ -9052,6 +9209,8 @@ window.removePortalPrepPassageVideo = removePortalPrepPassageVideo
 window.openPortalPrepVideoProgressModal = openPortalPrepVideoProgressModal
 window.closePortalPrepVideoProgressModal = closePortalPrepVideoProgressModal
 window.savePortalPrepVideoProgress = savePortalPrepVideoProgress
+window.refreshPortalPrepVideoProgressForCurrentUser = refreshPortalPrepVideoProgressForCurrentUser
+window.applyPortalPrepVideoProgressRowsToCurrentPrepClass = applyPortalPrepVideoProgressRowsToCurrentPrepClass
 window.openPortalManagedCheckSetEditor = openPortalManagedCheckSetEditor
 window.closePortalManagedCheckSetEditor = closePortalManagedCheckSetEditor
 window.savePortalManagedCheckSetEditor = savePortalManagedCheckSetEditor
