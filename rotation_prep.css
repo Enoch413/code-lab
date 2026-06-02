@@ -6226,33 +6226,6 @@ body.app-screen-study-cafe .app-chrome{
   color:#fff;
 }
 
-#check-set-screen .check-jump-inline-btn{
-  flex:0 0 auto;
-  min-height:36px;
-  padding:0 14px;
-  border-radius:999px;
-  border-color:rgba(15,93,81,.16);
-  background:rgba(255,255,255,.9);
-  color:#0f5d51;
-  font-family:'Lexend','Noto Sans KR',sans-serif;
-  font-size:.82rem;
-  font-weight:900;
-  letter-spacing:-.035em;
-  box-shadow:0 10px 22px rgba(39,50,46,.06);
-}
-
-#check-set-screen .check-jump-inline-btn:hover{
-  border-color:rgba(15,93,81,.26);
-  background:#fff;
-}
-
-@media (max-width:520px){
-  #check-set-screen .check-jump-inline-btn{
-    width:100%;
-    justify-content:center;
-  }
-}
-
 /* 2026 Unified Page Background */
 :root{
   --code-lab-page-bg:
@@ -7500,6 +7473,10 @@ body::before{
 button.ui-button-has-icon,
 [role="button"].ui-button-has-icon{
   position:relative;
+}
+
+button.check-jump-btn.ui-button-has-icon{
+  position:fixed;
 }
 
 .ui-action-icon{
