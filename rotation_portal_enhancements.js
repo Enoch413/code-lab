@@ -260,6 +260,7 @@ const PORTAL_BUTTON_ICON_TEXT = {
 document.addEventListener('DOMContentLoaded', initPortalEnhancements)
 
 function initPortalEnhancements(){
+  ensureCheckJumpBottomButton()
   bindPortalEnhancementEvents()
   bindPasswordSubmitOverride()
   overrideSharedClassListRenderer()
@@ -1627,6 +1628,23 @@ function activatePortalScreen(screenId){
   }
 }
 
+function ensureCheckJumpBottomButton(){
+  let button = document.getElementById('check-jump-bottom-btn')
+  if(button) return button
+  if(!document.body) return null
+  button = document.createElement('button')
+  button.className = 'check-jump-btn hidden'
+  button.type = 'button'
+  button.id = 'check-jump-bottom-btn'
+  button.textContent = '맨 아래로'
+  document.body.appendChild(button)
+  button.addEventListener('click', scrollCheckScreenToBottom)
+  if(typeof schedulePortalButtonIconRefresh === 'function'){
+    schedulePortalButtonIconRefresh()
+  }
+  return button
+}
+
 function scrollCheckScreenToBottom(){
   if(getCurrentActiveScreenId() !== 'check-set-screen') return
   const submitArea = document.getElementById('check-submit-actions')
@@ -1643,7 +1661,7 @@ function scrollCheckScreenToBottom(){
 }
 
 function syncCheckJumpButtonVisibility(){
-  const button = document.getElementById('check-jump-bottom-btn')
+  const button = ensureCheckJumpBottomButton()
   if(!button){
     return
   }
@@ -1659,12 +1677,13 @@ function syncCheckJumpButtonVisibility(){
     document.body ? document.body.scrollHeight : 0
   )
   const canScrollMore = scrollHeight - viewportHeight > 280
+  const hasLongVisibleForm = document.querySelectorAll('#check-form .check-form-card').length > 12
   const submitArea = document.getElementById('check-submit-actions')
   const nearBottom = submitArea
     ? submitArea.getBoundingClientRect().top <= viewportHeight - 120
     : (window.scrollY + viewportHeight >= scrollHeight - 180)
 
-  button.classList.toggle('hidden', !canScrollMore || nearBottom)
+  button.classList.toggle('hidden', (!canScrollMore && !hasLongVisibleForm) || nearBottom)
 }
 
 function showAuthScreen(errorMessage){
@@ -2387,6 +2406,7 @@ function renderCurrentCheckSet(){
   }else{
     syncCheckJumpButtonVisibility()
   }
+  setTimeout(syncCheckJumpButtonVisibility, 180)
 }
 
 function renderCheckForm(checkSet, submission){
@@ -2472,6 +2492,10 @@ function renderCheckForm(checkSet, submission){
 function bindCheckFormInteractions(checkSet, submission){
   const form = document.getElementById('check-form')
   if(!form) return
+
+  form.querySelectorAll('[data-check-jump-bottom="true"]').forEach(function(button){
+    button.addEventListener('click', scrollCheckScreenToBottom)
+  })
 
   form.querySelectorAll('.check-choice-grid').forEach(function(group){
     if(group.dataset.locked === 'true') return
@@ -5304,6 +5328,7 @@ function renderCheckForm(checkSet, submission){
           renderCheckProgressFilterChip('pending', '미제출', pendingCount + openEditCount, filterMode === 'pending') +
           renderCheckProgressFilterChip('wrong', '오답', wrongCount, filterMode === 'wrong') +
         '</div>' +
+        '<button class="btn btn-ghost btn-sm check-jump-inline-btn" type="button" data-check-jump-bottom="true">맨 아래로</button>' +
       '</div>' +
     '</section>'
 
@@ -5446,6 +5471,7 @@ function renderCheckSubmitArea(checkSet, submission){
   }else{
     syncCheckJumpButtonVisibility()
   }
+  setTimeout(syncCheckJumpButtonVisibility, 180)
 }
 
 function buildCheckSubmitToastMessage(batchAnswers){
