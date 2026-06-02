@@ -1,4 +1,4 @@
-const CODE_LAB_SW_VERSION = '20260427-install-prompt-01'
+const CODE_LAB_SW_VERSION = '20260602-check-jump-bottom-01'
 
 self.addEventListener('install', function(event){
   self.skipWaiting()
