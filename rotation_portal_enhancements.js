@@ -2493,10 +2493,6 @@ function bindCheckFormInteractions(checkSet, submission){
   const form = document.getElementById('check-form')
   if(!form) return
 
-  form.querySelectorAll('[data-check-jump-bottom="true"]').forEach(function(button){
-    button.addEventListener('click', scrollCheckScreenToBottom)
-  })
-
   form.querySelectorAll('.check-choice-grid').forEach(function(group){
     if(group.dataset.locked === 'true') return
     group.querySelectorAll('.check-choice-btn').forEach(function(button){
@@ -5328,7 +5324,6 @@ function renderCheckForm(checkSet, submission){
           renderCheckProgressFilterChip('pending', '미제출', pendingCount + openEditCount, filterMode === 'pending') +
           renderCheckProgressFilterChip('wrong', '오답', wrongCount, filterMode === 'wrong') +
         '</div>' +
-        '<button class="btn btn-ghost btn-sm check-jump-inline-btn" type="button" data-check-jump-bottom="true">맨 아래로</button>' +
       '</div>' +
     '</section>'
 
