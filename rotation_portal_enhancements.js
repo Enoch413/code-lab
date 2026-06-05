@@ -165,6 +165,7 @@ portalState.contentMeta = portalState.contentMeta || {}
 portalState.currentQuestionIssues = portalState.currentQuestionIssues || []
 portalState.currentCheckDraftAnswers = portalState.currentCheckDraftAnswers || {}
 portalState.currentCheckEditTargets = portalState.currentCheckEditTargets || {}
+portalState.currentCheckExpandedResults = portalState.currentCheckExpandedResults || {}
 portalState.currentCheckFilter = portalState.currentCheckFilter || 'all'
 portalState.adminCheckSetFilter = portalState.adminCheckSetFilter || 'all'
 portalState.adminCheckAnalytics = portalState.adminCheckAnalytics || null
@@ -2376,6 +2377,7 @@ async function openCheckSetPortal(setId, options){
   portalState.currentCheckSubmission = await loadExistingCheckSubmission(checkSet)
   portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, portalState.currentCheckSubmission)
   portalState.currentCheckEditTargets = {}
+  portalState.currentCheckExpandedResults = {}
   portalState.currentCheckFilter = countPendingCheckQuestions(checkSet, portalState.currentCheckSubmission) ? 'pending' : 'all'
   portalState.currentQuestionIssues = portalState.currentCheckSubmission
     ? await fetchMyQuestionIssues(checkSet)
@@ -5135,7 +5137,49 @@ function isCheckWrongNoteCompleted(submittedAnswer){
   return !!(submittedAnswer && submittedAnswer.wrongNoteCompleted)
 }
 
-function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
+function isCheckResultExpanded(questionId){
+  const key = String(questionId || '').trim()
+  return !!(key && portalState.currentCheckExpandedResults && portalState.currentCheckExpandedResults[key])
+}
+
+function setCheckResultExpanded(questionId, isExpanded){
+  const key = String(questionId || '').trim()
+  if(!key) return
+  if(!portalState.currentCheckExpandedResults) portalState.currentCheckExpandedResults = {}
+  if(isExpanded){
+    portalState.currentCheckExpandedResults = {}
+    portalState.currentCheckExpandedResults[key] = true
+  }else{
+    delete portalState.currentCheckExpandedResults[key]
+  }
+}
+
+function countVisibleSubmittedCheckResults(visibleQuestions, answerMap){
+  return (Array.isArray(visibleQuestions) ? visibleQuestions : []).reduce(function(count, question){
+    const questionId = String(question && question.id || '').trim()
+    return questionId && answerMap && answerMap.has(questionId) ? count + 1 : count
+  }, 0)
+}
+
+function renderCollapsedCheckResultBody(question, submittedAnswer, isExpanded, shouldLazyResultBody){
+  if(!submittedAnswer) return ''
+  if(isExpanded || !shouldLazyResultBody){
+    return '<div class="check-result-body">' + renderCheckResultBody(question, submittedAnswer) + '</div>'
+  }
+  const actionText = submittedAnswer.isCorrect === false ? '정답/해설 보기' : '정답 보기'
+  return '' +
+    '<div class="check-result-body check-result-body-collapsed">' +
+      '<span>정답과 해설은 필요한 문항만 열어서 확인하세요.</span>' +
+      '<button class="check-result-toggle-btn" type="button" onclick="toggleCheckResultBody(\'' + escapeJs(question.id) + '\')">' + actionText + '</button>' +
+    '</div>'
+}
+
+function renderCheckResultToggleTool(question, submittedAnswer, isExpanded, shouldLazyResultBody, isEditingAnswer){
+  if(!submittedAnswer || isEditingAnswer || !shouldLazyResultBody) return ''
+  return '<button class="check-result-toggle-btn" type="button" onclick="toggleCheckResultBody(\'' + escapeJs(question.id) + '\')">' + (isExpanded ? '정답/해설 닫기' : '정답/해설 보기') + '</button>'
+}
+
+function renderCheckResultTools(question, submittedAnswer, isEditingAnswer, resultToggleTool){
   const existing = portalState.currentQuestionIssues.find(function(entry){
     return String(entry.questionId || '') === String(question.id || '') && normalizeQuestionIssueStatus(entry) === 'open'
   }) || null
@@ -5162,12 +5206,23 @@ function renderCheckResultTools(question, submittedAnswer, isEditingAnswer){
       '</button>')
 
   return '' +
-    '<div class="check-result-tools">' +
-      editConfirmTool +
-      editTool +
-      wrongNoteTool +
-      issueTool +
-    '</div>'
+      '<div class="check-result-tools">' +
+        editConfirmTool +
+        editTool +
+        (resultToggleTool || '') +
+        wrongNoteTool +
+        issueTool +
+      '</div>'
+}
+
+window.toggleCheckResultBody = function(questionId){
+  const checkSet = portalState.currentCheckSet
+  const submission = portalState.currentCheckSubmission
+  if(!checkSet || !submission) return
+  const key = String(questionId || '').trim()
+  if(!key) return
+  setCheckResultExpanded(key, !isCheckResultExpanded(key))
+  renderCheckForm(checkSet, submission)
 }
 
 window.startCheckAnswerEdit = function(questionId){
@@ -5311,6 +5366,8 @@ function renderCheckForm(checkSet, submission){
   const filterMode = resolveCheckFilterMode(checkSet, submission, portalState.currentCheckFilter)
   portalState.currentCheckFilter = filterMode
   const visibleQuestions = getVisibleCheckQuestions(checkSet, submission, filterMode)
+  const visibleSubmittedCount = countVisibleSubmittedCheckResults(visibleQuestions, answerMap)
+  const shouldLazyResultBody = visibleSubmittedCount > 24
 
   const progressHtml =
     '<section class="group check-progress-card">' +
@@ -5331,6 +5388,8 @@ function renderCheckForm(checkSet, submission){
     const questionId = String(question && question.id || '').trim()
     const submittedAnswer = answerMap.get(questionId) || null
     const isEditingAnswer = !!submittedAnswer && isCheckAnswerEditing(questionId)
+    const isResultExpanded = submittedAnswer && (isEditingAnswer || isCheckResultExpanded(questionId))
+    const resultToggleTool = renderCheckResultToggleTool(question, submittedAnswer, isResultExpanded, shouldLazyResultBody, isEditingAnswer)
     const selectedAnswer = isEditingAnswer
       ? (getCurrentCheckDraftAnswer(questionId) || String(submittedAnswer.userAnswer || ''))
       : (submittedAnswer ? String(submittedAnswer.userAnswer || '') : getCurrentCheckDraftAnswer(questionId))
@@ -5363,9 +5422,9 @@ function renderCheckForm(checkSet, submission){
         (submittedAnswer ? (
           '<div class="' + resultClass + '">' +
             '<div class="check-result-title">' + resultTitle + '</div>' +
-            '<div class="check-result-body">' + renderCheckResultBody(question, submittedAnswer) + '</div>' +
+            renderCollapsedCheckResultBody(question, submittedAnswer, isResultExpanded, shouldLazyResultBody) +
             editNote +
-            renderCheckResultTools(question, submittedAnswer, isEditingAnswer) +
+            renderCheckResultTools(question, submittedAnswer, isEditingAnswer, resultToggleTool) +
           '</div>'
         ) : '') +
       '</section>'
