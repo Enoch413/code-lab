@@ -5004,8 +5004,7 @@ body.app-screen-study-cafe .app-chrome{
   font-weight:900;
 }
 
-#home-screen .class-bar,
-#passage-screen .class-bar{
+#home-screen .class-bar{
   position:relative;
   overflow:hidden;
   align-items:center;
@@ -5018,8 +5017,7 @@ body.app-screen-study-cafe .app-chrome{
   box-shadow:0 22px 54px rgba(38,52,48,.09);
 }
 
-#home-screen .class-bar::before,
-#passage-screen .class-bar::before{
+#home-screen .class-bar::before{
   content:"";
   position:absolute;
   inset:0 auto 0 0;
@@ -5027,13 +5025,11 @@ body.app-screen-study-cafe .app-chrome{
   background:linear-gradient(180deg,#0f5d51,#b77932);
 }
 
-#home-screen .class-bar-label,
-#passage-screen .class-bar-label{
+#home-screen .class-bar-label{
   color:#8a6a40;
 }
 
-#home-screen .class-bar-name,
-#passage-screen .class-bar-name{
+#home-screen .class-bar-name{
   font-size:1.16rem;
   letter-spacing:-.045em;
 }
@@ -5346,7 +5342,6 @@ body.app-screen-study-cafe .app-chrome{
   }
 
   #home-screen .class-bar,
-  #passage-screen .class-bar,
   #study-screen .passage-box,
   #study-screen .video-stage,
   #study-screen .video-empty-box,
