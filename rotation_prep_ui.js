@@ -277,6 +277,7 @@ function renderPassageScreen(){
 }
 
 function renderDirectPrepPassageScreen(){
+  renderClassSummary()
   const container = document.getElementById('p-list')
   updatePrepPassageAdminQuickActions()
   const passageEntries = getVisiblePrepPassageEntries()
@@ -285,7 +286,6 @@ function renderDirectPrepPassageScreen(){
   }).length
 
   if(!passageEntries.length){
-    document.getElementById('passage-bar').style.display = 'none'
     document.getElementById('passage-stats').innerHTML = [
       renderStat(0, '영상'),
       renderStat(0, '완료'),
@@ -298,7 +298,6 @@ function renderDirectPrepPassageScreen(){
     return
   }
 
-  document.getElementById('passage-bar').style.display = 'none'
   document.getElementById('passage-stats').innerHTML = [
     renderStat(passageEntries.filter(function(entry){ return entry.passage.hasVideo }).length, '영상'),
     renderStat(doneCount, '완료'),
