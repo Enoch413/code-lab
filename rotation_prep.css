@@ -1711,6 +1711,12 @@ body::before{
     linear-gradient(135deg, #7a2f45, #4b182a);
 }
 
+.portal-card-grammar-lab{
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.08), transparent 52%),
+    linear-gradient(135deg, #5c3920, #a9642f);
+}
+
 .portal-card-admin{
   background:
     linear-gradient(135deg, rgba(255,255,255,.05), transparent 52%),
@@ -4646,6 +4652,10 @@ body.app-screen-study-cafe .app-chrome{
 
 .portal-card-study-cafe{
   background:linear-gradient(135deg,#6b2f4b 0%,#9b4863 100%);
+}
+
+.portal-card-grammar-lab{
+  background:linear-gradient(135deg,#5b3922 0%,#b46d35 100%);
 }
 
 .portal-card-admin{

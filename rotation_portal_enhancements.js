@@ -542,6 +542,7 @@ function bindPortalEnhancementEvents(){
     })
   })
   bindClick('portal-study-cafe-btn', openStudyCafePortal)
+  bindClick('portal-grammar-lab-btn', openGrammarLabPlaceholder)
   bindClick('study-cafe-back-btn', showPortalScreen)
   const studyCafeFrame = document.getElementById('study-cafe-frame')
   if(studyCafeFrame){
@@ -877,11 +878,16 @@ function runDrawerAction(action){
   if(action === 'check') return openCheckPortal()
   if(action === 'counsel') return openCounselPortal()
   if(action === 'study-cafe') return openStudyCafePortal()
+  if(action === 'grammar-lab') return openGrammarLabPlaceholder()
   if(action === 'admin') return openAdminPortal()
   if(action === 'account') return openAccountScreen()
   if(action === 'password') return openPasswordScreen(false)
   if(action === 'refresh') return refreshPortalData()
   if(action === 'logout') return logoutPortal()
+}
+
+function openGrammarLabPlaceholder(){
+  showToast('GRAMMAR LAB은 준비 중입니다.', 'var(--green)')
 }
 
 function getStudyCafeEmbedConfig(){
