@@ -83,7 +83,7 @@ Notes:
 - Missing `allowedLabs` means all LAB buttons stay visible
 - `--allowed-labs ""` means show none
 - `--allowed-labs "all"` means show all
-- Supported values: `word-lab`, `pdf-lab`, `rotation-lab`, `builder-lab`, `pinpoint-lab`
+- Supported values: `word-lab`, `pdf-lab`, `builder-lab`, `pinpoint-lab`, `merger-lab`
 
 ### 7. Set a new temporary password
 
