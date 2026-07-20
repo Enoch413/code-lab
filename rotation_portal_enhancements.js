@@ -883,7 +883,7 @@ function runDrawerAction(action){
 }
 
 function openGrammarLabPlaceholder(){
-  showToast('GRAMMAR LAB은 준비 중입니다.', 'var(--green)')
+  showToast('GRAMMAR는 준비 중입니다.', 'var(--green)')
 }
 
 function getStudyCafeEmbedConfig(){
