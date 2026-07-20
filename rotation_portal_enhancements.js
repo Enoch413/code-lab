@@ -81,7 +81,6 @@ const CHROME_BREADCRUMBS = {
 const ADMIN_PORTAL_LABS = {
   'WORD LAB': 'https://enoch413.github.io/word-lab/',
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
-  'ROTATION LAB': 'https://enoch413.github.io/rotatation-lab/',
   'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
   'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/',
   'MERGER LAB': 'http://127.0.0.1:8781/'
@@ -90,7 +89,6 @@ const ADMIN_PORTAL_LABS = {
 const ADMIN_PORTAL_LAB_BUTTON_IDS = {
   'WORD LAB': 'admin-portal-word-btn',
   'PDF LAB': 'admin-portal-pdf-btn',
-  'ROTATION LAB': 'admin-portal-rotation-btn',
   'BUILDER LAB': 'admin-portal-builder-btn',
   'PINPOINT LAB': 'admin-portal-pinpoint-btn',
   'MERGER LAB': 'admin-portal-merger-btn'
@@ -99,8 +97,7 @@ const ADMIN_PORTAL_LAB_BUTTON_IDS = {
 const ADMIN_PORTAL_LAB_OWNER_IDS = {
   'MERGER LAB': ['passion413', 'khe2016']
 }
-const ADMIN_PORTAL_LAB_COUNT = 6
-const ADMIN_PORTAL_CONNECTED_LABS = Object.keys(ADMIN_PORTAL_LABS).length
+const ADMIN_PORTAL_LAB_COUNT = 5
 
 const PORTAL_COUNSEL_OTHER_REASON = '__other__'
 const PORTAL_COUNSEL_TYPES = {
@@ -607,7 +604,6 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-refresh-btn', refreshPortalData)
   bindClick('admin-portal-word-btn', function(){ openLabPlaceholder('WORD LAB') })
   bindClick('admin-portal-pdf-btn', function(){ openLabPlaceholder('PDF LAB') })
-  bindClick('admin-portal-rotation-btn', function(){ openLabPlaceholder('ROTATION LAB') })
   bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
   bindClick('admin-portal-merger-btn', function(){ openLabPlaceholder('MERGER LAB') })
@@ -2032,7 +2028,6 @@ function normalizeAdminPortalLabName(value){
   if(raw === 'all' || raw === '*') return '*'
   if(raw === 'word' || raw === 'wordlab' || raw === 'word-lab' || raw === 'word lab') return 'WORD LAB'
   if(raw === 'pdf' || raw === 'pdflab' || raw === 'pdf-lab' || raw === 'pdf lab') return 'PDF LAB'
-  if(raw === 'rotation' || raw === 'rotationlab' || raw === 'rotation-lab' || raw === 'rotation lab') return 'ROTATION LAB'
   if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
   if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
   if(raw === 'merger' || raw === 'mergerlab' || raw === 'merger-lab' || raw === 'merger lab') return 'MERGER LAB'
