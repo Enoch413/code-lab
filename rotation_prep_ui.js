@@ -150,6 +150,7 @@ function renderClassList(){
 function renderClassSummary(){
   const currentClass = getCurrentClass()
   const currentSet = getCurrentStudySet()
+  const directPassageFlow = shouldUseDirectPrepPassageFlow()
   const visibleSets = getStudySetsForCurrentClass()
   const visibleClassEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
     ? window.getVisiblePortalPrepClassEntries()
@@ -172,11 +173,21 @@ function renderClassSummary(){
     document.getElementById('current-class-meta').textContent = ''
   }
 
-  document.getElementById('passage-bar').style.display = shouldUseDirectPrepPassageFlow() ? 'none' : (currentSet ? 'flex' : 'none')
-  if(currentSet){
+  const passageBar = document.getElementById('passage-bar')
+  const passageBarLabel = passageBar ? passageBar.querySelector('.class-bar-label') : null
+  if(directPassageFlow){
+    passageBar.style.display = currentClass ? 'flex' : 'none'
+    if(passageBarLabel) passageBarLabel.textContent = '현재 반'
+    document.getElementById('current-set-name').textContent = currentClass ? currentClass.name : ''
+    document.getElementById('current-set-meta').textContent = ''
+  }else if(currentSet){
+    passageBar.style.display = 'flex'
+    if(passageBarLabel) passageBarLabel.textContent = '현재 학습 세트'
     document.getElementById('current-set-name').textContent = currentSet.title
     document.getElementById('current-set-meta').textContent = getStudySetDateText(currentSet)
   }else{
+    passageBar.style.display = 'none'
+    if(passageBarLabel) passageBarLabel.textContent = '현재 학습 세트'
     document.getElementById('current-set-name').textContent = ''
     document.getElementById('current-set-meta').textContent = ''
   }

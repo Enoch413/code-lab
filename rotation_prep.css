@@ -5837,7 +5837,7 @@ body.app-screen-study-cafe .app-chrome{
 
 /* 2026 CHECK Set List Cleanup */
 #check-screen > .class-bar{
-  display:none !important;
+  display:flex !important;
 }
 
 #check-screen > .label{
