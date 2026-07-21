@@ -555,6 +555,10 @@ function bindPortalEnhancementEvents(){
   bindClick('grammar-player-back-btn', openGrammarPortal)
   bindClick('grammar-player-home-btn', showPortalScreen)
   bindClick('grammar-video-retry-btn', retryGrammarVideoPart)
+  bindClick('grammar-player-material-download', function(event){
+    const button = event && event.currentTarget
+    downloadGrammarMaterial(button && button.dataset.grammarMaterialUnitId || '', button)
+  })
   Array.from(document.querySelectorAll('[data-grammar-level]')).forEach(function(button){
     button.addEventListener('click', function(){
       selectGrammarLevel(button.dataset.grammarLevel || '')
@@ -563,6 +567,15 @@ function bindPortalEnhancementEvents(){
   const grammarCourseList = document.getElementById('grammar-course-list')
   if(grammarCourseList){
     grammarCourseList.addEventListener('click', function(event){
+      const materialTarget = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-grammar-material-unit-id]')
+        : null
+      if(materialTarget){
+        event.preventDefault()
+        event.stopPropagation()
+        downloadGrammarMaterial(materialTarget.dataset.grammarMaterialUnitId || '', materialTarget)
+        return
+      }
       const target = event.target && typeof event.target.closest === 'function'
         ? event.target.closest('[data-grammar-unit-id]')
         : null
@@ -1004,6 +1017,11 @@ function renderGrammarPlayer(context){
   setElementTextSafe('grammar-player-part-summary', '영상 ' + unit.videoCount + '개')
   setElementTextSafe('grammar-player-now-title', unit.title)
   setElementTextSafe('grammar-player-now-part', 'PART ' + String(partIndex + 1).padStart(2, '0'))
+  const materialButton = document.getElementById('grammar-player-material-download')
+  if(materialButton){
+    materialButton.dataset.grammarMaterialUnitId = unit.id
+    setGrammarMaterialButtonState(materialButton, 'idle')
+  }
 
   const partList = document.getElementById('grammar-part-list')
   if(!partList) return
@@ -1077,6 +1095,106 @@ function getGrammarStorageObjectPath(fileName){
   return 'videos/grammar/' + normalizedName
 }
 
+function getGrammarMaterialObjectPath(unitId){
+  const normalizedId = String(unitId || '').trim()
+  if(!/^(?:GIS|GI[123])-C\d{2}-U\d{2}$/.test(normalizedId)){
+    throw new Error('교재 파일 정보가 올바르지 않습니다.')
+  }
+  return 'materials/grammar/' + normalizedId + '.pdf'
+}
+
+function setGrammarMaterialButtonState(button, state){
+  if(!button) return
+  const normalizedState = String(state || 'idle').trim().toLowerCase()
+  const idleLabel = String(button.dataset.materialLabel || '교재 다운로드').trim()
+  const compact = idleLabel === '교재 PDF'
+  const labels = {
+    idle: idleLabel,
+    loading: compact ? '받는 중' : '다운로드 중',
+    success: compact ? '완료' : '다운로드 완료',
+    error: compact ? '재시도' : '다시 다운로드'
+  }
+  button.dataset.state = normalizedState
+  button.classList.toggle('loading', normalizedState === 'loading')
+  button.disabled = normalizedState === 'loading'
+  button.textContent = labels[normalizedState] || labels.idle
+}
+
+function setGrammarMaterialButtonsState(unitId, state){
+  const normalizedId = String(unitId || '').trim()
+  if(!/^(?:GIS|GI[123])-C\d{2}-U\d{2}$/.test(normalizedId)) return
+  Array.from(document.querySelectorAll('[data-grammar-material-unit-id="' + normalizedId + '"]')).forEach(function(button){
+    setGrammarMaterialButtonState(button, state)
+  })
+}
+
+function getGrammarMaterialDownloadName(context){
+  const level = String(context && context.level && context.level.level || 'GRAMMAR').trim()
+  const unitNumber = String(context && context.unit && context.unit.number || '').trim()
+  const unitTitle = String(context && context.unit && context.unit.title || '교재').trim()
+  return (level + '_UNIT ' + unitNumber + '_' + unitTitle)
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, '_') + '.pdf'
+}
+
+async function downloadGrammarMaterial(unitId, triggerButton){
+  const context = getGrammarUnitContext(unitId)
+  if(!context){
+    showToast('선택한 문법 교재 정보를 찾지 못했습니다.', 'var(--red)')
+    return
+  }
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  if(triggerButton && triggerButton.disabled) return
+
+  let objectPath = ''
+  try{
+    objectPath = getGrammarMaterialObjectPath(context.unit.id)
+  }catch(error){
+    showToast(String(error && error.message || '교재 파일 정보를 확인하지 못했습니다.'), 'var(--red)')
+    return
+  }
+
+  setGrammarMaterialButtonsState(context.unit.id, 'loading')
+  try{
+    const blob = await fetchGrammarStorageBlob(objectPath, 'application/pdf', null, null, false)
+    if(!blob || blob.size <= 0) throw new Error('빈 교재 파일입니다.')
+
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = getGrammarMaterialDownloadName(context)
+    link.rel = 'noopener'
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(function(){
+      try{ URL.revokeObjectURL(objectUrl) }catch(error){}
+    }, 60000)
+
+    setGrammarMaterialButtonsState(context.unit.id, 'success')
+    showToast('교재 PDF를 다운로드했습니다.', 'var(--green)')
+    window.setTimeout(function(){
+      setGrammarMaterialButtonsState(context.unit.id, 'idle')
+    }, 1800)
+  }catch(error){
+    setGrammarMaterialButtonsState(context.unit.id, 'error')
+    showToast(getGrammarMaterialErrorMessage(error), 'var(--red)')
+  }
+}
+
+function getGrammarMaterialErrorMessage(error){
+  const status = Number(error && error.status || 0)
+  if(status === 401) return '로그인 시간이 만료되었습니다. 다시 로그인한 뒤 다운로드해 주세요.'
+  if(status === 403) return '이 교재를 다운로드할 권한이 없습니다.'
+  if(status === 404) return '서버에서 해당 교재를 찾지 못했습니다.'
+  if(error && error.name === 'TypeError') return '서버 연결을 확인하지 못했습니다. 네트워크 상태를 확인해 주세요.'
+  return String(error && error.message || error || '교재 다운로드 중 오류가 발생했습니다.')
+}
+
 async function loadGrammarVideoPart(options){
   const settings = options && typeof options === 'object' ? options : {}
   const context = getCurrentGrammarUnitContext()
@@ -1104,8 +1222,9 @@ async function loadGrammarVideoPart(options){
   setGrammarVideoStatus('loading', '영상을 불러오는 중입니다.', '로그인 권한을 확인하고 있습니다.', 0)
 
   try{
-    const blob = await fetchGrammarVideoBlob(
+    const blob = await fetchGrammarStorageBlob(
       objectPath,
+      'video/mp4',
       controller ? controller.signal : null,
       function(receivedBytes, totalBytes){
         if(requestId !== portalState.grammarPlayer.loadRequestId) return
@@ -1134,7 +1253,7 @@ async function loadGrammarVideoPart(options){
   }
 }
 
-async function fetchGrammarVideoBlob(objectPath, signal, onProgress, forceRefreshToken){
+async function fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, onProgress, forceRefreshToken){
   const config = window.ROTATION_FIREBASE_CONFIG || {}
   const bucket = String(config.storageBucket || '').trim()
   const authUser = portalState.currentUser
@@ -1156,7 +1275,7 @@ async function fetchGrammarVideoBlob(objectPath, signal, onProgress, forceRefres
   })
 
   if(response.status === 401 && forceRefreshToken !== true){
-    return fetchGrammarVideoBlob(objectPath, signal, onProgress, true)
+    return fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, onProgress, true)
   }
   if(!response.ok){
     const error = new Error('Firebase Storage HTTP ' + response.status)
@@ -1181,7 +1300,7 @@ async function fetchGrammarVideoBlob(objectPath, signal, onProgress, forceRefres
     receivedBytes += result.value.byteLength
     if(typeof onProgress === 'function') onProgress(receivedBytes, totalBytes)
   }
-  return new Blob(chunks, { type: response.headers.get('Content-Type') || 'video/mp4' })
+  return new Blob(chunks, { type: response.headers.get('Content-Type') || fallbackContentType || 'application/octet-stream' })
 }
 
 function attachGrammarVideoSource(objectUrl, context, partIndex, autoplay){
@@ -1338,12 +1457,15 @@ function renderGrammarCourse(){
     const unitList = document.createElement('div')
     unitList.className = 'grammar-unit-list'
     chapter.units.forEach(function(unit){
-      const unitRow = document.createElement('button')
+      const unitRow = document.createElement('div')
       unitRow.className = 'grammar-unit-row'
-      unitRow.type = 'button'
-      unitRow.dataset.grammarUnitId = unit.id
-      unitRow.dataset.uiIconSkip = 'true'
-      unitRow.setAttribute('aria-label', 'UNIT ' + unit.number + ' ' + unit.title + ' 영상 열기')
+
+      const unitOpen = document.createElement('button')
+      unitOpen.className = 'grammar-unit-open'
+      unitOpen.type = 'button'
+      unitOpen.dataset.grammarUnitId = unit.id
+      unitOpen.dataset.uiIconSkip = 'true'
+      unitOpen.setAttribute('aria-label', 'UNIT ' + unit.number + ' ' + unit.title + ' 영상 열기')
 
       const unitIndex = document.createElement('span')
       unitIndex.className = 'grammar-unit-index'
@@ -1355,9 +1477,20 @@ function renderGrammarCourse(){
       unitMedia.className = 'grammar-unit-media'
       unitMedia.textContent = '영상 ' + unit.videoCount + '개'
 
-      unitRow.appendChild(unitIndex)
-      unitRow.appendChild(unitTitle)
-      unitRow.appendChild(unitMedia)
+      const materialButton = document.createElement('button')
+      materialButton.className = 'grammar-material-download'
+      materialButton.type = 'button'
+      materialButton.dataset.grammarMaterialUnitId = unit.id
+      materialButton.dataset.materialLabel = '교재 PDF'
+      materialButton.dataset.uiIconSkip = 'true'
+      materialButton.textContent = '교재 PDF'
+      materialButton.setAttribute('aria-label', 'UNIT ' + unit.number + ' ' + unit.title + ' 교재 다운로드')
+
+      unitOpen.appendChild(unitIndex)
+      unitOpen.appendChild(unitTitle)
+      unitOpen.appendChild(unitMedia)
+      unitRow.appendChild(unitOpen)
+      unitRow.appendChild(materialButton)
       unitList.appendChild(unitRow)
     })
     chapterCard.appendChild(unitList)
