@@ -40,6 +40,7 @@ const PREP_SCREEN_IDS = [
 
 const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
+  'grammar-screen': { title: 'GRAMMAR', sub: '레벨 선택' },
   'study-cafe-screen': { title: 'STUDY CAFE', sub: 'STUDY LAB 연결' },
   'counsel-screen': { title: 'COUNSEL', sub: '상담 선택' },
   'counsel-history-screen': { title: 'HISTORY', sub: '상담 신청 내역' },
@@ -60,6 +61,7 @@ const CHROME_SCREEN_TITLES = {
 
 const CHROME_BREADCRUMBS = {
   'portal-screen': ['CODE LAB', 'HOME'],
+  'grammar-screen': ['CODE LAB', 'GRAMMAR'],
   'study-cafe-screen': ['CODE LAB', 'STUDY CAFE'],
   'counsel-screen': ['CODE LAB', 'COUNSEL'],
   'counsel-history-screen': ['CODE LAB', 'COUNSEL', 'HISTORY'],
@@ -225,6 +227,7 @@ portalState.buttonIconObserver = portalState.buttonIconObserver || null
 portalState.buttonIconRefreshHandle = portalState.buttonIconRefreshHandle || 0
 portalState.installPromptEvent = portalState.installPromptEvent || null
 portalState.installPromptSetupDone = !!portalState.installPromptSetupDone
+portalState.grammarLevelId = portalState.grammarLevelId || 'lv01'
 
 const PORTAL_BUTTON_ICON_TEXT = {
   press: '•',
@@ -534,7 +537,13 @@ function bindPortalEnhancementEvents(){
     })
   })
   bindClick('portal-study-cafe-btn', openStudyCafePortal)
-  bindClick('portal-grammar-lab-btn', openGrammarLabPlaceholder)
+  bindClick('portal-grammar-lab-btn', openGrammarPortal)
+  bindClick('grammar-back-btn', showPortalScreen)
+  Array.from(document.querySelectorAll('[data-grammar-level]')).forEach(function(button){
+    button.addEventListener('click', function(){
+      selectGrammarLevel(button.dataset.grammarLevel || '')
+    })
+  })
   bindClick('study-cafe-back-btn', showPortalScreen)
   const studyCafeFrame = document.getElementById('study-cafe-frame')
   if(studyCafeFrame){
@@ -868,7 +877,7 @@ function runDrawerAction(action){
   if(action === 'check') return openCheckPortal()
   if(action === 'counsel') return openCounselPortal()
   if(action === 'study-cafe') return openStudyCafePortal()
-  if(action === 'grammar-lab') return openGrammarLabPlaceholder()
+  if(action === 'grammar-lab') return openGrammarPortal()
   if(action === 'admin') return openAdminPortal()
   if(action === 'account') return openAccountScreen()
   if(action === 'password') return openPasswordScreen(false)
@@ -876,8 +885,126 @@ function runDrawerAction(action){
   if(action === 'logout') return logoutPortal()
 }
 
-function openGrammarLabPlaceholder(){
-  showToast('GRAMMAR는 준비 중입니다.', 'var(--green)')
+function getGrammarCatalog(){
+  return Array.isArray(window.GRAMMAR_CATALOG) ? window.GRAMMAR_CATALOG : []
+}
+
+function getGrammarLevel(levelId){
+  const catalog = getGrammarCatalog()
+  const normalizedId = String(levelId || '').trim().toLowerCase()
+  return catalog.find(function(level){
+    return String(level && level.id || '').toLowerCase() === normalizedId
+  }) || catalog[0] || null
+}
+
+function openGrammarPortal(levelId){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  const requestedLevelId = typeof levelId === 'string' ? levelId : ''
+  const requestedLevel = getGrammarLevel(requestedLevelId || portalState.grammarLevelId)
+  if(requestedLevel) portalState.grammarLevelId = requestedLevel.id
+  renderGrammarCourse()
+  activatePortalScreen('grammar-screen')
+  window.scrollTo(0, 0)
+  if(typeof window.requestAnimationFrame === 'function'){
+    window.requestAnimationFrame(function(){ window.scrollTo(0, 0) })
+  }
+}
+
+function selectGrammarLevel(levelId){
+  const level = getGrammarLevel(levelId)
+  if(!level || level.id === portalState.grammarLevelId) return
+  portalState.grammarLevelId = level.id
+  renderGrammarCourse()
+  if(getCurrentActiveScreenId() === 'grammar-screen'){
+    const route = captureAppRoute('grammar-screen')
+    history.replaceState({ appRoute: route }, '', window.location.href)
+    portalState.currentRouteKey = JSON.stringify(route)
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function renderGrammarCourse(){
+  const level = getGrammarLevel(portalState.grammarLevelId)
+  const list = document.getElementById('grammar-course-list')
+  if(!level || !list){
+    if(list){
+      list.textContent = '문법 과정 정보를 불러오지 못했습니다.'
+      list.classList.add('grammar-course-list-error')
+    }
+    return
+  }
+
+  portalState.grammarLevelId = level.id
+  list.classList.remove('grammar-course-list-error')
+  setElementTextSafe('grammar-course-title', level.level + ' · ' + level.bookLabel)
+  setElementTextSafe('grammar-course-book', level.bookTitle)
+  setElementTextSafe('grammar-unit-count', level.unitCount + ' UNITS')
+  setElementTextSafe('grammar-video-count', level.videoCount + ' VIDEOS')
+
+  Array.from(document.querySelectorAll('[data-grammar-level]')).forEach(function(button){
+    const isActive = button.dataset.grammarLevel === level.id
+    button.classList.toggle('active', isActive)
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false')
+    button.tabIndex = isActive ? 0 : -1
+  })
+
+  list.textContent = ''
+  level.chapters.forEach(function(chapter){
+    const chapterCard = document.createElement('section')
+    chapterCard.className = 'grammar-chapter-card'
+
+    const chapterHead = document.createElement('div')
+    chapterHead.className = 'grammar-chapter-head'
+    const chapterCopy = document.createElement('div')
+    chapterCopy.className = 'grammar-chapter-copy'
+    const chapterKicker = document.createElement('div')
+    chapterKicker.className = 'grammar-chapter-kicker'
+    chapterKicker.textContent = chapter.number === '00' ? 'BASICS' : 'CHAPTER ' + chapter.number
+    const chapterTitle = document.createElement('h3')
+    chapterTitle.textContent = getGrammarChapterDisplayTitle(chapter)
+    const chapterCount = document.createElement('span')
+    chapterCount.className = 'grammar-chapter-count'
+    chapterCount.textContent = chapter.units.length + ' UNIT' + (chapter.units.length === 1 ? '' : 'S')
+    chapterCopy.appendChild(chapterKicker)
+    chapterCopy.appendChild(chapterTitle)
+    chapterHead.appendChild(chapterCopy)
+    chapterHead.appendChild(chapterCount)
+    chapterCard.appendChild(chapterHead)
+
+    const unitList = document.createElement('div')
+    unitList.className = 'grammar-unit-list'
+    chapter.units.forEach(function(unit){
+      const unitRow = document.createElement('div')
+      unitRow.className = 'grammar-unit-row'
+      unitRow.dataset.grammarUnitId = unit.id
+
+      const unitIndex = document.createElement('span')
+      unitIndex.className = 'grammar-unit-index'
+      unitIndex.textContent = 'UNIT ' + unit.number
+      const unitTitle = document.createElement('strong')
+      unitTitle.className = 'grammar-unit-title'
+      unitTitle.textContent = unit.title
+      const unitMedia = document.createElement('span')
+      unitMedia.className = 'grammar-unit-media'
+      unitMedia.textContent = '영상 ' + unit.videoCount + '개'
+
+      unitRow.appendChild(unitIndex)
+      unitRow.appendChild(unitTitle)
+      unitRow.appendChild(unitMedia)
+      unitList.appendChild(unitRow)
+    })
+    chapterCard.appendChild(unitList)
+    list.appendChild(chapterCard)
+  })
+}
+
+function getGrammarChapterDisplayTitle(chapter){
+  const title = String(chapter && chapter.title || '').trim()
+  const trimmed = title.replace(/^CHAPTER\s+\d+\s*/i, '').trim()
+  return trimmed || title || '단원'
 }
 
 function getStudyCafeEmbedConfig(){
@@ -1463,6 +1590,10 @@ function navigateAppChromeBreadcrumb(screenId, index, label){
     openCheckPortal()
     return
   }
+  if(target === 'GRAMMAR'){
+    openGrammarPortal()
+    return
+  }
   if(target === 'COUNSEL'){
     openCounselPortal()
     return
@@ -1541,6 +1672,9 @@ function captureAppRoute(screenId){
   if(screenId === 'password-screen'){
     route.force = !!portalState.forcePasswordReset
   }
+  if(screenId === 'grammar-screen'){
+    route.grammarLevelId = portalState.grammarLevelId || 'lv01'
+  }
   return route
 }
 
@@ -1570,6 +1704,7 @@ function restoreAppRoute(route){
   }
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
+  if(route.screenId === 'grammar-screen') return openGrammarPortal(route.grammarLevelId || 'lv01')
   if(route.screenId === 'study-cafe-screen') return openStudyCafePortal()
   if(route.screenId === 'counsel-screen') return openCounselPortal()
   if(route.screenId === 'counsel-history-screen') return openCounselHistoryTab()
