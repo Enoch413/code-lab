@@ -94,7 +94,10 @@ function applyPortalCopy(){
 
 function setFieldLabel(fieldId, text){
   const field = document.getElementById(fieldId)
-  const label = field && field.parentElement ? field.parentElement.querySelector('span') : null
+  const fieldContainer = field && typeof field.closest === 'function'
+    ? field.closest('.auth-field')
+    : (field ? field.parentElement : null)
+  const label = fieldContainer ? fieldContainer.querySelector('label, span') : null
   if(label) label.textContent = text
 }
 
@@ -632,8 +635,34 @@ function activatePortalScreen(screenId){
 
 function showAuthScreen(errorMessage){
   syncAuthClassOptions()
+  setAuthPasswordVisibility(false)
   if(errorMessage) setAuthError(errorMessage)
   activatePortalScreen('auth-screen')
+}
+
+function setAuthPasswordVisibility(isVisible){
+  const input = document.getElementById('auth-password')
+  const button = document.getElementById('auth-password-toggle')
+  const shouldShow = !!isVisible
+  if(input) input.type = shouldShow ? 'text' : 'password'
+  if(button){
+    const label = shouldShow ? '비밀번호 숨기기' : '비밀번호 표시'
+    button.setAttribute('aria-pressed', shouldShow ? 'true' : 'false')
+    button.setAttribute('aria-label', label)
+    button.title = label
+  }
+}
+
+function toggleAuthPasswordVisibility(){
+  const input = document.getElementById('auth-password')
+  const button = document.getElementById('auth-password-toggle')
+  if(!input || !button) return
+  setAuthPasswordVisibility(button.getAttribute('aria-pressed') !== 'true')
+  try{
+    input.focus({ preventScroll: true })
+  }catch(error){
+    input.focus()
+  }
 }
 
 function showPortalScreen(){
@@ -647,6 +676,7 @@ function showPortalScreen(){
 
 function clearAuthFields(){
   document.getElementById('auth-password').value = ''
+  setAuthPasswordVisibility(false)
 }
 
 function clearAuthError(){
@@ -3025,6 +3055,7 @@ function bindPortalEvents(){
 
   const loginIdField = document.getElementById('auth-email')
   const passwordField = document.getElementById('auth-password')
+  const passwordToggle = document.getElementById('auth-password-toggle')
   if(loginIdField){
     loginIdField.addEventListener('keydown', function(event){
       if(event.key === 'Enter') submitAuthForm()
@@ -3035,6 +3066,7 @@ function bindPortalEvents(){
       if(event.key === 'Enter') submitAuthForm()
     })
   }
+  if(passwordToggle) passwordToggle.addEventListener('click', toggleAuthPasswordVisibility)
 }
 
 function normalizeUserProfile(source){

@@ -5422,7 +5422,8 @@ body.app-screen-study-cafe .app-chrome{
   gap:18px;
 }
 
-#auth-screen .auth-field span{
+#auth-screen .auth-field > span,
+#auth-screen .auth-field > label{
   margin:0 0 9px;
   padding-left:0;
   color:#626b64;
@@ -5445,6 +5446,64 @@ body.app-screen-study-cafe .app-chrome{
 #auth-screen .auth-field input:focus{
   border-color:rgba(17,116,94,.46);
   box-shadow:0 0 0 4px rgba(17,116,94,.10);
+}
+
+#auth-screen .auth-password-control{
+  position:relative;
+}
+
+#auth-screen .auth-password-control #auth-password{
+  padding-right:62px;
+}
+
+#auth-screen .auth-password-toggle{
+  position:absolute;
+  right:8px;
+  bottom:8px;
+  display:grid;
+  place-items:center;
+  width:38px;
+  height:38px;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:#63716b;
+  cursor:pointer;
+  transition:background .18s ease, color .18s ease, transform .18s ease;
+}
+
+#auth-screen .auth-password-toggle:hover{
+  background:rgba(15,93,81,.08);
+  color:#0f5d51;
+}
+
+#auth-screen .auth-password-toggle:active{
+  transform:scale(.94);
+}
+
+#auth-screen .auth-password-toggle:focus-visible{
+  outline:3px solid rgba(17,116,94,.22);
+  outline-offset:2px;
+}
+
+#auth-screen .auth-password-toggle-icon{
+  width:21px;
+  height:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+#auth-screen .auth-password-toggle-icon-hide,
+#auth-screen .auth-password-toggle[aria-pressed="true"] .auth-password-toggle-icon-show{
+  display:none;
+}
+
+#auth-screen .auth-password-toggle[aria-pressed="true"] .auth-password-toggle-icon-hide{
+  display:block;
 }
 
 #auth-screen .auth-actions{

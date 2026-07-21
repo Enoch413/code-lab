@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260721-current-class-ui-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260721-password-visibility-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -68,10 +68,24 @@
           <span>아이디</span>
           <input type="text" id="auth-email" placeholder="student01" autocomplete="username" inputmode="text" autocapitalize="off" spellcheck="false">
         </label>
-        <label class="auth-field">
-          <span>비밀번호</span>
-          <input type="password" id="auth-password" placeholder="비밀번호" autocomplete="current-password">
-        </label>
+        <div class="auth-field auth-password-field">
+          <label for="auth-password">비밀번호</label>
+          <div class="auth-password-control">
+            <input type="password" id="auth-password" placeholder="비밀번호" autocomplete="current-password">
+            <button class="auth-password-toggle" type="button" id="auth-password-toggle" aria-label="비밀번호 표시" aria-pressed="false" title="비밀번호 표시" data-ui-icon-skip="true">
+              <svg class="auth-password-toggle-icon auth-password-toggle-icon-show" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"></path>
+                <circle cx="12" cy="12" r="2.75"></circle>
+              </svg>
+              <svg class="auth-password-toggle-icon auth-password-toggle-icon-hide" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3.5 8.5C5.4 6.8 8.2 6 12 6c6 0 9.5 6 9.5 6a14.6 14.6 0 0 1-2.8 3.5"></path>
+                <path d="M15.2 17.5A10.5 10.5 0 0 1 12 18c-6 0-9.5-6-9.5-6a15.6 15.6 0 0 1 3.1-3.8"></path>
+                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+                <path d="M4 4l16 16"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="auth-error" id="auth-error"></div>
@@ -813,7 +827,7 @@
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
-<script src="./rotation_portal.js?v=20260423-admin-remove-student-rank-01"></script>
+<script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
 <script src="./rotation_portal_enhancements.js?v=20260721-grammar-label-01"></script>
 </body>
 </html>
