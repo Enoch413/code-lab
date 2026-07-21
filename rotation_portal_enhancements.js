@@ -82,22 +82,17 @@ const ADMIN_PORTAL_LABS = {
   'WORD LAB': 'https://enoch413.github.io/word-lab/',
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
   'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
-  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/',
-  'MERGER LAB': 'http://127.0.0.1:8781/'
+  'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
 }
 
 const ADMIN_PORTAL_LAB_BUTTON_IDS = {
   'WORD LAB': 'admin-portal-word-btn',
   'PDF LAB': 'admin-portal-pdf-btn',
   'BUILDER LAB': 'admin-portal-builder-btn',
-  'PINPOINT LAB': 'admin-portal-pinpoint-btn',
-  'MERGER LAB': 'admin-portal-merger-btn'
+  'PINPOINT LAB': 'admin-portal-pinpoint-btn'
 }
 
-const ADMIN_PORTAL_LAB_OWNER_IDS = {
-  'MERGER LAB': ['passion413', 'khe2016']
-}
-const ADMIN_PORTAL_LAB_COUNT = 5
+const ADMIN_PORTAL_LAB_COUNT = Object.keys(ADMIN_PORTAL_LABS).length
 
 const PORTAL_COUNSEL_OTHER_REASON = '__other__'
 const PORTAL_COUNSEL_TYPES = {
@@ -606,7 +601,6 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-pdf-btn', function(){ openLabPlaceholder('PDF LAB') })
   bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
-  bindClick('admin-portal-merger-btn', function(){ openLabPlaceholder('MERGER LAB') })
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
   bindClick('check-jump-bottom-btn', scrollCheckScreenToBottom)
@@ -1976,49 +1970,10 @@ function getAllAdminPortalLabs(){
   return Object.keys(ADMIN_PORTAL_LABS)
 }
 
-function getCurrentAdminPortalIdentitySet(){
-  const profile = portalState.currentProfile || {}
-  const user = portalState.currentUser || {}
-  const identities = new Set()
-
-  ;[
-    profile.loginId,
-    profile.studentId,
-    profile.name,
-    profile.uid,
-    user.uid,
-    user.loginId
-  ].forEach(function(value){
-    const text = String(value || '').trim().toLowerCase()
-    if(text) identities.add(text)
-  })
-
-  ;[
-    profile.email,
-    user.email
-  ].forEach(function(value){
-    const text = String(value || '').trim().toLowerCase()
-    if(!text) return
-    identities.add(text)
-    const localPart = text.split('@', 1)[0]
-    if(localPart) identities.add(localPart)
-  })
-
-  return identities
-}
-
-function isCurrentAdminAllowedPortalLab(name){
-  const ownerIds = Array.isArray(ADMIN_PORTAL_LAB_OWNER_IDS[name]) ? ADMIN_PORTAL_LAB_OWNER_IDS[name] : null
-  if(!ownerIds || !ownerIds.length) return true
-  const identities = getCurrentAdminPortalIdentitySet()
-  return ownerIds.some(function(ownerId){
-    return identities.has(String(ownerId || '').trim().toLowerCase())
-  })
-}
-
 function filterAdminPortalLabsForCurrentUser(labs){
+  const allLabs = getAllAdminPortalLabs()
   return (Array.isArray(labs) ? labs : []).filter(function(labName){
-    return isCurrentAdminAllowedPortalLab(labName)
+    return allLabs.indexOf(labName) >= 0
   })
 }
 
@@ -2030,7 +1985,6 @@ function normalizeAdminPortalLabName(value){
   if(raw === 'pdf' || raw === 'pdflab' || raw === 'pdf-lab' || raw === 'pdf lab') return 'PDF LAB'
   if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
   if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
-  if(raw === 'merger' || raw === 'mergerlab' || raw === 'merger-lab' || raw === 'merger lab') return 'MERGER LAB'
   return ''
 }
 
@@ -2117,7 +2071,7 @@ function isAdminPortalLabAllowed(name){
   const allowedLabs = Array.isArray(portalState.adminPortalAllowedLabs)
     ? portalState.adminPortalAllowedLabs
     : filterAdminPortalLabsForCurrentUser(getAllAdminPortalLabs())
-  return allowedLabs.indexOf(name) >= 0 && isCurrentAdminAllowedPortalLab(name)
+  return allowedLabs.indexOf(name) >= 0
 }
 
 function renderAdminPortalScreen(allowedLabs){
