@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260721-grammar-levels-02">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260721-grammar-player-01">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -184,6 +184,68 @@
   </div>
 
   <div class="grammar-course-list" id="grammar-course-list" role="tabpanel" aria-live="polite"></div>
+</div>
+
+<div class="screen" id="grammar-player-screen">
+  <div class="screen-nav">
+    <button class="btn btn-ghost btn-sm" type="button" id="grammar-player-back-btn">목록</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="grammar-player-home-btn">메인</button>
+  </div>
+
+  <div class="hd grammar-head">
+    <h1>GRAMMAR</h1>
+    <span class="sub">VIDEO LESSON</span>
+  </div>
+
+  <section class="grammar-player-summary">
+    <div class="grammar-player-level" id="grammar-player-level">LV.01 · STARTER</div>
+    <div class="grammar-player-chapter" id="grammar-player-chapter">GRAMMAR BASICS</div>
+    <h2 id="grammar-player-unit-title">Grammar Basics</h2>
+    <div class="grammar-player-unit-meta">
+      <span id="grammar-player-unit-number">UNIT 01</span>
+      <span id="grammar-player-part-summary">영상 2개</span>
+    </div>
+  </section>
+
+  <section class="grammar-player-card">
+    <div class="grammar-video-stage" id="grammar-video-stage" data-state="idle">
+      <video
+        class="grammar-video-player"
+        id="grammar-video-player"
+        controls
+        controlslist="nodownload"
+        playsinline
+        preload="metadata"
+      ></video>
+      <div class="grammar-video-status" id="grammar-video-status" data-state="idle" aria-live="polite">
+        <div class="grammar-video-spinner" aria-hidden="true"></div>
+        <strong id="grammar-video-status-title">영상을 선택해 주세요.</strong>
+        <span id="grammar-video-status-detail">로그인 권한을 확인한 뒤 영상을 불러옵니다.</span>
+        <div class="grammar-video-progress" id="grammar-video-progress" aria-hidden="true">
+          <span id="grammar-video-progress-bar"></span>
+        </div>
+        <button class="btn btn-ghost btn-sm hidden" type="button" id="grammar-video-retry-btn">다시 시도</button>
+      </div>
+    </div>
+
+    <div class="grammar-player-now">
+      <div>
+        <span>NOW PLAYING</span>
+        <strong id="grammar-player-now-title">Grammar Basics</strong>
+      </div>
+      <span id="grammar-player-now-part">PART 01</span>
+    </div>
+
+    <div class="grammar-part-section">
+      <div class="grammar-part-heading">
+        <strong>영상 구성</strong>
+        <span>순서대로 학습하세요.</span>
+      </div>
+      <div class="grammar-part-list" id="grammar-part-list" role="tablist" aria-label="영상 파트 선택"></div>
+    </div>
+
+    <p class="grammar-player-note">영상은 로그인 권한을 확인한 뒤 이 기기에 임시로 불러오며, 화면을 나가면 재생 주소가 정리됩니다.</p>
+  </section>
 </div>
 
 <div class="screen" id="study-cafe-screen">
@@ -861,7 +923,7 @@
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
 <script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
-<script src="./grammar_catalog.js?v=20260721-grammar-levels-02"></script>
-<script src="./rotation_portal_enhancements.js?v=20260721-grammar-levels-02"></script>
+<script src="./grammar_catalog.js?v=20260721-grammar-player-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20260721-grammar-player-01"></script>
 </body>
 </html>

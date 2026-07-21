@@ -41,6 +41,7 @@ const PREP_SCREEN_IDS = [
 const CHROME_SCREEN_TITLES = {
   'portal-screen': { title: 'CODE LAB', sub: '홈' },
   'grammar-screen': { title: 'GRAMMAR', sub: '레벨 선택' },
+  'grammar-player-screen': { title: 'GRAMMAR', sub: '영상 학습' },
   'study-cafe-screen': { title: 'STUDY CAFE', sub: 'STUDY LAB 연결' },
   'counsel-screen': { title: 'COUNSEL', sub: '상담 선택' },
   'counsel-history-screen': { title: 'HISTORY', sub: '상담 신청 내역' },
@@ -62,6 +63,7 @@ const CHROME_SCREEN_TITLES = {
 const CHROME_BREADCRUMBS = {
   'portal-screen': ['CODE LAB', 'HOME'],
   'grammar-screen': ['CODE LAB', 'GRAMMAR'],
+  'grammar-player-screen': ['CODE LAB', 'GRAMMAR', 'VIDEO'],
   'study-cafe-screen': ['CODE LAB', 'STUDY CAFE'],
   'counsel-screen': ['CODE LAB', 'COUNSEL'],
   'counsel-history-screen': ['CODE LAB', 'COUNSEL', 'HISTORY'],
@@ -228,6 +230,17 @@ portalState.buttonIconRefreshHandle = portalState.buttonIconRefreshHandle || 0
 portalState.installPromptEvent = portalState.installPromptEvent || null
 portalState.installPromptSetupDone = !!portalState.installPromptSetupDone
 portalState.grammarLevelId = portalState.grammarLevelId || 'lv01'
+portalState.grammarPlayer = portalState.grammarPlayer || {
+  levelId: '',
+  unitId: '',
+  partIndex: 0,
+  abortController: null,
+  loadRequestId: 0,
+  objectUrls: new Map()
+}
+if(!(portalState.grammarPlayer.objectUrls instanceof Map)){
+  portalState.grammarPlayer.objectUrls = new Map()
+}
 
 const PORTAL_BUTTON_ICON_TEXT = {
   press: '•',
@@ -539,11 +552,37 @@ function bindPortalEnhancementEvents(){
   bindClick('portal-study-cafe-btn', openStudyCafePortal)
   bindClick('portal-grammar-lab-btn', openGrammarPortal)
   bindClick('grammar-back-btn', showPortalScreen)
+  bindClick('grammar-player-back-btn', openGrammarPortal)
+  bindClick('grammar-player-home-btn', showPortalScreen)
+  bindClick('grammar-video-retry-btn', retryGrammarVideoPart)
   Array.from(document.querySelectorAll('[data-grammar-level]')).forEach(function(button){
     button.addEventListener('click', function(){
       selectGrammarLevel(button.dataset.grammarLevel || '')
     })
   })
+  const grammarCourseList = document.getElementById('grammar-course-list')
+  if(grammarCourseList){
+    grammarCourseList.addEventListener('click', function(event){
+      const target = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-grammar-unit-id]')
+        : null
+      if(target) openGrammarUnit(target.dataset.grammarUnitId || '')
+    })
+  }
+  const grammarPartList = document.getElementById('grammar-part-list')
+  if(grammarPartList){
+    grammarPartList.addEventListener('click', function(event){
+      const target = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-grammar-part-index]')
+        : null
+      if(target) selectGrammarVideoPart(Number(target.dataset.grammarPartIndex))
+    })
+  }
+  const grammarVideoPlayer = document.getElementById('grammar-video-player')
+  if(grammarVideoPlayer){
+    grammarVideoPlayer.addEventListener('ended', handleGrammarVideoEnded)
+    grammarVideoPlayer.addEventListener('error', handleGrammarVideoElementError)
+  }
   bindClick('study-cafe-back-btn', showPortalScreen)
   const studyCafeFrame = document.getElementById('study-cafe-frame')
   if(studyCafeFrame){
@@ -897,6 +936,329 @@ function getGrammarLevel(levelId){
   }) || catalog[0] || null
 }
 
+function getGrammarUnitContext(unitId){
+  const normalizedId = String(unitId || '').trim()
+  if(!normalizedId) return null
+  const catalog = getGrammarCatalog()
+  for(let levelIndex = 0; levelIndex < catalog.length; levelIndex += 1){
+    const level = catalog[levelIndex]
+    const chapters = Array.isArray(level && level.chapters) ? level.chapters : []
+    for(let chapterIndex = 0; chapterIndex < chapters.length; chapterIndex += 1){
+      const chapter = chapters[chapterIndex]
+      const units = Array.isArray(chapter && chapter.units) ? chapter.units : []
+      const unit = units.find(function(entry){ return entry && entry.id === normalizedId })
+      if(unit) return { level: level, chapter: chapter, unit: unit }
+    }
+  }
+  return null
+}
+
+function getCurrentGrammarUnitContext(){
+  return getGrammarUnitContext(portalState.grammarPlayer && portalState.grammarPlayer.unitId)
+}
+
+function openGrammarUnit(unitId, options){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return
+  }
+  const context = getGrammarUnitContext(unitId)
+  if(!context){
+    showToast('선택한 문법 유닛 정보를 찾지 못했습니다.', 'var(--red)')
+    return
+  }
+  const settings = options && typeof options === 'object' ? options : {}
+  const maxPartIndex = Math.max(0, context.unit.videos.length - 1)
+  const requestedPartIndex = Number.isInteger(Number(settings.partIndex)) ? Number(settings.partIndex) : 0
+
+  clearGrammarVideoResources()
+  portalState.grammarLevelId = context.level.id
+  portalState.grammarPlayer.levelId = context.level.id
+  portalState.grammarPlayer.unitId = context.unit.id
+  portalState.grammarPlayer.partIndex = Math.min(Math.max(requestedPartIndex, 0), maxPartIndex)
+  renderGrammarPlayer(context)
+  activatePortalScreen('grammar-player-screen')
+  window.scrollTo(0, 0)
+  if(typeof window.requestAnimationFrame === 'function'){
+    window.requestAnimationFrame(function(){ window.scrollTo(0, 0) })
+  }
+  loadGrammarVideoPart({ autoplay: false })
+}
+
+function renderGrammarPlayer(context){
+  const resolvedContext = context || getCurrentGrammarUnitContext()
+  if(!resolvedContext) return
+  const level = resolvedContext.level
+  const chapter = resolvedContext.chapter
+  const unit = resolvedContext.unit
+  const partIndex = Math.min(
+    Math.max(Number(portalState.grammarPlayer.partIndex) || 0, 0),
+    Math.max(0, unit.videos.length - 1)
+  )
+  portalState.grammarPlayer.partIndex = partIndex
+
+  setElementTextSafe('grammar-player-level', level.level + ' · ' + level.bookLabel)
+  setElementTextSafe('grammar-player-chapter', getGrammarChapterDisplayTitle(chapter))
+  setElementTextSafe('grammar-player-unit-title', unit.title)
+  setElementTextSafe('grammar-player-unit-number', 'UNIT ' + unit.number)
+  setElementTextSafe('grammar-player-part-summary', '영상 ' + unit.videoCount + '개')
+  setElementTextSafe('grammar-player-now-title', unit.title)
+  setElementTextSafe('grammar-player-now-part', 'PART ' + String(partIndex + 1).padStart(2, '0'))
+
+  const partList = document.getElementById('grammar-part-list')
+  if(!partList) return
+  partList.textContent = ''
+  unit.videos.forEach(function(fileName, index){
+    const button = document.createElement('button')
+    const isActive = index === partIndex
+    button.className = 'grammar-part-button' + (isActive ? ' active' : '')
+    button.type = 'button'
+    button.dataset.grammarPartIndex = String(index)
+    button.dataset.uiIconSkip = 'true'
+    button.setAttribute('role', 'tab')
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false')
+    button.tabIndex = isActive ? 0 : -1
+
+    const title = document.createElement('strong')
+    title.textContent = 'PART ' + String(index + 1).padStart(2, '0')
+    const meta = document.createElement('span')
+    meta.textContent = unit.videos.length === 1
+      ? '전체 영상'
+      : (index + 1) + ' / ' + unit.videos.length
+    button.appendChild(title)
+    button.appendChild(meta)
+    partList.appendChild(button)
+  })
+}
+
+function selectGrammarVideoPart(partIndex, options){
+  const context = getCurrentGrammarUnitContext()
+  if(!context) return
+  const normalizedIndex = Number(partIndex)
+  if(!Number.isInteger(normalizedIndex) || normalizedIndex < 0 || normalizedIndex >= context.unit.videos.length) return
+  portalState.grammarPlayer.partIndex = normalizedIndex
+  renderGrammarPlayer(context)
+  if(getCurrentActiveScreenId() === 'grammar-player-screen'){
+    const route = captureAppRoute('grammar-player-screen')
+    history.replaceState({ appRoute: route }, '', window.location.href)
+    portalState.currentRouteKey = JSON.stringify(route)
+  }
+  loadGrammarVideoPart(options)
+}
+
+function retryGrammarVideoPart(){
+  loadGrammarVideoPart({ autoplay: false, forceRefreshToken: true })
+}
+
+function handleGrammarVideoEnded(){
+  const context = getCurrentGrammarUnitContext()
+  if(!context) return
+  const nextPartIndex = Number(portalState.grammarPlayer.partIndex || 0) + 1
+  if(nextPartIndex < context.unit.videos.length){
+    selectGrammarVideoPart(nextPartIndex, { autoplay: true })
+  }
+}
+
+function handleGrammarVideoElementError(){
+  const stage = document.getElementById('grammar-video-stage')
+  if(!stage || stage.dataset.state !== 'ready') return
+  setGrammarVideoStatus(
+    'error',
+    '영상을 재생하지 못했습니다.',
+    '다시 시도하거나 다른 브라우저에서 확인해 주세요.'
+  )
+}
+
+function getGrammarStorageObjectPath(fileName){
+  const normalizedName = String(fileName || '').trim()
+  if(!normalizedName || normalizedName.includes('/') || !normalizedName.toLowerCase().endsWith('.mp4')){
+    throw new Error('영상 파일 정보가 올바르지 않습니다.')
+  }
+  return 'videos/grammar/' + normalizedName
+}
+
+async function loadGrammarVideoPart(options){
+  const settings = options && typeof options === 'object' ? options : {}
+  const context = getCurrentGrammarUnitContext()
+  if(!context) return
+  const partIndex = Number(portalState.grammarPlayer.partIndex || 0)
+  const fileName = context.unit.videos[partIndex]
+  let objectPath = ''
+  try{
+    objectPath = getGrammarStorageObjectPath(fileName)
+  }catch(error){
+    setGrammarVideoStatus('error', '영상 정보를 확인하지 못했습니다.', String(error.message || error))
+    return
+  }
+
+  abortGrammarVideoLoad()
+  const requestId = portalState.grammarPlayer.loadRequestId
+  const cachedUrl = portalState.grammarPlayer.objectUrls.get(objectPath)
+  if(cachedUrl){
+    attachGrammarVideoSource(cachedUrl, context, partIndex, settings.autoplay === true)
+    return
+  }
+
+  const controller = typeof AbortController === 'function' ? new AbortController() : null
+  portalState.grammarPlayer.abortController = controller
+  setGrammarVideoStatus('loading', '영상을 불러오는 중입니다.', '로그인 권한을 확인하고 있습니다.', 0)
+
+  try{
+    const blob = await fetchGrammarVideoBlob(
+      objectPath,
+      controller ? controller.signal : null,
+      function(receivedBytes, totalBytes){
+        if(requestId !== portalState.grammarPlayer.loadRequestId) return
+        const percent = totalBytes > 0 ? Math.min(100, Math.round((receivedBytes / totalBytes) * 100)) : null
+        const detail = totalBytes > 0
+          ? percent + '% · ' + formatGrammarBytes(receivedBytes) + ' / ' + formatGrammarBytes(totalBytes)
+          : formatGrammarBytes(receivedBytes) + ' 불러옴'
+        setGrammarVideoStatus('loading', '영상을 불러오는 중입니다.', detail, percent)
+      },
+      settings.forceRefreshToken === true
+    )
+    if(requestId !== portalState.grammarPlayer.loadRequestId) return
+    const objectUrl = URL.createObjectURL(blob)
+    if(requestId !== portalState.grammarPlayer.loadRequestId){
+      URL.revokeObjectURL(objectUrl)
+      return
+    }
+    portalState.grammarPlayer.objectUrls.set(objectPath, objectUrl)
+    portalState.grammarPlayer.abortController = null
+    attachGrammarVideoSource(objectUrl, context, partIndex, settings.autoplay === true)
+  }catch(error){
+    if(error && error.name === 'AbortError') return
+    if(requestId !== portalState.grammarPlayer.loadRequestId) return
+    portalState.grammarPlayer.abortController = null
+    setGrammarVideoStatus('error', '영상을 불러오지 못했습니다.', getGrammarVideoErrorMessage(error))
+  }
+}
+
+async function fetchGrammarVideoBlob(objectPath, signal, onProgress, forceRefreshToken){
+  const config = window.ROTATION_FIREBASE_CONFIG || {}
+  const bucket = String(config.storageBucket || '').trim()
+  const authUser = portalState.currentUser
+  if(!bucket) throw new Error('Firebase Storage 주소가 설정되지 않았습니다.')
+  if(!portalState.firebaseEnabled || !authUser || typeof authUser.getIdToken !== 'function'){
+    throw new Error('Firebase 로그인 상태를 확인할 수 없습니다. 다시 로그인해 주세요.')
+  }
+
+  const token = await authUser.getIdToken(forceRefreshToken === true)
+  if(!token) throw new Error('로그인 토큰을 가져오지 못했습니다.')
+  const url = 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) +
+    '/o/' + encodeURIComponent(objectPath) + '?alt=media'
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + token },
+    signal: signal || undefined,
+    cache: 'default',
+    credentials: 'omit'
+  })
+
+  if(response.status === 401 && forceRefreshToken !== true){
+    return fetchGrammarVideoBlob(objectPath, signal, onProgress, true)
+  }
+  if(!response.ok){
+    const error = new Error('Firebase Storage HTTP ' + response.status)
+    error.status = response.status
+    throw error
+  }
+
+  const totalBytes = Number(response.headers.get('Content-Length') || 0)
+  if(!response.body || typeof response.body.getReader !== 'function'){
+    const blob = await response.blob()
+    if(typeof onProgress === 'function') onProgress(blob.size, blob.size)
+    return blob
+  }
+
+  const reader = response.body.getReader()
+  const chunks = []
+  let receivedBytes = 0
+  while(true){
+    const result = await reader.read()
+    if(result.done) break
+    chunks.push(result.value)
+    receivedBytes += result.value.byteLength
+    if(typeof onProgress === 'function') onProgress(receivedBytes, totalBytes)
+  }
+  return new Blob(chunks, { type: response.headers.get('Content-Type') || 'video/mp4' })
+}
+
+function attachGrammarVideoSource(objectUrl, context, partIndex, autoplay){
+  const player = document.getElementById('grammar-video-player')
+  if(!player) return
+  player.pause()
+  player.src = objectUrl
+  player.load()
+  setElementTextSafe('grammar-player-now-title', context.unit.title)
+  setElementTextSafe('grammar-player-now-part', 'PART ' + String(partIndex + 1).padStart(2, '0'))
+  setGrammarVideoStatus('ready', '재생 준비가 완료되었습니다.', '재생 버튼을 눌러 학습을 시작하세요.', 100)
+  if(autoplay === true){
+    const playPromise = player.play()
+    if(playPromise && typeof playPromise.catch === 'function') playPromise.catch(function(){})
+  }
+}
+
+function setGrammarVideoStatus(state, title, detail, percent){
+  const normalizedState = String(state || 'idle').trim().toLowerCase()
+  const stage = document.getElementById('grammar-video-stage')
+  const status = document.getElementById('grammar-video-status')
+  const progress = document.getElementById('grammar-video-progress')
+  const progressBar = document.getElementById('grammar-video-progress-bar')
+  const retryButton = document.getElementById('grammar-video-retry-btn')
+  if(stage) stage.dataset.state = normalizedState
+  if(status) status.dataset.state = normalizedState
+  setElementTextSafe('grammar-video-status-title', title || '')
+  setElementTextSafe('grammar-video-status-detail', detail || '')
+  if(progress){
+    progress.classList.toggle('hidden', normalizedState !== 'loading')
+    progress.setAttribute('aria-hidden', normalizedState === 'loading' ? 'false' : 'true')
+  }
+  if(progressBar){
+    const normalizedPercent = Number.isFinite(Number(percent)) ? Math.min(100, Math.max(0, Number(percent))) : 18
+    progressBar.style.width = normalizedPercent + '%'
+    progressBar.classList.toggle('indeterminate', !Number.isFinite(Number(percent)))
+  }
+  if(retryButton) retryButton.classList.toggle('hidden', normalizedState !== 'error')
+}
+
+function getGrammarVideoErrorMessage(error){
+  const status = Number(error && error.status || 0)
+  if(status === 401) return '로그인 시간이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.'
+  if(status === 403) return '이 영상을 볼 수 있는 권한이 없습니다.'
+  if(status === 404) return '서버에서 해당 영상을 찾지 못했습니다.'
+  if(error && error.name === 'TypeError') return '서버 연결을 확인하지 못했습니다. 네트워크 상태를 확인해 주세요.'
+  return String(error && error.message || error || '알 수 없는 오류가 발생했습니다.')
+}
+
+function formatGrammarBytes(bytes){
+  const value = Math.max(0, Number(bytes) || 0)
+  if(value < 1024 * 1024) return Math.max(1, Math.round(value / 1024)) + ' KB'
+  return (value / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+function abortGrammarVideoLoad(){
+  portalState.grammarPlayer.loadRequestId = Number(portalState.grammarPlayer.loadRequestId || 0) + 1
+  const controller = portalState.grammarPlayer.abortController
+  portalState.grammarPlayer.abortController = null
+  if(controller && typeof controller.abort === 'function') controller.abort()
+}
+
+function clearGrammarVideoResources(){
+  abortGrammarVideoLoad()
+  const player = document.getElementById('grammar-video-player')
+  if(player){
+    player.pause()
+    player.removeAttribute('src')
+    player.load()
+  }
+  portalState.grammarPlayer.objectUrls.forEach(function(objectUrl){
+    try{ URL.revokeObjectURL(objectUrl) }catch(error){}
+  })
+  portalState.grammarPlayer.objectUrls.clear()
+  setGrammarVideoStatus('idle', '영상을 선택해 주세요.', '로그인 권한을 확인한 뒤 영상을 불러옵니다.', 0)
+}
+
 function openGrammarPortal(levelId){
   if(!portalState.currentUser){
     showAuthScreen('')
@@ -977,9 +1339,12 @@ function renderGrammarCourse(){
     const unitList = document.createElement('div')
     unitList.className = 'grammar-unit-list'
     chapter.units.forEach(function(unit){
-      const unitRow = document.createElement('div')
+      const unitRow = document.createElement('button')
       unitRow.className = 'grammar-unit-row'
+      unitRow.type = 'button'
       unitRow.dataset.grammarUnitId = unit.id
+      unitRow.dataset.uiIconSkip = 'true'
+      unitRow.setAttribute('aria-label', 'UNIT ' + unit.number + ' ' + unit.title + ' 영상 열기')
 
       const unitIndex = document.createElement('span')
       unitIndex.className = 'grammar-unit-index'
@@ -1455,6 +1820,10 @@ function getAppBreadcrumb(screenId){
   if(screenId === 'check-screen' || screenId === 'check-set-screen'){
     return buildCheckBreadcrumb(screenId)
   }
+  if(screenId === 'grammar-player-screen'){
+    const grammarContext = getCurrentGrammarUnitContext()
+    return ['HOME', 'GRAMMAR', grammarContext && grammarContext.unit ? grammarContext.unit.title : 'VIDEO']
+  }
   if(screenId === 'portal-screen') return ['HOME']
   if(screenId === 'study-cafe-screen') return ['HOME', 'STUDY CAFE']
   if(screenId === 'account-screen') return ['HOME', 'MY INFO']
@@ -1675,6 +2044,11 @@ function captureAppRoute(screenId){
   if(screenId === 'grammar-screen'){
     route.grammarLevelId = portalState.grammarLevelId || 'lv01'
   }
+  if(screenId === 'grammar-player-screen'){
+    route.grammarLevelId = portalState.grammarPlayer.levelId || portalState.grammarLevelId || 'lv01'
+    route.grammarUnitId = portalState.grammarPlayer.unitId || ''
+    route.grammarPartIndex = Number(portalState.grammarPlayer.partIndex || 0)
+  }
   return route
 }
 
@@ -1705,6 +2079,10 @@ function restoreAppRoute(route){
 
   if(route.screenId === 'portal-screen') return showPortalScreen()
   if(route.screenId === 'grammar-screen') return openGrammarPortal(route.grammarLevelId || 'lv01')
+  if(route.screenId === 'grammar-player-screen'){
+    if(route.grammarUnitId) return openGrammarUnit(route.grammarUnitId, { partIndex: route.grammarPartIndex })
+    return openGrammarPortal(route.grammarLevelId || 'lv01')
+  }
   if(route.screenId === 'study-cafe-screen') return openStudyCafePortal()
   if(route.screenId === 'counsel-screen') return openCounselPortal()
   if(route.screenId === 'counsel-history-screen') return openCounselHistoryTab()
@@ -1734,6 +2112,9 @@ function restoreFallbackRoute(defaultScreenId){
 }
 
 window.onAppScreenActivated = function(screenId){
+  if(screenId !== 'grammar-player-screen' && portalState.grammarPlayer){
+    clearGrammarVideoResources()
+  }
   syncSharedClassSelectionCopy(screenId)
   if(screenId === 'class-screen' && typeof renderClassList === 'function'){
     renderClassList()
