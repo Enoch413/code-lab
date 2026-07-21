@@ -5504,13 +5504,6 @@ body.app-screen-study-cafe .app-chrome{
   letter-spacing:-.045em;
 }
 
-.grammar-course-hero p{
-  margin-top:8px;
-  font-size:.86rem;
-  font-weight:600;
-  opacity:.8;
-}
-
 .grammar-course-stats{
   display:flex;
   gap:8px;
@@ -5549,7 +5542,6 @@ body.app-screen-study-cafe .app-chrome{
   display:flex;
   min-width:0;
   min-height:58px;
-  flex-direction:column;
   align-items:center;
   justify-content:center;
   gap:3px;
@@ -5568,17 +5560,8 @@ body.app-screen-study-cafe .app-chrome{
 }
 
 .grammar-level-tab strong{
-  font-size:.86rem;
+  font-size:.94rem;
   letter-spacing:-.02em;
-}
-
-.grammar-level-tab span{
-  overflow:hidden;
-  max-width:100%;
-  font-size:.58rem;
-  font-weight:800;
-  letter-spacing:.08em;
-  text-overflow:ellipsis;
 }
 
 .grammar-level-tab.active{
@@ -6054,7 +6037,7 @@ body.app-screen-study-cafe .app-chrome{
   }
 
   .grammar-level-tab strong{
-    font-size:.78rem;
+    font-size:.82rem;
   }
 
   .grammar-unit-row{

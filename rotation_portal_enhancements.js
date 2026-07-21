@@ -997,7 +997,7 @@ function renderGrammarPlayer(context){
   )
   portalState.grammarPlayer.partIndex = partIndex
 
-  setElementTextSafe('grammar-player-level', level.level + ' · ' + level.bookLabel)
+  setElementTextSafe('grammar-player-level', level.level)
   setElementTextSafe('grammar-player-chapter', getGrammarChapterDisplayTitle(chapter))
   setElementTextSafe('grammar-player-unit-title', unit.title)
   setElementTextSafe('grammar-player-unit-number', 'UNIT ' + unit.number)
@@ -1301,8 +1301,7 @@ function renderGrammarCourse(){
 
   portalState.grammarLevelId = level.id
   list.classList.remove('grammar-course-list-error')
-  setElementTextSafe('grammar-course-title', level.level + ' · ' + level.bookLabel)
-  setElementTextSafe('grammar-course-book', level.bookTitle)
+  setElementTextSafe('grammar-course-title', level.level)
   setElementTextSafe('grammar-unit-count', level.unitCount + ' UNITS')
   setElementTextSafe('grammar-video-count', level.videoCount + ' VIDEOS')
 
