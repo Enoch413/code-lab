@@ -10,6 +10,7 @@ const PORTAL_CLOUD_SET_COLLECTIONS = {
 
 const PORTAL_CLASS_CATALOG_DOC = 'prep-classes'
 const PORTAL_PREP_VIDEO_PROGRESS_COLLECTION = 'prepVideoProgress'
+const PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION = 'grammarVideoProgress'
 const PORTAL_COUNSEL_REQUEST_COLLECTION = 'counselRequests'
 const PORTAL_COUNSEL_SLOT_COLLECTION = 'counselSlots'
 const PORTAL_COUNSEL_SLOT_MINUTES = 30
@@ -21,12 +22,15 @@ const PORTAL_STUDY_CAFE_AUTH_RESPONSE = 'code-lab-study-auth-response'
 const PORTAL_STUDY_CAFE_DISABLED = true
 const PORTAL_GRAMMAR_MANAGER_LOGIN_IDS = ['superadmin', 'passion413', 'khe2016']
 const PORTAL_GRAMMAR_ACCESS_MODES = ['none', 'all', 'units']
+const PORTAL_GRAMMAR_COMPLETION_RATIO = 0.95
+const PORTAL_GRAMMAR_PROGRESS_SAVE_DELAY = 8000
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
   issues: 'rotation_portal_question_issues_v1',
   issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_',
   prepVideoProgress: 'rotation_portal_prep_video_progress_v1',
+  grammarVideoProgress: 'rotation_portal_grammar_video_progress_v1',
   counselRequests: 'rotation_portal_counsel_requests_v1',
   counselSlots: 'rotation_portal_counsel_slots_v1'
 }
@@ -248,6 +252,16 @@ portalState.grammarAccessAdmin = portalState.grammarAccessAdmin || {
   selectedUid: '',
   isSaving: false
 }
+portalState.grammarProgress = portalState.grammarProgress || {
+  rows: [],
+  loadedUserId: '',
+  loadPromise: null,
+  saveTimer: 0,
+  tracker: null,
+  adminRows: [],
+  adminStudentUid: '',
+  adminLoading: false
+}
 
 const PORTAL_BUTTON_ICON_TEXT = {
   press: '•',
@@ -289,6 +303,8 @@ function initPortalEnhancements(){
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
   window.addEventListener('resize', syncCheckJumpButtonVisibility)
   window.addEventListener('resize', syncAppChromeLayout)
+  document.addEventListener('visibilitychange', handleGrammarProgressVisibilityChange)
+  window.addEventListener('beforeunload', handleGrammarProgressBeforeUnload)
   if(!history.state || !history.state.appRoute){
     syncAppHistoryState(getCurrentActiveScreenId(), true)
   }else{
@@ -627,9 +643,16 @@ function bindPortalEnhancementEvents(){
   }
   const grammarVideoPlayer = document.getElementById('grammar-video-player')
   if(grammarVideoPlayer){
+    grammarVideoPlayer.addEventListener('loadedmetadata', handleGrammarVideoLoadedMetadata)
+    grammarVideoPlayer.addEventListener('play', handleGrammarVideoPlay)
+    grammarVideoPlayer.addEventListener('pause', handleGrammarVideoPause)
+    grammarVideoPlayer.addEventListener('timeupdate', handleGrammarVideoTimeUpdate)
+    grammarVideoPlayer.addEventListener('seeking', handleGrammarVideoSeeking)
+    grammarVideoPlayer.addEventListener('seeked', handleGrammarVideoSeeked)
     grammarVideoPlayer.addEventListener('ended', handleGrammarVideoEnded)
     grammarVideoPlayer.addEventListener('error', handleGrammarVideoElementError)
   }
+  bindClick('admin-grammar-progress-refresh-btn', refreshAdminGrammarProgress)
   bindClick('study-cafe-back-btn', showPortalScreen)
   const studyCafeFrame = document.getElementById('study-cafe-frame')
   if(studyCafeFrame){
@@ -1131,11 +1154,465 @@ function canAccessGrammarObjectPath(objectPath){
     .indexOf(String(objectPath || '').trim()) >= 0
 }
 
+function getGrammarProgressUserId(profile){
+  const source = profile || portalState.currentProfile || {}
+  const authUser = profile ? {} : (portalState.currentUser || {})
+  return String(source.uid || source.id || authUser.uid || '').trim()
+}
+
+function shouldTrackGrammarProgress(){
+  if(!portalState.currentUser || !portalState.currentProfile) return false
+  return String(portalState.currentProfile.role || 'student').trim().toLowerCase() !== 'admin'
+}
+
+function sanitizeGrammarProgressSegment(value){
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unknown'
+}
+
+function buildGrammarProgressDocId(userId, unitId, partIndex){
+  return [
+    sanitizeGrammarProgressSegment(userId),
+    sanitizeGrammarProgressSegment(unitId),
+    Math.max(0, Math.floor(Number(partIndex) || 0))
+  ].join('__')
+}
+
+function normalizeGrammarProgressStatus(value, completed){
+  if(completed) return 'completed'
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized === 'in_progress' ? 'in_progress' : 'pending'
+}
+
+function normalizeGrammarWatchedRanges(values, duration){
+  const maxDuration = Number.isFinite(Number(duration)) && Number(duration) > 0
+    ? Number(duration)
+    : 24 * 60 * 60
+  const ranges = (Array.isArray(values) ? values : []).map(function(entry){
+    const start = Math.max(0, Math.min(maxDuration, Number(entry && entry.start) || 0))
+    const end = Math.max(start, Math.min(maxDuration, Number(entry && entry.end) || 0))
+    return end > start ? { start: start, end: end } : null
+  }).filter(Boolean).sort(function(left, right){ return left.start - right.start })
+
+  const merged = []
+  ranges.forEach(function(range){
+    const previous = merged[merged.length - 1]
+    if(previous && range.start <= previous.end + 0.75){
+      previous.end = Math.max(previous.end, range.end)
+      return
+    }
+    merged.push({ start: range.start, end: range.end })
+  })
+  return merged.slice(-120).map(function(range){
+    return {
+      start: Math.round(range.start * 10) / 10,
+      end: Math.round(range.end * 10) / 10
+    }
+  })
+}
+
+function getGrammarWatchedSeconds(ranges, duration){
+  return normalizeGrammarWatchedRanges(ranges, duration).reduce(function(total, range){
+    return total + Math.max(0, Number(range.end || 0) - Number(range.start || 0))
+  }, 0)
+}
+
+function getGrammarCompletionRatio(ranges, duration){
+  const normalizedDuration = Number(duration)
+  if(!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) return 0
+  return Math.min(1, getGrammarWatchedSeconds(ranges, normalizedDuration) / normalizedDuration)
+}
+
+function normalizeGrammarVideoProgressRecord(source){
+  if(!source || typeof source !== 'object') return null
+  const userId = String(source.userId || '').trim()
+  const unitId = String(source.unitId || '').trim()
+  const partIndex = Math.max(0, Math.floor(Number(source.partIndex) || 0))
+  if(!userId || !unitId) return null
+  const duration = Math.max(0, Number(source.duration) || 0)
+  const watchedRanges = normalizeGrammarWatchedRanges(source.watchedRanges, duration)
+  const watchedSeconds = Math.max(
+    0,
+    Math.min(duration || Number.MAX_SAFE_INTEGER, Number(source.watchedSeconds) || getGrammarWatchedSeconds(watchedRanges, duration))
+  )
+  const completed = !!source.completed || String(source.status || '').trim().toLowerCase() === 'completed'
+  return {
+    id: String(source.id || source.docId || buildGrammarProgressDocId(userId, unitId, partIndex)).trim(),
+    userId: userId,
+    loginId: String(source.loginId || '').trim(),
+    email: String(source.email || '').trim().toLowerCase(),
+    name: String(source.name || '').trim(),
+    studentId: String(source.studentId || '').trim(),
+    classIds: Array.isArray(source.classIds)
+      ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
+      : [],
+    levelId: String(source.levelId || '').trim(),
+    levelLabel: String(source.levelLabel || '').trim(),
+    chapterNumber: String(source.chapterNumber || '').trim(),
+    chapterTitle: String(source.chapterTitle || '').trim(),
+    unitId: unitId,
+    unitNumber: String(source.unitNumber || '').trim(),
+    unitTitle: String(source.unitTitle || '').trim(),
+    partIndex: partIndex,
+    partNumber: partIndex + 1,
+    fileName: String(source.fileName || '').trim(),
+    status: normalizeGrammarProgressStatus(source.status, completed),
+    completed: completed,
+    currentTime: Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, Number(source.currentTime) || 0)),
+    duration: duration,
+    watchedRanges: watchedRanges,
+    watchedSeconds: watchedSeconds,
+    completionRatio: completed
+      ? 1
+      : Math.max(0, Math.min(1, Number(source.completionRatio) || getGrammarCompletionRatio(watchedRanges, duration))),
+    startedAt: String(source.startedAt || '').trim(),
+    completedAt: String(source.completedAt || '').trim(),
+    updatedAt: String(source.updatedAt || '').trim(),
+    lastEvent: String(source.lastEvent || '').trim()
+  }
+}
+
+function readLocalGrammarVideoProgressRows(){
+  try{
+    const raw = localStorage.getItem(PORTAL_ENHANCEMENT_KEYS.grammarVideoProgress)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(normalizeGrammarVideoProgressRecord).filter(Boolean) : []
+  }catch(error){
+    console.error(error)
+    return []
+  }
+}
+
+function writeLocalGrammarVideoProgressRows(rows){
+  localStorage.setItem(PORTAL_ENHANCEMENT_KEYS.grammarVideoProgress, JSON.stringify(Array.isArray(rows) ? rows : []))
+}
+
+function saveLocalGrammarVideoProgressRecord(record){
+  const rows = readLocalGrammarVideoProgressRows().filter(function(entry){
+    return String(entry && entry.id || '').trim() !== String(record && record.id || '').trim()
+  })
+  rows.push(record)
+  writeLocalGrammarVideoProgressRows(rows)
+}
+
+function mergeGrammarVideoProgressRecord(record, targetRows){
+  const normalized = normalizeGrammarVideoProgressRecord(record)
+  if(!normalized) return Array.isArray(targetRows) ? targetRows : []
+  const rows = Array.isArray(targetRows) ? targetRows.slice() : []
+  const index = rows.findIndex(function(entry){
+    return String(entry && entry.id || '').trim() === normalized.id
+  })
+  if(index >= 0) rows[index] = normalized
+  else rows.push(normalized)
+  return rows
+}
+
+function getGrammarVideoProgressRow(unitId, partIndex, rows){
+  const normalizedUnitId = String(unitId || '').trim()
+  const normalizedPartIndex = Math.max(0, Math.floor(Number(partIndex) || 0))
+  return (Array.isArray(rows) ? rows : portalState.grammarProgress.rows || []).filter(function(row){
+    return String(row && row.unitId || '').trim() === normalizedUnitId &&
+      Number(row && row.partIndex || 0) === normalizedPartIndex
+  }).sort(function(left, right){
+    return String(right && right.updatedAt || '').localeCompare(String(left && left.updatedAt || ''))
+  })[0] || null
+}
+
+function getGrammarUnitProgressState(unit, rows){
+  const videos = Array.isArray(unit && unit.videos) ? unit.videos : []
+  const partRows = videos.map(function(fileName, partIndex){
+    return getGrammarVideoProgressRow(unit && unit.id, partIndex, rows)
+  })
+  const completedCount = partRows.filter(function(row){ return !!(row && row.completed) }).length
+  const startedCount = partRows.filter(function(row){
+    return !!(row && (row.completed || row.status === 'in_progress' || row.startedAt || row.currentTime > 0))
+  }).length
+  let status = 'pending'
+  if(videos.length && completedCount === videos.length) status = 'completed'
+  else if(startedCount > 0) status = 'in_progress'
+  return {
+    status: status,
+    completedCount: completedCount,
+    startedCount: startedCount,
+    totalCount: videos.length,
+    rows: partRows
+  }
+}
+
+function getGrammarProgressLabel(status){
+  const normalized = String(status || '').trim().toLowerCase()
+  if(normalized === 'completed') return '시청 완료'
+  if(normalized === 'in_progress') return '진행중'
+  return '미완료'
+}
+
+function formatGrammarWatchTime(seconds){
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  const minutes = Math.floor(total / 60)
+  const remain = total % 60
+  return String(minutes).padStart(2, '0') + ':' + String(remain).padStart(2, '0')
+}
+
+async function fetchGrammarVideoProgressRows(filters){
+  const settings = filters || {}
+  const userId = String(settings.userId || '').trim()
+  let rows = []
+  let usedCloud = false
+  if(portalState.firebaseEnabled && portalState.db){
+    try{
+      let query = portalState.db.collection(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION)
+      if(userId) query = query.where('userId', '==', userId)
+      const snapshot = await query.get()
+      rows = snapshot.docs.map(function(doc){
+        return normalizeGrammarVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+      }).filter(Boolean)
+      usedCloud = true
+    }catch(error){
+      console.warn('grammar video progress read fallback:', error && error.message ? error.message : error)
+    }
+  }
+  if(!usedCloud) rows = readLocalGrammarVideoProgressRows()
+  return rows.filter(function(row){
+    return !userId || String(row && row.userId || '').trim() === userId
+  })
+}
+
+async function ensureCurrentGrammarProgressLoaded(forceReload){
+  if(!shouldTrackGrammarProgress()){
+    portalState.grammarProgress.rows = []
+    return []
+  }
+  const userId = getGrammarProgressUserId()
+  if(!userId) return []
+  if(!forceReload && portalState.grammarProgress.loadedUserId === userId){
+    return portalState.grammarProgress.rows || []
+  }
+  if(portalState.grammarProgress.loadPromise && !forceReload){
+    return portalState.grammarProgress.loadPromise
+  }
+  portalState.grammarProgress.loadPromise = fetchGrammarVideoProgressRows({ userId: userId }).then(function(rows){
+    portalState.grammarProgress.rows = rows
+    portalState.grammarProgress.loadedUserId = userId
+    return rows
+  }).finally(function(){
+    portalState.grammarProgress.loadPromise = null
+  })
+  return portalState.grammarProgress.loadPromise
+}
+
+function initializeGrammarProgressTracker(context, partIndex){
+  const row = getGrammarVideoProgressRow(context && context.unit && context.unit.id, partIndex)
+  portalState.grammarProgress.tracker = {
+    userId: getGrammarProgressUserId(),
+    levelId: String(context && context.level && context.level.id || '').trim(),
+    unitId: String(context && context.unit && context.unit.id || '').trim(),
+    partIndex: Math.max(0, Math.floor(Number(partIndex) || 0)),
+    fileName: String(context && context.unit && context.unit.videos && context.unit.videos[partIndex] || '').trim(),
+    duration: Math.max(0, Number(row && row.duration) || 0),
+    currentTime: row && !row.completed ? Math.max(0, Number(row.currentTime) || 0) : 0,
+    watchedRanges: normalizeGrammarWatchedRanges(row && row.watchedRanges, row && row.duration),
+    startedAt: String(row && row.startedAt || '').trim(),
+    completed: !!(row && row.completed),
+    completedAt: String(row && row.completedAt || '').trim(),
+    lastPlaybackTime: null,
+    isSeeking: false,
+    resumeApplied: false,
+    dirty: false
+  }
+  syncGrammarPlayerWatchStatus()
+  return portalState.grammarProgress.tracker
+}
+
+function addGrammarWatchedRange(tracker, start, end){
+  if(!tracker) return false
+  const normalizedStart = Math.max(0, Number(start) || 0)
+  const normalizedEnd = Math.max(normalizedStart, Number(end) || 0)
+  if(normalizedEnd - normalizedStart <= 0.05) return false
+  tracker.watchedRanges = normalizeGrammarWatchedRanges(
+    (tracker.watchedRanges || []).concat([{ start: normalizedStart, end: normalizedEnd }]),
+    tracker.duration
+  )
+  tracker.dirty = true
+  return true
+}
+
+function buildGrammarProgressRecord(reason){
+  const tracker = portalState.grammarProgress.tracker
+  const context = getCurrentGrammarUnitContext()
+  const profile = portalState.currentProfile || {}
+  if(!tracker || !context || !tracker.userId || tracker.unitId !== context.unit.id) return null
+  if(!tracker.startedAt && !tracker.completed) return null
+  const now = new Date().toISOString()
+  const duration = Math.max(0, Number(tracker.duration) || 0)
+  const watchedRanges = normalizeGrammarWatchedRanges(tracker.watchedRanges, duration)
+  const watchedSeconds = getGrammarWatchedSeconds(watchedRanges, duration)
+  const completionRatio = tracker.completed ? 1 : getGrammarCompletionRatio(watchedRanges, duration)
+  return normalizeGrammarVideoProgressRecord({
+    id: buildGrammarProgressDocId(tracker.userId, tracker.unitId, tracker.partIndex),
+    userId: tracker.userId,
+    loginId: profile.loginId || '',
+    email: profile.email || '',
+    name: profile.name || '',
+    studentId: profile.studentId || '',
+    classIds: getProfileClassIds(),
+    levelId: context.level.id,
+    levelLabel: context.level.level,
+    chapterNumber: context.chapter.number,
+    chapterTitle: getGrammarChapterDisplayTitle(context.chapter),
+    unitId: context.unit.id,
+    unitNumber: context.unit.number,
+    unitTitle: context.unit.title,
+    partIndex: tracker.partIndex,
+    fileName: tracker.fileName,
+    status: tracker.completed ? 'completed' : 'in_progress',
+    completed: tracker.completed,
+    currentTime: tracker.completed ? duration : Math.max(0, Number(tracker.currentTime) || 0),
+    duration: duration,
+    watchedRanges: watchedRanges,
+    watchedSeconds: watchedSeconds,
+    completionRatio: completionRatio,
+    startedAt: tracker.startedAt || now,
+    completedAt: tracker.completed ? (tracker.completedAt || now) : '',
+    updatedAt: now,
+    lastEvent: reason || 'progress'
+  })
+}
+
+async function persistGrammarProgressRecord(record){
+  if(!record) return false
+  portalState.grammarProgress.rows = mergeGrammarVideoProgressRecord(record, portalState.grammarProgress.rows)
+  if(portalState.firebaseEnabled && portalState.db){
+    await portalState.db.collection(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION).doc(record.id).set(record, { merge: true })
+  }else{
+    saveLocalGrammarVideoProgressRecord(record)
+  }
+  return true
+}
+
+function flushGrammarProgress(reason){
+  const state = portalState.grammarProgress
+  const tracker = state.tracker
+  if(!shouldTrackGrammarProgress() || !tracker || (!tracker.dirty && reason !== 'ended')) return Promise.resolve(false)
+  if(state.saveTimer){
+    window.clearTimeout(state.saveTimer)
+    state.saveTimer = 0
+  }
+  const record = buildGrammarProgressRecord(reason)
+  if(!record) return Promise.resolve(false)
+  tracker.dirty = false
+  state.savePromise = (state.savePromise || Promise.resolve()).catch(function(){}).then(function(){
+    return persistGrammarProgressRecord(record)
+  }).then(function(result){
+    syncGrammarPlayerWatchStatus()
+    if(getCurrentActiveScreenId() === 'grammar-screen') renderGrammarCourse()
+    return result
+  }).catch(function(error){
+    tracker.dirty = true
+    console.warn('grammar video progress save failed:', error && error.message ? error.message : error)
+    return false
+  })
+  return state.savePromise
+}
+
+function scheduleGrammarProgressSave(reason, immediate){
+  const state = portalState.grammarProgress
+  if(!shouldTrackGrammarProgress() || !state.tracker || !state.tracker.dirty) return
+  if(state.saveTimer){
+    if(!immediate) return
+    window.clearTimeout(state.saveTimer)
+    state.saveTimer = 0
+  }
+  if(immediate){
+    flushGrammarProgress(reason)
+    return
+  }
+  state.saveTimer = window.setTimeout(function(){
+    state.saveTimer = 0
+    flushGrammarProgress(reason)
+  }, PORTAL_GRAMMAR_PROGRESS_SAVE_DELAY)
+}
+
+function syncGrammarPartStatusButtons(context){
+  const resolvedContext = context || getCurrentGrammarUnitContext()
+  if(!resolvedContext) return
+  Array.from(document.querySelectorAll('[data-grammar-part-index]')).forEach(function(button){
+    const partIndex = Math.max(0, Math.floor(Number(button.dataset.grammarPartIndex) || 0))
+    const row = getGrammarVideoProgressRow(resolvedContext.unit.id, partIndex)
+    const status = row && row.completed ? 'completed' : (row ? 'in_progress' : 'pending')
+    button.dataset.watchStatus = status
+    const node = button.querySelector('.grammar-part-watch-status')
+    if(node) node.textContent = getGrammarProgressLabel(status)
+  })
+}
+
+function syncGrammarPlayerWatchStatus(){
+  const context = getCurrentGrammarUnitContext()
+  if(!context) return
+  const unitState = getGrammarUnitProgressState(context.unit)
+  const unitStatusNode = document.getElementById('grammar-player-unit-status')
+  if(unitStatusNode){
+    unitStatusNode.dataset.status = unitState.status
+    unitStatusNode.textContent = getGrammarProgressLabel(unitState.status)
+  }
+
+  const tracker = portalState.grammarProgress.tracker
+  const savedRow = getGrammarVideoProgressRow(context.unit.id, portalState.grammarPlayer.partIndex)
+  const completed = !!(tracker && tracker.completed) || !!(savedRow && savedRow.completed)
+  const started = completed || !!(tracker && tracker.startedAt) || !!savedRow
+  const duration = Math.max(0, Number(tracker && tracker.duration || savedRow && savedRow.duration) || 0)
+  const currentTime = Math.max(0, Number(tracker && tracker.currentTime || savedRow && savedRow.currentTime) || 0)
+  const ratio = completed
+    ? 1
+    : Math.max(0, Math.min(1, Number(
+        tracker ? getGrammarCompletionRatio(tracker.watchedRanges, duration) : savedRow && savedRow.completionRatio
+      ) || 0))
+  const status = completed ? 'completed' : (started ? 'in_progress' : 'pending')
+  const panel = document.getElementById('grammar-watch-panel')
+  if(panel) panel.dataset.status = status
+  setElementTextSafe('grammar-watch-status-label', getGrammarProgressLabel(status))
+  let detail = '아직 재생하지 않았습니다.'
+  if(status === 'in_progress'){
+    detail = formatGrammarWatchTime(currentTime) + (duration ? (' / ' + formatGrammarWatchTime(duration)) : '') + ' · 실제 시청 ' + Math.round(ratio * 100) + '%'
+  }
+  if(status === 'completed') detail = '영상 끝까지 시청했습니다.'
+  setElementTextSafe('grammar-watch-status-detail', detail)
+  const bar = document.getElementById('grammar-watch-meter-bar')
+  if(bar) bar.style.width = Math.round(ratio * 100) + '%'
+  syncGrammarPartStatusButtons(context)
+}
+
+function handleGrammarProgressVisibilityChange(){
+  if(document.visibilityState === 'hidden') flushGrammarProgress('hidden')
+}
+
+function handleGrammarProgressBeforeUnload(){
+  flushGrammarProgress('unload')
+}
+
 function getCurrentGrammarUnitContext(){
   return getGrammarUnitContext(portalState.grammarPlayer && portalState.grammarPlayer.unitId)
 }
 
-function openGrammarUnit(unitId, options){
+function getGrammarResumePartIndex(unit, requestedPartIndex, hasRequestedPart){
+  const videos = Array.isArray(unit && unit.videos) ? unit.videos : []
+  if(hasRequestedPart){
+    return Math.min(Math.max(Number(requestedPartIndex) || 0, 0), Math.max(0, videos.length - 1))
+  }
+  const inProgressIndex = videos.findIndex(function(fileName, partIndex){
+    const row = getGrammarVideoProgressRow(unit && unit.id, partIndex)
+    return !!(row && !row.completed)
+  })
+  if(inProgressIndex >= 0) return inProgressIndex
+  const incompleteIndex = videos.findIndex(function(fileName, partIndex){
+    const row = getGrammarVideoProgressRow(unit && unit.id, partIndex)
+    return !(row && row.completed)
+  })
+  return incompleteIndex >= 0 ? incompleteIndex : 0
+}
+
+async function openGrammarUnit(unitId, options){
   if(!ensureGrammarAccess()) return
   if(!canAccessGrammarUnit(unitId)){
     showToast('이 GRAMMAR 유닛에 대한 이용 권한이 없습니다.', 'var(--red)')
@@ -1148,14 +1625,15 @@ function openGrammarUnit(unitId, options){
     return
   }
   const settings = options && typeof options === 'object' ? options : {}
-  const maxPartIndex = Math.max(0, context.unit.videos.length - 1)
-  const requestedPartIndex = Number.isInteger(Number(settings.partIndex)) ? Number(settings.partIndex) : 0
+  await ensureCurrentGrammarProgressLoaded(false)
+  const hasRequestedPart = Object.prototype.hasOwnProperty.call(settings, 'partIndex') && Number.isInteger(Number(settings.partIndex))
+  const requestedPartIndex = getGrammarResumePartIndex(context.unit, settings.partIndex, hasRequestedPart)
 
   clearGrammarVideoResources()
   portalState.grammarLevelId = context.level.id
   portalState.grammarPlayer.levelId = context.level.id
   portalState.grammarPlayer.unitId = context.unit.id
-  portalState.grammarPlayer.partIndex = Math.min(Math.max(requestedPartIndex, 0), maxPartIndex)
+  portalState.grammarPlayer.partIndex = requestedPartIndex
   renderGrammarPlayer(context)
   activatePortalScreen('grammar-player-screen')
   window.scrollTo(0, 0)
@@ -1196,9 +1674,12 @@ function renderGrammarPlayer(context){
   unit.videos.forEach(function(fileName, index){
     const button = document.createElement('button')
     const isActive = index === partIndex
+    const progressRow = getGrammarVideoProgressRow(unit.id, index)
+    const watchStatus = progressRow && progressRow.completed ? 'completed' : (progressRow ? 'in_progress' : 'pending')
     button.className = 'grammar-part-button' + (isActive ? ' active' : '')
     button.type = 'button'
     button.dataset.grammarPartIndex = String(index)
+    button.dataset.watchStatus = watchStatus
     button.dataset.uiIconSkip = 'true'
     button.setAttribute('role', 'tab')
     button.setAttribute('aria-selected', isActive ? 'true' : 'false')
@@ -1210,17 +1691,23 @@ function renderGrammarPlayer(context){
     meta.textContent = unit.videos.length === 1
       ? '전체 영상'
       : (index + 1) + ' / ' + unit.videos.length
+    const watchStatusNode = document.createElement('small')
+    watchStatusNode.className = 'grammar-part-watch-status'
+    watchStatusNode.textContent = getGrammarProgressLabel(watchStatus)
     button.appendChild(title)
     button.appendChild(meta)
+    button.appendChild(watchStatusNode)
     partList.appendChild(button)
   })
+  syncGrammarPlayerWatchStatus()
 }
 
-function selectGrammarVideoPart(partIndex, options){
+async function selectGrammarVideoPart(partIndex, options){
   const context = getCurrentGrammarUnitContext()
   if(!context) return
   const normalizedIndex = Number(partIndex)
   if(!Number.isInteger(normalizedIndex) || normalizedIndex < 0 || normalizedIndex >= context.unit.videos.length) return
+  await flushGrammarProgress('part-change')
   portalState.grammarPlayer.partIndex = normalizedIndex
   renderGrammarPlayer(context)
   if(getCurrentActiveScreenId() === 'grammar-player-screen'){
@@ -1235,12 +1722,123 @@ function retryGrammarVideoPart(){
   loadGrammarVideoPart({ autoplay: false, forceRefreshToken: true })
 }
 
-function handleGrammarVideoEnded(){
+function handleGrammarVideoLoadedMetadata(){
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  if(!player || !tracker) return
+  tracker.duration = Math.max(0, Number(player.duration) || tracker.duration || 0)
+  if(!tracker.resumeApplied && !tracker.completed){
+    const resumeTime = Math.max(0, Number(tracker.currentTime) || 0)
+    if(resumeTime >= 3 && (!tracker.duration || resumeTime < tracker.duration - 2)){
+      try{ player.currentTime = resumeTime }catch(error){}
+    }
+  }
+  tracker.resumeApplied = true
+  tracker.lastPlaybackTime = player.paused ? null : Number(player.currentTime) || 0
+  syncGrammarPlayerWatchStatus()
+}
+
+function handleGrammarVideoPlay(){
+  if(!shouldTrackGrammarProgress()) return
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  if(!player || !tracker) return
+  if(!tracker.startedAt) tracker.startedAt = new Date().toISOString()
+  tracker.currentTime = Math.max(0, Number(player.currentTime) || 0)
+  tracker.duration = Math.max(0, Number(player.duration) || tracker.duration || 0)
+  tracker.lastPlaybackTime = tracker.currentTime
+  tracker.dirty = true
+  scheduleGrammarProgressSave('play', true)
+  syncGrammarPlayerWatchStatus()
+}
+
+function handleGrammarVideoPause(){
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  if(!player || !tracker || player.ended) return
+  tracker.currentTime = Math.max(0, Number(player.currentTime) || 0)
+  tracker.lastPlaybackTime = null
+  if(tracker.startedAt) tracker.dirty = true
+  scheduleGrammarProgressSave('pause', true)
+  syncGrammarPlayerWatchStatus()
+}
+
+function handleGrammarVideoTimeUpdate(){
+  if(!shouldTrackGrammarProgress()) return
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  if(!player || !tracker) return
+  const currentTime = Math.max(0, Number(player.currentTime) || 0)
+  tracker.currentTime = currentTime
+  tracker.duration = Math.max(0, Number(player.duration) || tracker.duration || 0)
+  if(!player.paused && !tracker.isSeeking && tracker.lastPlaybackTime !== null && Number.isFinite(Number(tracker.lastPlaybackTime))){
+    const previousTime = Math.max(0, Number(tracker.lastPlaybackTime) || 0)
+    const delta = currentTime - previousTime
+    if(delta > 0 && delta <= 5) addGrammarWatchedRange(tracker, previousTime, currentTime)
+  }
+  tracker.lastPlaybackTime = player.paused || tracker.isSeeking ? null : currentTime
+  if(tracker.startedAt) scheduleGrammarProgressSave('timeupdate', false)
+  syncGrammarPlayerWatchStatus()
+}
+
+function handleGrammarVideoSeeking(){
+  const tracker = portalState.grammarProgress.tracker
+  if(!tracker) return
+  tracker.isSeeking = true
+  tracker.lastPlaybackTime = null
+}
+
+function handleGrammarVideoSeeked(){
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  if(!player || !tracker) return
+  tracker.isSeeking = false
+  tracker.currentTime = Math.max(0, Number(player.currentTime) || 0)
+  tracker.lastPlaybackTime = player.paused ? null : tracker.currentTime
+  if(tracker.startedAt) tracker.dirty = true
+  scheduleGrammarProgressSave('seeked', false)
+  syncGrammarPlayerWatchStatus()
+}
+
+async function handleGrammarVideoEnded(){
   const context = getCurrentGrammarUnitContext()
   if(!context) return
+  const player = document.getElementById('grammar-video-player')
+  const tracker = portalState.grammarProgress.tracker
+  let completed = true
+  if(shouldTrackGrammarProgress() && player && tracker){
+    const currentTime = Math.max(0, Number(player.currentTime) || 0)
+    const duration = Math.max(0, Number(player.duration) || tracker.duration || 0)
+    const previousTime = tracker.lastPlaybackTime === null
+      ? currentTime
+      : Math.max(0, Number(tracker.lastPlaybackTime) || 0)
+    if(currentTime >= previousTime && currentTime - previousTime <= 5){
+      addGrammarWatchedRange(tracker, previousTime, currentTime)
+    }
+    tracker.currentTime = currentTime
+    tracker.duration = duration
+    tracker.lastPlaybackTime = null
+    const ratio = getGrammarCompletionRatio(tracker.watchedRanges, duration)
+    const reachedEnd = duration > 0 && currentTime >= duration - 1.5
+    completed = tracker.completed || (reachedEnd && ratio >= PORTAL_GRAMMAR_COMPLETION_RATIO)
+    tracker.completed = completed
+    tracker.completedAt = completed ? (tracker.completedAt || new Date().toISOString()) : ''
+    tracker.dirty = true
+    await flushGrammarProgress('ended')
+    renderGrammarPlayer(context)
+    if(!completed){
+      showToast('건너뛴 구간이 있어 진행중으로 표시됩니다.', 'var(--blue)')
+      return
+    }
+  }
   const nextPartIndex = Number(portalState.grammarPlayer.partIndex || 0) + 1
   if(nextPartIndex < context.unit.videos.length){
-    selectGrammarVideoPart(nextPartIndex, { autoplay: true })
+    await selectGrammarVideoPart(nextPartIndex, { autoplay: true })
+    return
+  }
+  const unitState = getGrammarUnitProgressState(context.unit)
+  if(!shouldTrackGrammarProgress() || unitState.status === 'completed'){
+    showToast('이 유닛의 모든 영상을 시청 완료했습니다.', 'var(--green)')
   }
 }
 
@@ -1484,6 +2082,8 @@ async function fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, 
 function attachGrammarVideoSource(objectUrl, context, partIndex, autoplay){
   const player = document.getElementById('grammar-video-player')
   if(!player) return
+  if(shouldTrackGrammarProgress()) initializeGrammarProgressTracker(context, partIndex)
+  else portalState.grammarProgress.tracker = null
   player.pause()
   player.src = objectUrl
   player.load()
@@ -1543,6 +2143,8 @@ function abortGrammarVideoLoad(){
 
 function clearGrammarVideoResources(){
   abortGrammarVideoLoad()
+  flushGrammarProgress('leave')
+  portalState.grammarProgress.tracker = null
   const player = document.getElementById('grammar-video-player')
   if(player){
     player.pause()
@@ -1582,8 +2184,9 @@ function getAccessibleGrammarLevel(levelId){
   }) || null
 }
 
-function openGrammarPortal(levelId){
+async function openGrammarPortal(levelId){
   if(!ensureGrammarAccess()) return
+  await ensureCurrentGrammarProgressLoaded(false)
   const requestedLevelId = typeof levelId === 'string' ? levelId : ''
   const accessibleLevels = getAccessibleGrammarLevels()
   const requestedLevel = getAccessibleGrammarLevel(requestedLevelId || portalState.grammarLevelId)
@@ -1695,9 +2298,18 @@ function renderGrammarCourse(){
       const unitTitle = document.createElement('strong')
       unitTitle.className = 'grammar-unit-title'
       unitTitle.textContent = unit.title
+      const unitProgress = getGrammarUnitProgressState(unit)
+      const unitSide = document.createElement('span')
+      unitSide.className = 'grammar-unit-side'
       const unitMedia = document.createElement('span')
       unitMedia.className = 'grammar-unit-media'
       unitMedia.textContent = '영상 ' + unit.videoCount + '개'
+      const unitWatch = document.createElement('span')
+      unitWatch.className = 'grammar-unit-watch-status'
+      unitWatch.dataset.status = unitProgress.status
+      unitWatch.textContent = getGrammarProgressLabel(unitProgress.status)
+      unitSide.appendChild(unitMedia)
+      unitSide.appendChild(unitWatch)
 
       const materialButton = document.createElement('button')
       materialButton.className = 'grammar-material-download'
@@ -1710,7 +2322,7 @@ function renderGrammarCourse(){
 
       unitOpen.appendChild(unitIndex)
       unitOpen.appendChild(unitTitle)
-      unitOpen.appendChild(unitMedia)
+      unitOpen.appendChild(unitSide)
       unitRow.appendChild(unitOpen)
       unitRow.appendChild(materialButton)
       unitList.appendChild(unitRow)
@@ -5170,6 +5782,7 @@ function renderAdminGrammarAccessStudent(){
     setElementTextSafe('admin-grammar-access-summary', '학생을 선택하면 현재 권한이 표시됩니다.')
     setAdminGrammarAccessStatus('학생을 선택해 주세요.', 'idle')
     syncAdminGrammarAccessUnitControls()
+    renderAdminGrammarProgress(null, [])
     return
   }
 
@@ -5180,6 +5793,7 @@ function renderAdminGrammarAccessStudent(){
   setAdminGrammarAccessStatus('현재 저장된 권한을 불러왔습니다.', 'idle')
   syncAdminGrammarAccessUnitControls()
   syncAdminGrammarAccessSummary()
+  refreshAdminGrammarProgress()
 }
 
 function syncAdminGrammarAccessUnitControls(){
@@ -5237,6 +5851,125 @@ function clearAdminGrammarAccessUnits(){
     input.checked = false
   })
   syncAdminGrammarAccessSummary()
+}
+
+function getAdminGrammarAccessibleUnitIds(student){
+  const mode = getProfileGrammarAccessMode(student)
+  if(mode === 'all') return getAllGrammarUnitIds()
+  if(mode === 'units') return getProfileGrammarUnitIds(student)
+  return []
+}
+
+function setAdminGrammarProgressStatus(message, state){
+  const node = document.getElementById('admin-grammar-progress-status')
+  if(!node) return
+  node.textContent = String(message || '')
+  node.dataset.state = String(state || 'idle')
+}
+
+function getGrammarUnitContextList(unitIds){
+  return normalizeGrammarUnitIds(unitIds).map(getGrammarUnitContext).filter(Boolean)
+}
+
+function renderAdminGrammarProgress(student, rows){
+  const summaryNode = document.getElementById('admin-grammar-progress-summary')
+  const listNode = document.getElementById('admin-grammar-progress-list')
+  if(!summaryNode || !listNode) return
+  if(!student){
+    summaryNode.innerHTML = ''
+    listNode.innerHTML = '<div class="empty-box">학생을 선택하면 시청 현황이 표시됩니다.</div>'
+    setAdminGrammarProgressStatus('', 'idle')
+    return
+  }
+
+  const unitContexts = getGrammarUnitContextList(getAdminGrammarAccessibleUnitIds(student))
+  const progressRows = Array.isArray(rows) ? rows : []
+  const states = unitContexts.map(function(context){
+    return {
+      context: context,
+      state: getGrammarUnitProgressState(context.unit, progressRows)
+    }
+  })
+  const completedCount = states.filter(function(entry){ return entry.state.status === 'completed' }).length
+  const inProgressCount = states.filter(function(entry){ return entry.state.status === 'in_progress' }).length
+  const pendingCount = Math.max(states.length - completedCount - inProgressCount, 0)
+  summaryNode.innerHTML = [
+    '<span data-status="all">전체 <strong>' + states.length + '</strong></span>',
+    '<span data-status="completed">시청 완료 <strong>' + completedCount + '</strong></span>',
+    '<span data-status="in_progress">진행중 <strong>' + inProgressCount + '</strong></span>',
+    '<span data-status="pending">미완료 <strong>' + pendingCount + '</strong></span>'
+  ].join('')
+
+  if(!states.length){
+    listNode.innerHTML = '<div class="empty-box">현재 허용된 GRAMMAR 유닛이 없습니다.</div>'
+    setAdminGrammarProgressStatus('권한을 먼저 지정하면 유닛별 상태를 확인할 수 있습니다.', 'idle')
+    return
+  }
+
+  listNode.innerHTML = states.map(function(entry){
+    const context = entry.context
+    const state = entry.state
+    const latestUpdatedAt = state.rows.filter(Boolean).map(function(row){ return String(row.updatedAt || '') }).sort().reverse()[0] || ''
+    const partHtml = context.unit.videos.map(function(fileName, partIndex){
+      const row = state.rows[partIndex]
+      const partStatus = row && row.completed ? 'completed' : (row ? 'in_progress' : 'pending')
+      const detail = row
+        ? (partStatus === 'completed'
+            ? (row.completedAt ? formatAdminTime(row.completedAt) : '완료')
+            : Math.round(Number(row.completionRatio || 0) * 100) + '% 시청')
+        : '재생 전'
+      return '' +
+        '<span class="grammar-progress-admin-part" data-status="' + partStatus + '">' +
+          '<strong>PART ' + String(partIndex + 1).padStart(2, '0') + '</strong>' +
+          '<small>' + escapeHtml(getGrammarProgressLabel(partStatus) + ' · ' + detail) + '</small>' +
+        '</span>'
+    }).join('')
+    return '' +
+      '<article class="grammar-progress-admin-item" data-status="' + state.status + '">' +
+        '<div class="grammar-progress-admin-item-head">' +
+          '<div>' +
+            '<small>' + escapeHtml(context.level.level + ' · CHAPTER ' + context.chapter.number + ' · UNIT ' + context.unit.number) + '</small>' +
+            '<strong>' + escapeHtml(context.unit.title) + '</strong>' +
+          '</div>' +
+          '<span class="grammar-watch-status" data-status="' + state.status + '">' + escapeHtml(getGrammarProgressLabel(state.status)) + '</span>' +
+        '</div>' +
+        '<div class="grammar-progress-admin-parts">' + partHtml + '</div>' +
+        (latestUpdatedAt ? '<div class="grammar-progress-admin-updated">최근 기록 ' + escapeHtml(formatAdminTime(latestUpdatedAt)) + '</div>' : '') +
+      '</article>'
+  }).join('')
+  setAdminGrammarProgressStatus('영상의 실제 재생 구간을 기준으로 계산한 상태입니다.', 'success')
+}
+
+async function refreshAdminGrammarProgress(){
+  if(!canManageGrammarAccess()) return
+  const student = getAdminGrammarAccessStudent(portalState.grammarAccessAdmin.selectedUid)
+  if(!student){
+    renderAdminGrammarProgress(null, [])
+    return
+  }
+  const userId = getGrammarProgressUserId(student)
+  if(!userId){
+    renderAdminGrammarProgress(student, [])
+    return
+  }
+  portalState.grammarProgress.adminLoading = true
+  portalState.grammarProgress.adminStudentUid = userId
+  setAdminGrammarProgressStatus('시청 기록을 불러오고 있습니다...', 'working')
+  try{
+    const rows = await fetchGrammarVideoProgressRows({ userId: userId })
+    if(portalState.grammarProgress.adminStudentUid !== userId) return
+    portalState.grammarProgress.adminRows = rows
+    renderAdminGrammarProgress(student, rows)
+  }catch(error){
+    console.error(error)
+    if(portalState.grammarProgress.adminStudentUid !== userId) return
+    renderAdminGrammarProgress(student, [])
+    setAdminGrammarProgressStatus(String(error && error.message || '시청 기록을 불러오지 못했습니다.'), 'error')
+  }finally{
+    if(portalState.grammarProgress.adminStudentUid === userId){
+      portalState.grammarProgress.adminLoading = false
+    }
+  }
 }
 
 async function renderAdminGrammarAccessManager(){
@@ -5315,6 +6048,7 @@ async function saveAdminGrammarAccess(){
     }
     setAdminGrammarAccessStatus('권한을 저장했습니다. 학생은 새로고침하거나 다시 로그인하면 적용됩니다.', 'success')
     syncAdminGrammarAccessSummary()
+    refreshAdminGrammarProgress()
   }catch(error){
     console.error(error)
     setAdminGrammarAccessStatus(String(error && error.message || '권한을 저장하지 못했습니다.'), 'error')
