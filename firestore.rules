@@ -51,6 +51,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /grammarVideoProgress/{progressId} {
+      allow read: if isAdmin()
+        || (signedIn() && progressId.matches('^' + request.auth.uid + '__.*$'))
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && progressId.matches('^' + request.auth.uid + '__.*$');
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+
     match /counselRequests/{requestId} {
       allow read: if isAdmin()
         || (signedIn() && requestId.matches('^' + request.auth.uid + '__.*$'))

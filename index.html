@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260722-grammar-student-access-06">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260722-grammar-progress-07">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -203,6 +203,7 @@
     <div class="grammar-player-unit-meta">
       <span id="grammar-player-unit-number">UNIT 01</span>
       <span id="grammar-player-part-summary">영상 2개</span>
+      <span class="grammar-watch-status" id="grammar-player-unit-status" data-status="pending">미완료</span>
       <button
         class="grammar-material-download grammar-player-material-download"
         type="button"
@@ -241,6 +242,16 @@
         <strong id="grammar-player-now-title">Grammar Basics</strong>
       </div>
       <span id="grammar-player-now-part">PART 01</span>
+    </div>
+
+    <div class="grammar-watch-panel" id="grammar-watch-panel" data-status="pending">
+      <div class="grammar-watch-copy">
+        <strong id="grammar-watch-status-label">미완료</strong>
+        <span id="grammar-watch-status-detail">아직 재생하지 않았습니다.</span>
+      </div>
+      <div class="grammar-watch-meter" aria-hidden="true">
+        <span id="grammar-watch-meter-bar"></span>
+      </div>
     </div>
 
     <div class="grammar-part-section">
@@ -853,6 +864,20 @@
       <div class="grammar-access-save-actions">
         <button class="btn btn-blue" type="button" id="admin-grammar-access-save-btn">권한 저장</button>
       </div>
+      <section class="grammar-progress-admin" aria-labelledby="admin-grammar-progress-title">
+        <div class="grammar-progress-admin-head">
+          <div>
+            <h4 id="admin-grammar-progress-title">GRAMMAR 시청 현황</h4>
+            <p>위에서 선택한 학생의 유닛별 시청 상태를 확인합니다.</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-progress-refresh-btn">새로고침</button>
+        </div>
+        <div class="grammar-progress-admin-summary" id="admin-grammar-progress-summary"></div>
+        <div class="grammar-progress-admin-list" id="admin-grammar-progress-list">
+          <div class="empty-box">학생을 선택하면 시청 현황이 표시됩니다.</div>
+        </div>
+        <div class="grammar-progress-admin-status" id="admin-grammar-progress-status"></div>
+      </section>
     </section>
     <section class="group">
       <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
@@ -961,7 +986,7 @@
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
 <script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
-<script src="./grammar_catalog.js?v=20260722-grammar-student-access-06"></script>
-<script src="./rotation_portal_enhancements.js?v=20260722-grammar-student-access-06"></script>
+<script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
+<script src="./rotation_portal_enhancements.js?v=20260722-grammar-progress-07"></script>
 </body>
 </html>
