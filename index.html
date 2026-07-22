@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260722-grammar-materials-04">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260722-grammar-student-access-06">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -45,7 +45,7 @@
     <button class="app-drawer-link" type="button" data-drawer-action="home" id="drawer-home-btn"><span>HOME</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="prep" id="drawer-prep-btn"><span>PREP</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="check" id="drawer-check-btn"><span>CHECK</span><span>›</span></button>
-    <button class="app-drawer-link" type="button" data-drawer-action="grammar-lab" id="drawer-grammar-lab-btn"><span>GRAMMAR</span><span>›</span></button>
+    <button class="app-drawer-link hidden" type="button" data-drawer-action="grammar-lab" id="drawer-grammar-lab-btn"><span>GRAMMAR</span><span>›</span></button>
     <button class="app-drawer-link" type="button" data-drawer-action="counsel" id="drawer-counsel-btn"><span>COUNSEL</span><span>›</span></button>
     <button class="app-drawer-link hidden" type="button" data-drawer-action="admin" id="drawer-admin-btn"><span>ADMIN</span><span>›</span></button>
   </div>
@@ -130,7 +130,7 @@
       <div class="portal-title">CHECK</div>
       <div class="portal-desc"></div>
     </button>
-    <button class="portal-card portal-card-grammar-lab" type="button" id="portal-grammar-lab-btn">
+    <button class="portal-card portal-card-grammar-lab hidden" type="button" id="portal-grammar-lab-btn">
       <div class="portal-kicker">문법</div>
       <div class="portal-title">GRAMMAR</div>
       <div class="portal-desc"></div>
@@ -823,6 +823,37 @@
   <div class="stats" id="admin-stats"></div>
 
   <div class="admin-grid">
+    <section class="group admin-wide hidden" id="admin-grammar-access-section">
+      <div class="group-title">
+        <h3>GRAMMAR 학생 권한</h3>
+        <span class="group-count" id="admin-grammar-access-count">0명</span>
+      </div>
+      <p class="grammar-access-note">학생별로 전체 과정, 선택한 유닛만, 또는 접근 차단을 지정합니다. 저장된 권한은 영상과 교재 PDF에 동일하게 적용됩니다.</p>
+      <div class="grammar-access-controls">
+        <label class="grammar-access-field">
+          <span>학생 선택</span>
+          <select class="admin-select" id="admin-grammar-access-student-select">
+            <option value="">학생을 선택하세요</option>
+          </select>
+        </label>
+        <fieldset class="grammar-access-mode" id="admin-grammar-access-mode">
+          <legend>접근 범위</legend>
+          <label><input type="radio" name="grammar-access-mode" value="none" checked> 차단</label>
+          <label><input type="radio" name="grammar-access-mode" value="all"> 전체 유닛</label>
+          <label><input type="radio" name="grammar-access-mode" value="units"> 선택 유닛</label>
+        </fieldset>
+      </div>
+      <div class="grammar-access-summary" id="admin-grammar-access-summary">학생을 선택하면 현재 권한이 표시됩니다.</div>
+      <div class="grammar-access-selection-actions">
+        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-select-all-btn">전체 유닛 선택</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-clear-btn">선택 해제</button>
+      </div>
+      <div class="grammar-access-unit-list" id="admin-grammar-access-unit-list"></div>
+      <div class="grammar-access-status" id="admin-grammar-access-status">아직 변경하지 않았습니다.</div>
+      <div class="grammar-access-save-actions">
+        <button class="btn btn-blue" type="button" id="admin-grammar-access-save-btn">권한 저장</button>
+      </div>
+    </section>
     <section class="group">
       <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
       <div class="admin-list" id="admin-type-list"></div>
@@ -930,7 +961,7 @@
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
 <script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
-<script src="./grammar_catalog.js?v=20260722-grammar-materials-04"></script>
-<script src="./rotation_portal_enhancements.js?v=20260722-grammar-materials-04"></script>
+<script src="./grammar_catalog.js?v=20260722-grammar-student-access-06"></script>
+<script src="./rotation_portal_enhancements.js?v=20260722-grammar-student-access-06"></script>
 </body>
 </html>

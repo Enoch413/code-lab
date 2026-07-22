@@ -1305,6 +1305,20 @@ body::before{
   .admin-grid .admin-wide{
     grid-column:1 / -1;
   }
+
+  .grammar-access-controls{
+    grid-template-columns:minmax(240px,1fr) minmax(320px,1.35fr);
+    align-items:end;
+  }
+
+  .grammar-access-unit-list{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    align-items:start;
+  }
+
+  .grammar-access-unit-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
 }
 @media (max-width: 767px){
   .portal-user-card{
@@ -4705,6 +4719,218 @@ body.app-screen-study-cafe .app-chrome{
   gap:18px;
 }
 
+.grammar-access-note{
+  margin:0 0 16px;
+  color:var(--muted);
+  font-size:.82rem;
+  line-height:1.7;
+  word-break:keep-all;
+}
+
+.grammar-access-controls{
+  display:grid;
+  gap:14px;
+}
+
+.grammar-access-field{
+  display:grid;
+  gap:7px;
+}
+
+.grammar-access-field > span,
+.grammar-access-mode legend{
+  color:var(--ink2);
+  font-size:.72rem;
+  font-weight:800;
+  letter-spacing:.05em;
+}
+
+.grammar-access-mode{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:0;
+  padding:0;
+  border:0;
+}
+
+.grammar-access-mode legend{
+  width:100%;
+  margin-bottom:2px;
+}
+
+.grammar-access-mode label{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:40px;
+  padding:9px 13px;
+  border:1px solid rgba(15,77,68,.14);
+  border-radius:999px;
+  background:rgba(255,255,255,.84);
+  color:var(--ink);
+  font-size:.78rem;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.grammar-access-mode input,
+.grammar-access-unit-option input{
+  accent-color:#765590;
+}
+
+.grammar-access-summary{
+  margin-top:14px;
+  padding:13px 15px;
+  border-radius:16px;
+  background:rgba(116,84,143,.08);
+  color:#5f426f;
+  font-size:.8rem;
+  font-weight:800;
+  line-height:1.6;
+}
+
+.grammar-access-selection-actions,
+.grammar-access-save-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:14px;
+}
+
+.grammar-access-save-actions{
+  justify-content:flex-end;
+}
+
+.grammar-access-unit-list{
+  display:grid;
+  gap:14px;
+  margin-top:14px;
+}
+
+.grammar-access-level{
+  overflow:hidden;
+  border:1px solid rgba(15,77,68,.10);
+  border-radius:20px;
+  background:rgba(255,255,255,.76);
+}
+
+.grammar-access-level-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  background:linear-gradient(135deg,rgba(116,84,143,.13),rgba(31,106,96,.07));
+}
+
+.grammar-access-level-title strong{
+  color:#604572;
+  font-size:1rem;
+}
+
+.grammar-access-level-title span{
+  color:var(--muted);
+  font-size:.65rem;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+
+.grammar-access-chapter{
+  padding:13px 14px 15px;
+  border-top:1px solid rgba(15,77,68,.08);
+}
+
+.grammar-access-chapter-title{
+  margin-bottom:9px;
+  color:var(--ink2);
+  font-size:.75rem;
+  font-weight:900;
+}
+
+.grammar-access-unit-grid{
+  display:grid;
+  gap:7px;
+}
+
+.grammar-access-unit-option{
+  display:grid;
+  grid-template-columns:20px minmax(0,1fr);
+  align-items:center;
+  gap:9px;
+  min-height:48px;
+  padding:9px 11px;
+  border:1px solid rgba(15,77,68,.09);
+  border-radius:13px;
+  background:rgba(248,250,248,.92);
+  cursor:pointer;
+}
+
+.grammar-access-unit-option input{
+  width:16px;
+  height:16px;
+  margin:0;
+}
+
+.grammar-access-unit-option span{
+  min-width:0;
+}
+
+.grammar-access-unit-option small,
+.grammar-access-unit-option strong{
+  display:block;
+}
+
+.grammar-access-unit-option small{
+  margin-bottom:2px;
+  color:var(--muted);
+  font-size:.58rem;
+  font-weight:900;
+  letter-spacing:.07em;
+}
+
+.grammar-access-unit-option strong{
+  overflow:hidden;
+  color:var(--ink);
+  font-size:.73rem;
+  line-height:1.4;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.grammar-access-unit-option:has(input:checked){
+  border-color:rgba(116,84,143,.28);
+  background:rgba(116,84,143,.09);
+}
+
+.grammar-access-unit-option:has(input:disabled){
+  cursor:default;
+  opacity:.58;
+}
+
+.grammar-access-status{
+  min-height:22px;
+  margin-top:14px;
+  color:var(--muted);
+  font-size:.77rem;
+  line-height:1.6;
+}
+
+.grammar-access-status[data-state="success"]{
+  color:var(--green);
+  font-weight:800;
+}
+
+.grammar-access-status[data-state="error"]{
+  color:var(--red);
+  font-weight:800;
+}
+
+.grammar-access-status[data-state="working"]{
+  color:var(--ink2);
+  font-weight:800;
+}
+
 .admin-filter-bar{
   border-radius:28px;
   padding:18px;
@@ -4843,6 +5069,11 @@ body.app-screen-study-cafe .app-chrome{
 
   #portal-screen .portal-kicker{
     font-size:.62rem;
+  }
+
+  .grammar-access-selection-actions .btn,
+  .grammar-access-save-actions .btn{
+    width:100%;
   }
 
   .portal-user-card,
