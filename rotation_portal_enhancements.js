@@ -19,6 +19,8 @@ const PORTAL_STUDY_CAFE_DEFAULT_URL = 'https://study-lab--code-lab-2584c.asia-ea
 const PORTAL_STUDY_CAFE_AUTH_REQUEST = 'code-lab-study-auth-request'
 const PORTAL_STUDY_CAFE_AUTH_RESPONSE = 'code-lab-study-auth-response'
 const PORTAL_STUDY_CAFE_DISABLED = true
+const PORTAL_GRAMMAR_MANAGER_LOGIN_IDS = ['superadmin', 'passion413', 'khe2016']
+const PORTAL_GRAMMAR_ACCESS_MODES = ['none', 'all', 'units']
 
 const PORTAL_ENHANCEMENT_KEYS = {
   contentPrefix: 'rotation_portal_content_v1_',
@@ -241,6 +243,11 @@ portalState.grammarPlayer = portalState.grammarPlayer || {
 if(!(portalState.grammarPlayer.objectUrls instanceof Map)){
   portalState.grammarPlayer.objectUrls = new Map()
 }
+portalState.grammarAccessAdmin = portalState.grammarAccessAdmin || {
+  students: [],
+  selectedUid: '',
+  isSaving: false
+}
 
 const PORTAL_BUTTON_ICON_TEXT = {
   press: '•',
@@ -276,6 +283,7 @@ function initPortalEnhancements(){
   setupPortalButtonIconEnhancements()
   setupPortalInstallPrompt()
   syncStudyCafeDisabledState()
+  syncGrammarAccessVisibility()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('message', handleStudyCafeWindowMessage)
   window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
@@ -582,6 +590,32 @@ function bindPortalEnhancementEvents(){
       if(target) openGrammarUnit(target.dataset.grammarUnitId || '')
     })
   }
+  const grammarAccessStudentSelect = document.getElementById('admin-grammar-access-student-select')
+  if(grammarAccessStudentSelect){
+    grammarAccessStudentSelect.addEventListener('change', function(){
+      selectAdminGrammarAccessStudent(grammarAccessStudentSelect.value)
+    })
+  }
+  const grammarAccessMode = document.getElementById('admin-grammar-access-mode')
+  if(grammarAccessMode){
+    grammarAccessMode.addEventListener('change', function(event){
+      if(event.target && event.target.name === 'grammar-access-mode'){
+        syncAdminGrammarAccessUnitControls()
+        syncAdminGrammarAccessSummary()
+      }
+    })
+  }
+  const grammarAccessUnitList = document.getElementById('admin-grammar-access-unit-list')
+  if(grammarAccessUnitList){
+    grammarAccessUnitList.addEventListener('change', function(event){
+      if(event.target && event.target.matches('[data-grammar-access-unit-id]')){
+        syncAdminGrammarAccessSummary()
+      }
+    })
+  }
+  bindClick('admin-grammar-access-select-all-btn', selectAllAdminGrammarAccessUnits)
+  bindClick('admin-grammar-access-clear-btn', clearAdminGrammarAccessUnits)
+  bindClick('admin-grammar-access-save-btn', saveAdminGrammarAccess)
   const grammarPartList = document.getElementById('grammar-part-list')
   if(grammarPartList){
     grammarPartList.addEventListener('click', function(event){
@@ -787,6 +821,113 @@ function syncStudyCafeDisabledState(){
   })
 }
 
+function getCurrentGrammarLoginId(){
+  const profile = portalState.currentProfile || {}
+  const currentUser = portalState.currentUser || {}
+  return derivePortalLoginId({
+    loginId: profile.loginId || profile.studentId || currentUser.loginId || '',
+    email: profile.email || currentUser.email || ''
+  })
+}
+
+function normalizeGrammarAccessMode(value){
+  const normalized = String(value || '').trim().toLowerCase()
+  return PORTAL_GRAMMAR_ACCESS_MODES.indexOf(normalized) >= 0 ? normalized : 'none'
+}
+
+function getAllGrammarUnitIds(){
+  const unitIds = []
+  getGrammarCatalog().forEach(function(level){
+    ;(Array.isArray(level && level.chapters) ? level.chapters : []).forEach(function(chapter){
+      ;(Array.isArray(chapter && chapter.units) ? chapter.units : []).forEach(function(unit){
+        const unitId = String(unit && unit.id || '').trim()
+        if(unitId && unitIds.indexOf(unitId) < 0) unitIds.push(unitId)
+      })
+    })
+  })
+  return unitIds
+}
+
+function normalizeGrammarUnitIds(values){
+  const validIds = getAllGrammarUnitIds()
+  const normalized = []
+  ;(Array.isArray(values) ? values : []).forEach(function(value){
+    const unitId = String(value || '').trim()
+    if(unitId && validIds.indexOf(unitId) >= 0 && normalized.indexOf(unitId) < 0){
+      normalized.push(unitId)
+    }
+  })
+  return normalized
+}
+
+function normalizeGrammarObjectPaths(values){
+  const normalized = []
+  ;(Array.isArray(values) ? values : []).forEach(function(value){
+    const objectPath = String(value || '').trim()
+    if(!/^(?:videos|materials)\/grammar\/[A-Za-z0-9._-]+$/.test(objectPath)) return
+    if(normalized.indexOf(objectPath) < 0) normalized.push(objectPath)
+  })
+  return normalized
+}
+
+function getProfileGrammarAccessMode(profile){
+  if(profile && String(profile.role || '').trim().toLowerCase() === 'admin') return 'none'
+  return normalizeGrammarAccessMode(profile && profile.grammarAccessMode)
+}
+
+function getProfileGrammarUnitIds(profile){
+  return normalizeGrammarUnitIds(profile && profile.grammarUnitIds)
+}
+
+function canManageGrammarAccess(){
+  if(!portalState.currentUser || !isPortalAdmin()) return false
+  return PORTAL_GRAMMAR_MANAGER_LOGIN_IDS.indexOf(getCurrentGrammarLoginId()) >= 0
+}
+
+function canAccessGrammarPortal(){
+  if(!portalState.currentUser) return false
+  if(canManageGrammarAccess()) return true
+  const mode = getProfileGrammarAccessMode(portalState.currentProfile)
+  if(mode === 'all') return true
+  return mode === 'units' && getProfileGrammarUnitIds(portalState.currentProfile).length > 0
+}
+
+function canAccessGrammarUnit(unitId){
+  const normalizedId = String(unitId || '').trim()
+  if(!normalizedId || !canAccessGrammarPortal()) return false
+  if(canManageGrammarAccess()) return true
+  const mode = getProfileGrammarAccessMode(portalState.currentProfile)
+  if(mode === 'all') return true
+  return mode === 'units' && getProfileGrammarUnitIds(portalState.currentProfile).indexOf(normalizedId) >= 0
+}
+
+function syncGrammarAccessVisibility(){
+  const canAccess = canAccessGrammarPortal()
+  const nodes = [
+    document.getElementById('portal-grammar-lab-btn'),
+    document.getElementById('drawer-grammar-lab-btn')
+  ]
+  nodes.forEach(function(node){
+    if(!node) return
+    node.classList.toggle('hidden', !canAccess)
+    node.disabled = !canAccess
+    node.setAttribute('aria-hidden', canAccess ? 'false' : 'true')
+  })
+}
+
+function ensureGrammarAccess(){
+  if(!portalState.currentUser){
+    showAuthScreen('')
+    return false
+  }
+  if(canAccessGrammarPortal()) return true
+
+  clearGrammarVideoResources()
+  showToast('현재 GRAMMAR 이용 권한이 없습니다.', 'var(--red)')
+  if(getCurrentActiveScreenId() !== 'portal-screen') showPortalScreen()
+  return false
+}
+
 function setupPortalInstallPrompt(){
   if(portalState.installPromptSetupDone) return
   portalState.installPromptSetupDone = true
@@ -966,13 +1107,39 @@ function getGrammarUnitContext(unitId){
   return null
 }
 
+function buildGrammarObjectPathsForUnitIds(unitIds){
+  const paths = []
+  normalizeGrammarUnitIds(unitIds).forEach(function(unitId){
+    const context = getGrammarUnitContext(unitId)
+    if(!context || !context.unit) return
+    ;(Array.isArray(context.unit.videos) ? context.unit.videos : []).forEach(function(fileName){
+      const objectPath = getGrammarStorageObjectPath(fileName)
+      if(paths.indexOf(objectPath) < 0) paths.push(objectPath)
+    })
+    const materialPath = getGrammarMaterialObjectPath(context.unit.id)
+    if(paths.indexOf(materialPath) < 0) paths.push(materialPath)
+  })
+  return paths
+}
+
+function canAccessGrammarObjectPath(objectPath){
+  if(canManageGrammarAccess()) return true
+  const mode = getProfileGrammarAccessMode(portalState.currentProfile)
+  if(mode === 'all') return true
+  if(mode !== 'units') return false
+  return buildGrammarObjectPathsForUnitIds(getProfileGrammarUnitIds(portalState.currentProfile))
+    .indexOf(String(objectPath || '').trim()) >= 0
+}
+
 function getCurrentGrammarUnitContext(){
   return getGrammarUnitContext(portalState.grammarPlayer && portalState.grammarPlayer.unitId)
 }
 
 function openGrammarUnit(unitId, options){
-  if(!portalState.currentUser){
-    showAuthScreen('')
+  if(!ensureGrammarAccess()) return
+  if(!canAccessGrammarUnit(unitId)){
+    showToast('이 GRAMMAR 유닛에 대한 이용 권한이 없습니다.', 'var(--red)')
+    openGrammarPortal()
     return
   }
   const context = getGrammarUnitContext(unitId)
@@ -1138,13 +1305,14 @@ function getGrammarMaterialDownloadName(context){
 }
 
 async function downloadGrammarMaterial(unitId, triggerButton){
+  if(!ensureGrammarAccess()) return
+  if(!canAccessGrammarUnit(unitId)){
+    showToast('이 교재를 다운로드할 권한이 없습니다.', 'var(--red)')
+    return
+  }
   const context = getGrammarUnitContext(unitId)
   if(!context){
     showToast('선택한 문법 교재 정보를 찾지 못했습니다.', 'var(--red)')
-    return
-  }
-  if(!portalState.currentUser){
-    showAuthScreen('')
     return
   }
   if(triggerButton && triggerButton.disabled) return
@@ -1196,8 +1364,13 @@ function getGrammarMaterialErrorMessage(error){
 }
 
 async function loadGrammarVideoPart(options){
+  const currentContext = getCurrentGrammarUnitContext()
+  if(!currentContext || !canAccessGrammarUnit(currentContext.unit.id)){
+    setGrammarVideoStatus('error', '접근 권한이 없습니다.', '허용된 GRAMMAR 유닛만 이용할 수 있습니다.')
+    return
+  }
   const settings = options && typeof options === 'object' ? options : {}
-  const context = getCurrentGrammarUnitContext()
+  const context = currentContext
   if(!context) return
   const partIndex = Number(portalState.grammarPlayer.partIndex || 0)
   const fileName = context.unit.videos[partIndex]
@@ -1257,6 +1430,11 @@ async function fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, 
   const config = window.ROTATION_FIREBASE_CONFIG || {}
   const bucket = String(config.storageBucket || '').trim()
   const authUser = portalState.currentUser
+  if(!canAccessGrammarObjectPath(objectPath)){
+    const permissionError = new Error('GRAMMAR 접근 권한이 없습니다.')
+    permissionError.status = 403
+    throw permissionError
+  }
   if(!bucket) throw new Error('Firebase Storage 주소가 설정되지 않았습니다.')
   if(!portalState.firebaseEnabled || !authUser || typeof authUser.getIdToken !== 'function'){
     throw new Error('Firebase 로그인 상태를 확인할 수 없습니다. 다시 로그인해 주세요.')
@@ -1378,14 +1556,45 @@ function clearGrammarVideoResources(){
   setGrammarVideoStatus('idle', '영상을 선택해 주세요.', '로그인 권한을 확인한 뒤 영상을 불러옵니다.', 0)
 }
 
+function getAccessibleGrammarChapters(level){
+  return (Array.isArray(level && level.chapters) ? level.chapters : []).map(function(chapter){
+    return {
+      chapter: chapter,
+      units: (Array.isArray(chapter && chapter.units) ? chapter.units : []).filter(function(unit){
+        return canAccessGrammarUnit(unit && unit.id)
+      })
+    }
+  }).filter(function(entry){
+    return entry.units.length > 0
+  })
+}
+
+function getAccessibleGrammarLevels(){
+  return getGrammarCatalog().filter(function(level){
+    return getAccessibleGrammarChapters(level).length > 0
+  })
+}
+
+function getAccessibleGrammarLevel(levelId){
+  const normalizedId = String(levelId || '').trim().toLowerCase()
+  return getAccessibleGrammarLevels().find(function(level){
+    return String(level && level.id || '').trim().toLowerCase() === normalizedId
+  }) || null
+}
+
 function openGrammarPortal(levelId){
-  if(!portalState.currentUser){
-    showAuthScreen('')
+  if(!ensureGrammarAccess()) return
+  const requestedLevelId = typeof levelId === 'string' ? levelId : ''
+  const accessibleLevels = getAccessibleGrammarLevels()
+  const requestedLevel = getAccessibleGrammarLevel(requestedLevelId || portalState.grammarLevelId)
+    || accessibleLevels[0]
+    || null
+  if(!requestedLevel){
+    showToast('현재 이용할 수 있는 GRAMMAR 유닛이 없습니다.', 'var(--red)')
+    showPortalScreen()
     return
   }
-  const requestedLevelId = typeof levelId === 'string' ? levelId : ''
-  const requestedLevel = getGrammarLevel(requestedLevelId || portalState.grammarLevelId)
-  if(requestedLevel) portalState.grammarLevelId = requestedLevel.id
+  portalState.grammarLevelId = requestedLevel.id
   renderGrammarCourse()
   activatePortalScreen('grammar-screen')
   window.scrollTo(0, 0)
@@ -1395,7 +1604,7 @@ function openGrammarPortal(levelId){
 }
 
 function selectGrammarLevel(levelId){
-  const level = getGrammarLevel(levelId)
+  const level = getAccessibleGrammarLevel(levelId)
   if(!level || level.id === portalState.grammarLevelId) return
   portalState.grammarLevelId = level.id
   renderGrammarCourse()
@@ -1408,7 +1617,7 @@ function selectGrammarLevel(levelId){
 }
 
 function renderGrammarCourse(){
-  const level = getGrammarLevel(portalState.grammarLevelId)
+  const level = getAccessibleGrammarLevel(portalState.grammarLevelId)
   const list = document.getElementById('grammar-course-list')
   if(!level || !list){
     if(list){
@@ -1419,20 +1628,33 @@ function renderGrammarCourse(){
   }
 
   portalState.grammarLevelId = level.id
+  const accessibleChapters = getAccessibleGrammarChapters(level)
+  const accessibleUnits = accessibleChapters.reduce(function(rows, entry){
+    return rows.concat(entry.units)
+  }, [])
+  const accessibleVideoCount = accessibleUnits.reduce(function(total, unit){
+    return total + Number(unit && unit.videoCount || 0)
+  }, 0)
   list.classList.remove('grammar-course-list-error')
   setElementTextSafe('grammar-course-title', level.level)
-  setElementTextSafe('grammar-unit-count', level.unitCount + ' UNITS')
-  setElementTextSafe('grammar-video-count', level.videoCount + ' VIDEOS')
+  setElementTextSafe('grammar-unit-count', accessibleUnits.length + ' UNITS')
+  setElementTextSafe('grammar-video-count', accessibleVideoCount + ' VIDEOS')
 
   Array.from(document.querySelectorAll('[data-grammar-level]')).forEach(function(button){
     const isActive = button.dataset.grammarLevel === level.id
+    const isAccessible = !!getAccessibleGrammarLevel(button.dataset.grammarLevel)
     button.classList.toggle('active', isActive)
+    button.classList.toggle('hidden', !isAccessible)
+    button.disabled = !isAccessible
+    button.setAttribute('aria-hidden', isAccessible ? 'false' : 'true')
     button.setAttribute('aria-selected', isActive ? 'true' : 'false')
-    button.tabIndex = isActive ? 0 : -1
+    button.tabIndex = isActive && isAccessible ? 0 : -1
   })
 
   list.textContent = ''
-  level.chapters.forEach(function(chapter){
+  accessibleChapters.forEach(function(accessEntry){
+    const chapter = accessEntry.chapter
+    const chapterUnits = accessEntry.units
     const chapterCard = document.createElement('section')
     chapterCard.className = 'grammar-chapter-card'
 
@@ -1447,7 +1669,7 @@ function renderGrammarCourse(){
     chapterTitle.textContent = getGrammarChapterDisplayTitle(chapter)
     const chapterCount = document.createElement('span')
     chapterCount.className = 'grammar-chapter-count'
-    chapterCount.textContent = chapter.units.length + ' UNIT' + (chapter.units.length === 1 ? '' : 'S')
+    chapterCount.textContent = chapterUnits.length + ' UNIT' + (chapterUnits.length === 1 ? '' : 'S')
     chapterCopy.appendChild(chapterKicker)
     chapterCopy.appendChild(chapterTitle)
     chapterHead.appendChild(chapterCopy)
@@ -1456,7 +1678,7 @@ function renderGrammarCourse(){
 
     const unitList = document.createElement('div')
     unitList.className = 'grammar-unit-list'
-    chapter.units.forEach(function(unit){
+    chapterUnits.forEach(function(unit){
       const unitRow = document.createElement('div')
       unitRow.className = 'grammar-unit-row'
 
@@ -4858,6 +5080,250 @@ async function fetchAdminStudentProfiles(){
   })
 }
 
+function getScopedAdminGrammarAccessStudents(rows){
+  if(!canManageGrammarAccess()) return []
+  const adminClassIds = getProfileClassIds()
+  return (Array.isArray(rows) ? rows : []).filter(function(student){
+    if(!student || student.loginDisabled) return false
+    if(isPortalSuperAdmin()) return true
+    const studentClassIds = Array.isArray(student.classIds) ? student.classIds : []
+    return studentClassIds.some(function(classId){
+      return adminClassIds.indexOf(classId) >= 0
+    })
+  }).sort(function(left, right){
+    const leftName = String(left && (left.name || left.loginId || left.studentId) || '')
+    const rightName = String(right && (right.name || right.loginId || right.studentId) || '')
+    return leftName.localeCompare(rightName, 'ko')
+  })
+}
+
+function getAdminGrammarAccessStudent(uid){
+  const normalizedUid = String(uid || '').trim()
+  return (portalState.grammarAccessAdmin.students || []).find(function(student){
+    return String(student && student.uid || '').trim() === normalizedUid
+  }) || null
+}
+
+function getGrammarAccessStudentClassText(student){
+  const knownClasses = getPortalKnownClasses()
+  return (Array.isArray(student && student.classIds) ? student.classIds : []).map(function(classId){
+    const match = knownClasses.find(function(classInfo){
+      return String(classInfo && classInfo.id || '').trim() === String(classId || '').trim()
+    })
+    return match ? classInfoName(match) : String(classId || '').trim()
+  }).filter(Boolean).join(', ')
+}
+
+function setAdminGrammarAccessStatus(message, state){
+  const node = document.getElementById('admin-grammar-access-status')
+  if(!node) return
+  node.textContent = String(message || '')
+  node.dataset.state = String(state || 'idle')
+}
+
+function getSelectedAdminGrammarAccessMode(){
+  const selected = document.querySelector('input[name="grammar-access-mode"]:checked')
+  return normalizeGrammarAccessMode(selected && selected.value)
+}
+
+function getSelectedAdminGrammarAccessUnitIds(){
+  return normalizeGrammarUnitIds(Array.from(document.querySelectorAll('[data-grammar-access-unit-id]:checked')).map(function(input){
+    return input.dataset.grammarAccessUnitId || ''
+  }))
+}
+
+function renderAdminGrammarAccessUnitList(selectedUnitIds){
+  const list = document.getElementById('admin-grammar-access-unit-list')
+  if(!list) return
+  const selectedIds = normalizeGrammarUnitIds(selectedUnitIds)
+  list.innerHTML = getGrammarCatalog().map(function(level){
+    const chapterHtml = (Array.isArray(level && level.chapters) ? level.chapters : []).map(function(chapter){
+      const unitHtml = (Array.isArray(chapter && chapter.units) ? chapter.units : []).map(function(unit){
+        const unitId = String(unit && unit.id || '').trim()
+        const checked = selectedIds.indexOf(unitId) >= 0 ? ' checked' : ''
+        return '' +
+          '<label class="grammar-access-unit-option">' +
+            '<input type="checkbox" data-grammar-access-unit-id="' + escapeHtml(unitId) + '"' + checked + '>' +
+            '<span><small>UNIT ' + escapeHtml(unit && unit.number || '') + '</small><strong>' + escapeHtml(unit && unit.title || unitId) + '</strong></span>' +
+          '</label>'
+      }).join('')
+      return '' +
+        '<section class="grammar-access-chapter">' +
+          '<div class="grammar-access-chapter-title">' + escapeHtml(getGrammarChapterDisplayTitle(chapter)) + '</div>' +
+          '<div class="grammar-access-unit-grid">' + unitHtml + '</div>' +
+        '</section>'
+    }).join('')
+    return '' +
+      '<article class="grammar-access-level">' +
+        '<div class="grammar-access-level-title"><strong>' + escapeHtml(level && level.level || '') + '</strong><span>' + escapeHtml(level && level.unitCount || 0) + ' UNITS</span></div>' +
+        chapterHtml +
+      '</article>'
+  }).join('')
+}
+
+function renderAdminGrammarAccessStudent(){
+  const student = getAdminGrammarAccessStudent(portalState.grammarAccessAdmin.selectedUid)
+  const modeInputs = Array.from(document.querySelectorAll('input[name="grammar-access-mode"]'))
+  if(!student){
+    modeInputs.forEach(function(input){ input.checked = input.value === 'none' })
+    renderAdminGrammarAccessUnitList([])
+    setElementTextSafe('admin-grammar-access-summary', '학생을 선택하면 현재 권한이 표시됩니다.')
+    setAdminGrammarAccessStatus('학생을 선택해 주세요.', 'idle')
+    syncAdminGrammarAccessUnitControls()
+    return
+  }
+
+  const mode = getProfileGrammarAccessMode(student)
+  const unitIds = getProfileGrammarUnitIds(student)
+  modeInputs.forEach(function(input){ input.checked = input.value === mode })
+  renderAdminGrammarAccessUnitList(unitIds)
+  setAdminGrammarAccessStatus('현재 저장된 권한을 불러왔습니다.', 'idle')
+  syncAdminGrammarAccessUnitControls()
+  syncAdminGrammarAccessSummary()
+}
+
+function syncAdminGrammarAccessUnitControls(){
+  const hasStudent = !!getAdminGrammarAccessStudent(portalState.grammarAccessAdmin.selectedUid)
+  const unitsMode = getSelectedAdminGrammarAccessMode() === 'units'
+  Array.from(document.querySelectorAll('input[name="grammar-access-mode"]')).forEach(function(input){
+    input.disabled = !hasStudent || portalState.grammarAccessAdmin.isSaving
+  })
+  Array.from(document.querySelectorAll('[data-grammar-access-unit-id]')).forEach(function(input){
+    input.disabled = !hasStudent || !unitsMode || portalState.grammarAccessAdmin.isSaving
+  })
+  const selectAllButton = document.getElementById('admin-grammar-access-select-all-btn')
+  const clearButton = document.getElementById('admin-grammar-access-clear-btn')
+  const saveButton = document.getElementById('admin-grammar-access-save-btn')
+  if(selectAllButton) selectAllButton.disabled = !hasStudent || !unitsMode || portalState.grammarAccessAdmin.isSaving
+  if(clearButton) clearButton.disabled = !hasStudent || !unitsMode || portalState.grammarAccessAdmin.isSaving
+  if(saveButton) saveButton.disabled = !hasStudent || portalState.grammarAccessAdmin.isSaving
+}
+
+function syncAdminGrammarAccessSummary(){
+  const student = getAdminGrammarAccessStudent(portalState.grammarAccessAdmin.selectedUid)
+  if(!student){
+    setElementTextSafe('admin-grammar-access-summary', '학생을 선택하면 현재 권한이 표시됩니다.')
+    return
+  }
+  const mode = getSelectedAdminGrammarAccessMode()
+  const selectedCount = getSelectedAdminGrammarAccessUnitIds().length
+  const studentName = String(student.name || student.loginId || student.studentId || '학생').trim()
+  const classText = getGrammarAccessStudentClassText(student)
+  let accessText = '접근 차단'
+  if(mode === 'all') accessText = '전체 ' + getAllGrammarUnitIds().length + '개 유닛 허용'
+  if(mode === 'units') accessText = '선택한 ' + selectedCount + '개 유닛 허용'
+  setElementTextSafe(
+    'admin-grammar-access-summary',
+    [studentName, classText, accessText].filter(Boolean).join(' · ')
+  )
+}
+
+function selectAdminGrammarAccessStudent(uid){
+  portalState.grammarAccessAdmin.selectedUid = String(uid || '').trim()
+  renderAdminGrammarAccessStudent()
+}
+
+function selectAllAdminGrammarAccessUnits(){
+  if(getSelectedAdminGrammarAccessMode() !== 'units') return
+  Array.from(document.querySelectorAll('[data-grammar-access-unit-id]')).forEach(function(input){
+    input.checked = true
+  })
+  syncAdminGrammarAccessSummary()
+}
+
+function clearAdminGrammarAccessUnits(){
+  if(getSelectedAdminGrammarAccessMode() !== 'units') return
+  Array.from(document.querySelectorAll('[data-grammar-access-unit-id]')).forEach(function(input){
+    input.checked = false
+  })
+  syncAdminGrammarAccessSummary()
+}
+
+async function renderAdminGrammarAccessManager(){
+  const section = document.getElementById('admin-grammar-access-section')
+  const select = document.getElementById('admin-grammar-access-student-select')
+  if(!section || !select) return
+  const canManage = canManageGrammarAccess()
+  section.classList.toggle('hidden', !canManage)
+  if(!canManage) return
+
+  const students = getScopedAdminGrammarAccessStudents(await fetchAdminStudentProfiles())
+  portalState.grammarAccessAdmin.students = students
+  if(!students.some(function(student){ return student.uid === portalState.grammarAccessAdmin.selectedUid })){
+    portalState.grammarAccessAdmin.selectedUid = students[0] ? students[0].uid : ''
+  }
+  select.innerHTML = students.length
+    ? students.map(function(student){
+        const label = [student.name || student.loginId || student.studentId, getGrammarAccessStudentClassText(student)].filter(Boolean).join(' · ')
+        const selected = student.uid === portalState.grammarAccessAdmin.selectedUid ? ' selected' : ''
+        return '<option value="' + escapeHtml(student.uid) + '"' + selected + '>' + escapeHtml(label) + '</option>'
+      }).join('')
+    : '<option value="">관리할 학생이 없습니다</option>'
+  select.disabled = !students.length
+  setElementTextSafe('admin-grammar-access-count', students.length + '명')
+  renderAdminGrammarAccessStudent()
+}
+
+async function saveAdminGrammarAccess(){
+  if(!canManageGrammarAccess()){
+    showToast('GRAMMAR 권한을 관리할 수 없습니다.', 'var(--red)')
+    return
+  }
+  const student = getAdminGrammarAccessStudent(portalState.grammarAccessAdmin.selectedUid)
+  if(!student){
+    setAdminGrammarAccessStatus('학생을 선택해 주세요.', 'error')
+    return
+  }
+  const mode = getSelectedAdminGrammarAccessMode()
+  const unitIds = mode === 'units' ? getSelectedAdminGrammarAccessUnitIds() : []
+  if(mode === 'units' && !unitIds.length){
+    setAdminGrammarAccessStatus('선택 유닛 권한은 최소 1개 유닛을 선택해야 합니다.', 'error')
+    return
+  }
+
+  const updatedAt = new Date().toISOString()
+  const payload = {
+    grammarAccessMode: mode,
+    grammarUnitIds: unitIds,
+    grammarObjectPaths: mode === 'units' ? buildGrammarObjectPathsForUnitIds(unitIds) : [],
+    grammarAccessUpdatedAt: updatedAt,
+    grammarAccessUpdatedBy: getCurrentGrammarLoginId(),
+    updatedAt: updatedAt
+  }
+
+  portalState.grammarAccessAdmin.isSaving = true
+  syncAdminGrammarAccessUnitControls()
+  setAdminGrammarAccessStatus('권한을 저장하고 있습니다...', 'working')
+  try{
+    if(portalState.firebaseEnabled && portalState.db){
+      await portalState.db.collection('users').doc(student.uid).set(payload, { merge: true })
+      const snapshot = await getFirebaseUserProfileSnapshot(student.uid)
+      if(snapshot.exists){
+        Object.assign(student, normalizeUserProfile(Object.assign({ uid: student.uid }, snapshot.data())))
+      }else{
+        Object.assign(student, payload)
+      }
+    }else{
+      const users = readLocalUsers()
+      const targetIndex = users.findIndex(function(entry){
+        return String(entry && (entry.id || entry.uid) || '').trim() === student.uid
+      })
+      if(targetIndex < 0) throw new Error('학생 계정 정보를 찾지 못했습니다.')
+      users[targetIndex] = normalizeUserProfileLocal(Object.assign({}, users[targetIndex], payload))
+      writeLocalUsers(users)
+      Object.assign(student, payload)
+    }
+    setAdminGrammarAccessStatus('권한을 저장했습니다. 학생은 새로고침하거나 다시 로그인하면 적용됩니다.', 'success')
+    syncAdminGrammarAccessSummary()
+  }catch(error){
+    console.error(error)
+    setAdminGrammarAccessStatus(String(error && error.message || '권한을 저장하지 못했습니다.'), 'error')
+  }finally{
+    portalState.grammarAccessAdmin.isSaving = false
+    syncAdminGrammarAccessUnitControls()
+  }
+}
+
 function getAdminCheckSetKey(entry){
   return String(entry && (entry.id || entry.checkSetId || entry.title || entry.checkSetTitle) || '').trim()
 }
@@ -5662,6 +6128,7 @@ function updatePortalUserCard(){
   if(portalAdminButton) portalAdminButton.classList.toggle('hidden', !isPortalAdmin())
   if(drawerAdminButton) drawerAdminButton.classList.toggle('hidden', !isPortalAdmin())
   if(accountAdminButton) accountAdminButton.classList.toggle('hidden', !isPortalAdmin())
+  syncGrammarAccessVisibility()
 }
 
 function setElementTextSafe(id, text){
@@ -10057,6 +10524,11 @@ function normalizeUserProfile(source){
       : 'assigned',
     loginDisabled: loginDisabled,
     passwordResetRequired: passwordResetRequired,
+    grammarAccessMode: normalizeGrammarAccessMode(source && source.grammarAccessMode),
+    grammarUnitIds: normalizeGrammarUnitIds(source && source.grammarUnitIds),
+    grammarObjectPaths: normalizeGrammarObjectPaths(source && source.grammarObjectPaths),
+    grammarAccessUpdatedAt: String(source && source.grammarAccessUpdatedAt || '').trim(),
+    grammarAccessUpdatedBy: String(source && source.grammarAccessUpdatedBy || '').trim(),
     createdAt: String(source && source.createdAt || '').trim(),
     updatedAt: String(source && source.updatedAt || '').trim()
   }
@@ -10085,6 +10557,11 @@ function normalizeUserProfileLocal(source){
       : 'assigned',
     loginDisabled: !!(source && source.loginDisabled),
     passwordResetRequired: resetRequired,
+    grammarAccessMode: normalizeGrammarAccessMode(source && source.grammarAccessMode),
+    grammarUnitIds: normalizeGrammarUnitIds(source && source.grammarUnitIds),
+    grammarObjectPaths: normalizeGrammarObjectPaths(source && source.grammarObjectPaths),
+    grammarAccessUpdatedAt: String(source && source.grammarAccessUpdatedAt || '').trim(),
+    grammarAccessUpdatedBy: String(source && source.grammarAccessUpdatedBy || '').trim(),
     createdAt: String(source && source.createdAt || '').trim(),
     updatedAt: String(source && source.updatedAt || '').trim()
   }
@@ -11509,6 +11986,9 @@ async function fetchOrCreateUserProfile(user){
     role: 'student',
     adminScope: 'assigned',
     loginDisabled: false,
+    grammarAccessMode: 'none',
+    grammarUnitIds: [],
+    grammarObjectPaths: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
@@ -11574,6 +12054,7 @@ logoutPortal = async function(){
 const originalRenderAdminScreenForExamCenter = renderAdminScreen
 renderAdminScreen = async function(){
   await originalRenderAdminScreenForExamCenter()
+  await renderAdminGrammarAccessManager()
   await renderSuperAdminExamCenter()
   await renderAdminCounselRequests()
 }
