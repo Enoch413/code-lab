@@ -4796,6 +4796,10 @@ body.app-screen-study-cafe .app-chrome{
   line-height:1.6;
 }
 
+.grammar-access-level-filter{
+  margin-top:14px;
+}
+
 .grammar-access-selection-actions,
 .grammar-access-save-actions{
   display:flex;
@@ -4811,7 +4815,11 @@ body.app-screen-study-cafe .app-chrome{
 .grammar-access-unit-list{
   display:grid;
   gap:14px;
+  max-height:min(560px,62vh);
   margin-top:14px;
+  padding-right:4px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
 }
 
 .grammar-access-level{

@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260725-admin-grammar-collapse-08">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260725-admin-grammar-level-filter-09">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -872,9 +872,15 @@
         </fieldset>
       </div>
       <div class="grammar-access-summary" id="admin-grammar-access-summary">학생을 선택하면 현재 권한이 표시됩니다.</div>
+      <label class="grammar-access-field grammar-access-level-filter">
+        <span>권한 설정 레벨</span>
+        <select class="admin-select" id="admin-grammar-access-level-select">
+          <option value="">레벨을 선택하세요</option>
+        </select>
+      </label>
       <div class="grammar-access-selection-actions">
-        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-select-all-btn">전체 유닛 선택</button>
-        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-clear-btn">선택 해제</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-select-all-btn">현재 레벨 전체 선택</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-access-clear-btn">현재 레벨 선택 해제</button>
       </div>
       <div class="grammar-access-unit-list" id="admin-grammar-access-unit-list"></div>
       <div class="grammar-access-status" id="admin-grammar-access-status">아직 변경하지 않았습니다.</div>
@@ -987,6 +993,6 @@
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
 <script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
 <script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
-<script src="./rotation_portal_enhancements.js?v=20260725-admin-grammar-collapse-08"></script>
+<script src="./rotation_portal_enhancements.js?v=20260725-admin-grammar-level-filter-09"></script>
 </body>
 </html>
