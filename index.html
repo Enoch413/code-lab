@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260722-grammar-progress-07">
+<link rel="stylesheet" href="./rotation_prep.css?v=20260725-admin-grammar-collapse-08">
 </head>
 <body>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
@@ -834,7 +834,24 @@
   <div class="stats" id="admin-stats"></div>
 
   <div class="admin-grid">
-    <section class="group admin-wide hidden" id="admin-grammar-access-section">
+    <section class="group">
+      <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
+      <div class="admin-list" id="admin-type-list"></div>
+    </section>
+    <section class="group">
+      <div class="group-title"><h3>학생별 틀린 문항</h3><span class="group-count" id="admin-response-count">0</span></div>
+      <div class="admin-filter-wrap admin-student-filter-wrap">
+        <select id="admin-student-filter" class="admin-select" onchange="window.handleAdminStudentFilterChange && window.handleAdminStudentFilterChange(this.value)">
+          <option value="">학생 선택</option>
+        </select>
+      </div>
+      <div class="admin-list" id="admin-response-list"></div>
+    </section>
+    <section class="group">
+      <div class="group-title"><h3>질문 있어요</h3><span class="group-count" id="admin-issue-count">0</span></div>
+      <div class="admin-list" id="admin-issue-list"></div>
+    </section>
+    <section class="group hidden" id="admin-grammar-access-section">
       <div class="group-title">
         <h3>GRAMMAR 학생 권한</h3>
         <span class="group-count" id="admin-grammar-access-count">0명</span>
@@ -878,23 +895,6 @@
         </div>
         <div class="grammar-progress-admin-status" id="admin-grammar-progress-status"></div>
       </section>
-    </section>
-    <section class="group">
-      <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
-      <div class="admin-list" id="admin-type-list"></div>
-    </section>
-    <section class="group">
-      <div class="group-title"><h3>학생별 틀린 문항</h3><span class="group-count" id="admin-response-count">0</span></div>
-      <div class="admin-filter-wrap admin-student-filter-wrap">
-        <select id="admin-student-filter" class="admin-select" onchange="window.handleAdminStudentFilterChange && window.handleAdminStudentFilterChange(this.value)">
-          <option value="">학생 선택</option>
-        </select>
-      </div>
-      <div class="admin-list" id="admin-response-list"></div>
-    </section>
-    <section class="group">
-      <div class="group-title"><h3>질문 있어요</h3><span class="group-count" id="admin-issue-count">0</span></div>
-      <div class="admin-list" id="admin-issue-list"></div>
     </section>
     <section class="group">
       <div class="group-title"><h3>상담 요청</h3><span class="group-count" id="admin-counsel-count">0</span></div>
@@ -987,6 +987,6 @@
 <script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
 <script src="./rotation_portal.js?v=20260721-password-visibility-01"></script>
 <script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
-<script src="./rotation_portal_enhancements.js?v=20260722-grammar-progress-07"></script>
+<script src="./rotation_portal_enhancements.js?v=20260725-admin-grammar-collapse-08"></script>
 </body>
 </html>

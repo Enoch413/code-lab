@@ -4732,6 +4732,12 @@ body.app-screen-study-cafe .app-chrome{
   gap:14px;
 }
 
+#admin-grammar-access-section .grammar-access-controls,
+#admin-grammar-access-section .grammar-access-unit-list,
+#admin-grammar-access-section .grammar-access-unit-grid{
+  grid-template-columns:minmax(0,1fr);
+}
+
 .grammar-access-field{
   display:grid;
   gap:7px;
