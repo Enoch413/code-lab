@@ -115,7 +115,12 @@ service cloud.firestore {
     }
 
     match /portalCheckSets/{docId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || (
+        signedIn()
+        && resource.data.keys().hasAll(['targetUserIds'])
+        && resource.data.targetUserIds is list
+        && request.auth.uid in resource.data.targetUserIds
+      );
       allow create, update, delete: if isAdmin();
     }
 

@@ -175,6 +175,7 @@ portalState.historyInitialized = false
 portalState.currentRouteKey = ''
 portalState.isRestoringHistory = false
 portalState.prepSyncPromise = null
+portalState.checkSyncPromise = null
 portalState.prepSetInventory = portalState.prepSetInventory || []
 portalState.checkSetInventory = portalState.checkSetInventory || []
 portalState.checkSetRegradeDocId = portalState.checkSetRegradeDocId || ''
@@ -3425,11 +3426,17 @@ async function openCheckPortal(){
     showAuthScreen('')
     return
   }
-  await syncPrepContentAfterLogin(false)
+
+  activatePortalScreen('check-screen')
+  if(!portalState.checkData){
+    const stats = document.getElementById('check-stats')
+    const list = document.getElementById('check-set-list')
+    if(stats) stats.innerHTML = ''
+    if(list) list.innerHTML = '<div class="empty-box">CHECK 세트를 불러오는 중입니다...</div>'
+  }
   await ensureCheckData(false)
   if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
   renderCheckScreen()
-  activatePortalScreen('check-screen')
 }
 
 async function refreshCheckDataAndRender(){
@@ -7708,7 +7715,13 @@ function sortPortalSetDocs(rows){
 async function loadCloudSetDocs(kind){
   if(portalState.firebaseEnabled && portalState.db){
     try{
-      const snapshot = await portalState.db.collection(getPortalSetCollection(kind)).get()
+      let query = portalState.db.collection(getPortalSetCollection(kind))
+      if(kind === 'check' && !(typeof isPortalAdmin === 'function' && isPortalAdmin())){
+        const userId = String(portalState.currentUser && portalState.currentUser.uid || '').trim()
+        if(!userId) return []
+        query = query.where('targetUserIds', 'array-contains', userId)
+      }
+      const snapshot = await query.get()
       return sortPortalSetDocs(snapshot.docs.map(function(doc){
         return normalizePortalSetDoc(kind, Object.assign({ docId: doc.id }, doc.data() || {}))
       }).filter(function(entry){
@@ -8149,34 +8162,41 @@ async function syncPrepContentAfterLogin(forceReload){
 
 async function ensureCheckData(forceReload){
   if(portalState.checkData && !forceReload) return portalState.checkData
+  if(portalState.checkSyncPromise) return portalState.checkSyncPromise
 
-  if(portalState.currentUser){
-    const combined = await loadPortalCheckDataFromSources()
-    if(combined){
-      portalState.contentMeta.check = {
-        updatedAt: combined.updatedAt || '',
-        fileName: '세트별 CHECK 데이터'
+  portalState.checkSyncPromise = (async function(){
+    if(portalState.currentUser){
+      const combined = await loadPortalCheckDataFromSources()
+      if(combined){
+        portalState.contentMeta.check = {
+          updatedAt: combined.updatedAt || '',
+          fileName: '세트별 CHECK 데이터'
+        }
+        portalState.checkData = combined
+        return portalState.checkData
       }
-      portalState.checkData = combined
+    }
+
+    const url = String(PORTAL_CONFIG.checkDataUrl || 'check_data.json')
+    const requestUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now()
+    try{
+      const response = await fetch(requestUrl, { cache: 'no-store' })
+      if(!response.ok) throw new Error('HTTP ' + response.status)
+      const parsed = await response.json()
+      portalState.checkData = normalizeCheckData(parsed)
+      portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
+      return portalState.checkData
+    }catch(error){
+      console.error(error)
+      portalState.checkData = { updatedAt: '', classes: [], checkSets: [] }
+      portalState.checkSetInventory = []
       return portalState.checkData
     }
-  }
+  })().finally(function(){
+    portalState.checkSyncPromise = null
+  })
 
-  const url = String(PORTAL_CONFIG.checkDataUrl || 'check_data.json')
-  const requestUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now()
-  try{
-    const response = await fetch(requestUrl, { cache: 'no-store' })
-    if(!response.ok) throw new Error('HTTP ' + response.status)
-    const parsed = await response.json()
-    portalState.checkData = normalizeCheckData(parsed)
-    portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
-    return portalState.checkData
-  }catch(error){
-    console.error(error)
-    portalState.checkData = { updatedAt: '', classes: [], checkSets: [] }
-    portalState.checkSetInventory = []
-    return portalState.checkData
-  }
+  return portalState.checkSyncPromise
 }
 
 function getPortalUploadTargetClass(kind){
