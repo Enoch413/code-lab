@@ -221,13 +221,6 @@ function initFirebasePortal(){
     portalState.db = firebase.firestore()
     portalState.storage = typeof firebase.storage === 'function' ? firebase.storage() : null
     setAuthMeta('Firebase 인증과 Firestore 저장이 연결되었습니다.')
-    setTimeout(function(){
-      if(portalState.authResolved) return
-      portalState.authResolved = true
-      portalState.currentUser = null
-      portalState.currentProfile = null
-      routePortalAfterState()
-    }, 2500)
     portalState.auth.onAuthStateChanged(function(user){
       handleResolvedAuthUser(user).catch(function(error){
         console.error(error)

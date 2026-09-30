@@ -305,8 +305,8 @@ function initPortalEnhancements(){
   syncGrammarAccessVisibility()
   window.addEventListener('popstate', handleAppPopState)
   window.addEventListener('message', handleStudyCafeWindowMessage)
-  window.addEventListener('scroll', syncCheckJumpButtonVisibility, { passive: true })
-  window.addEventListener('resize', syncCheckJumpButtonVisibility)
+  window.addEventListener('scroll', scheduleCheckJumpButtonVisibility, { passive: true })
+  window.addEventListener('resize', scheduleCheckJumpButtonVisibility)
   window.addEventListener('resize', syncAppChromeLayout)
   document.addEventListener('visibilitychange', handleGrammarProgressVisibilityChange)
   window.addEventListener('beforeunload', handleGrammarProgressBeforeUnload)
@@ -3154,6 +3154,21 @@ function scrollCheckScreenToBottom(){
   }, 120)
 }
 
+function scheduleCheckJumpButtonVisibility(){
+  if(portalState.checkJumpVisibilityFrame) return
+  if(typeof requestAnimationFrame === 'function'){
+    portalState.checkJumpVisibilityFrame = requestAnimationFrame(function(){
+      portalState.checkJumpVisibilityFrame = 0
+      syncCheckJumpButtonVisibility()
+    })
+    return
+  }
+  portalState.checkJumpVisibilityFrame = setTimeout(function(){
+    portalState.checkJumpVisibilityFrame = 0
+    syncCheckJumpButtonVisibility()
+  }, 16)
+}
+
 function syncCheckJumpButtonVisibility(){
   const button = ensureCheckJumpBottomButton()
   if(!button){
@@ -3171,7 +3186,8 @@ function syncCheckJumpButtonVisibility(){
     document.body ? document.body.scrollHeight : 0
   )
   const canScrollMore = scrollHeight - viewportHeight > 280
-  const hasLongVisibleForm = document.querySelectorAll('#check-form .check-form-card').length > 12
+  const form = document.getElementById('check-form')
+  const hasLongVisibleForm = !!form && form.childElementCount > 13
   const submitArea = document.getElementById('check-submit-actions')
   const nearBottom = submitArea
     ? submitArea.getBoundingClientRect().top <= viewportHeight - 120

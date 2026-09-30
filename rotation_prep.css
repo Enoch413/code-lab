@@ -7790,6 +7790,8 @@ body::before{
 
 #check-set-screen .check-form-card{
   padding:16px 18px !important;
+  content-visibility:auto;
+  contain-intrinsic-size:auto 86px;
 }
 
 #check-set-screen .check-question-meta{
