@@ -3278,14 +3278,80 @@ function routePortalAfterState(){
   })
 }
 
+function withPortalReadTimeout(promise, milliseconds){
+  let timer
+  const timeout = new Promise(function(resolve, reject){
+    timer = setTimeout(function(){ reject(new Error('CHECK read timed out')) }, milliseconds)
+  })
+  return Promise.race([promise, timeout]).finally(function(){ clearTimeout(timer) })
+}
+
+function decodePortalFirestoreValue(value){
+  if(!value || typeof value !== 'object') throw new Error('Invalid Firestore value')
+  if('nullValue' in value) return null
+  if('stringValue' in value) return value.stringValue
+  if('booleanValue' in value) return value.booleanValue
+  if('integerValue' in value) return Number(value.integerValue)
+  if('doubleValue' in value) return Number(value.doubleValue)
+  if('timestampValue' in value) return value.timestampValue
+  if(value.arrayValue){
+    const values = value.arrayValue.values || []
+    if(!Array.isArray(values)) throw new Error('Invalid Firestore array')
+    return values.map(decodePortalFirestoreValue)
+  }
+  if(value.mapValue){
+    const fields = value.mapValue.fields || {}
+    if(typeof fields !== 'object' || Array.isArray(fields)) throw new Error('Invalid Firestore map')
+    return Object.fromEntries(Object.entries(fields).map(function(entry){
+      return [entry[0], decodePortalFirestoreValue(entry[1])]
+    }))
+  }
+  throw new Error('Unsupported Firestore value')
+}
+
+async function readPortalFirestoreRest(path, body){
+  const user = portalState.currentUser
+  const projectId = String(window.ROTATION_FIREBASE_CONFIG && window.ROTATION_FIREBASE_CONFIG.projectId || '').trim()
+  if(!user || !user.uid || !user.getIdToken || !projectId) throw new Error('CHECK authentication unavailable')
+  const controller = new AbortController()
+  try{
+    return await withPortalReadTimeout((async function(){
+      const token = await user.getIdToken()
+      if(controller.signal.aborted) throw new Error('CHECK read cancelled')
+      const response = await fetch('https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(projectId) + '/databases/(default)/documents' + path, {
+        method: body ? 'POST' : 'GET',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+        signal: controller.signal
+      })
+      if(response.status === 404 && !body) return null
+      if(!response.ok) throw new Error('CHECK HTTPS read failed: HTTP ' + response.status)
+      const result = await response.json()
+      if(!portalState.currentUser || portalState.currentUser.uid !== user.uid) throw new Error('CHECK user changed')
+      return result
+    })(), 12000)
+  }finally{
+    controller.abort()
+  }
+}
+
 async function loadCloudContentDoc(docId){
   if(portalState.firebaseEnabled && portalState.db){
     try{
-      const snapshot = await portalState.db.collection('portalContent').doc(docId).get()
+      const reference = portalState.db.collection('portalContent').doc(docId)
+      const snapshot = docId === PORTAL_CLOUD_DOCS.check
+        ? await withPortalReadTimeout(reference.get({ source: 'server' }), 8000)
+        : await reference.get()
       if(!snapshot.exists) return null
       return snapshot.data() || null
     }catch(error){
       console.warn('portalContent read failed:', error && error.message ? error.message : error)
+      if(docId === PORTAL_CLOUD_DOCS.check){
+        const doc = await readPortalFirestoreRest('/portalContent/' + encodeURIComponent(docId))
+        if(doc && (typeof doc.name !== 'string' || !doc.fields)) throw new Error('Invalid CHECK content document')
+        return doc ? decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }) : null
+      }
       return null
     }
   }
@@ -3443,20 +3509,46 @@ async function openCheckPortal(){
     return
   }
 
+  const userId = portalState.currentUser.uid
   activatePortalScreen('check-screen')
+  renderCheckScreen()
   if(!portalState.checkData){
     const stats = document.getElementById('check-stats')
     const list = document.getElementById('check-set-list')
     if(stats) stats.innerHTML = ''
-    if(list) list.innerHTML = '<div class="empty-box">CHECK 세트를 불러오는 중입니다...</div>'
+    if(list) list.innerHTML = '<div class="empty-box" role="status">CHECK 세트를 불러오는 중입니다...</div>'
   }
-  await ensureCheckData(false)
-  if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
-  renderCheckScreen()
+  try{
+    await ensureCheckData(false)
+    if(!portalState.currentUser || portalState.currentUser.uid !== userId) return
+    if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
+    if(getCurrentActiveScreenId() === 'check-screen') renderCheckScreen()
+  }catch(error){
+    if(portalState.currentUser && portalState.currentUser.uid === userId) showCheckLoadError(error)
+  }
+}
+
+function showCheckLoadError(error){
+  console.error('CHECK load failed:', error)
+  if(getCurrentActiveScreenId() === 'check-screen' && !portalState.checkData){
+    const list = document.getElementById('check-set-list')
+    if(!list) return
+    list.innerHTML = '<div class="empty-box" role="alert">CHECK 세트를 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.<br><button type="button" id="check-load-retry-btn" class="btn btn-blue btn-sm">다시 불러오기</button></div>'
+    document.getElementById('check-load-retry-btn').addEventListener('click', openCheckPortal)
+  }else{
+    showToast('CHECK 새로고침에 실패했습니다. 기존 데이터는 유지됩니다. 다시 시도해 주세요.', 'var(--red)')
+  }
 }
 
 async function refreshCheckDataAndRender(){
-  await ensureCheckData(true)
+  const userId = portalState.currentUser && portalState.currentUser.uid
+  try{
+    await ensureCheckData(true)
+  }catch(error){
+    if(portalState.currentUser && portalState.currentUser.uid === userId) showCheckLoadError(error)
+    return
+  }
+  if(!portalState.currentUser || portalState.currentUser.uid !== userId) return
   if(document.getElementById('check-screen').classList.contains('active')){
     renderCheckScreen()
   }else if(document.getElementById('check-set-screen').classList.contains('active') && portalState.currentCheckSet){
@@ -7730,23 +7822,41 @@ function sortPortalSetDocs(rows){
 
 async function loadCloudSetDocs(kind){
   if(portalState.firebaseEnabled && portalState.db){
+    const collectionId = getPortalSetCollection(kind)
+    let query = portalState.db.collection(collectionId)
+    const structuredQuery = { from: [{ collectionId: collectionId }] }
+    if(kind === 'check' && !(typeof isPortalAdmin === 'function' && isPortalAdmin())){
+      const userId = String(portalState.currentUser && portalState.currentUser.uid || '').trim()
+      if(!userId) throw new Error('CHECK authentication unavailable')
+      query = query.where('targetUserIds', 'array-contains', userId)
+      structuredQuery.where = { fieldFilter: {
+        field: { fieldPath: 'targetUserIds' },
+        op: 'ARRAY_CONTAINS',
+        value: { stringValue: userId }
+      } }
+    }
+    let records
     try{
-      let query = portalState.db.collection(getPortalSetCollection(kind))
-      if(kind === 'check' && !(typeof isPortalAdmin === 'function' && isPortalAdmin())){
-        const userId = String(portalState.currentUser && portalState.currentUser.uid || '').trim()
-        if(!userId) return []
-        query = query.where('targetUserIds', 'array-contains', userId)
-      }
-      const snapshot = await query.get()
-      return sortPortalSetDocs(snapshot.docs.map(function(doc){
-        return normalizePortalSetDoc(kind, Object.assign({ docId: doc.id }, doc.data() || {}))
-      }).filter(function(entry){
-        return entry.docId && entry.payload
-      }))
+      const snapshot = kind === 'check'
+        ? await withPortalReadTimeout(query.get({ source: 'server' }), 8000)
+        : await query.get()
+      records = snapshot.docs.map(function(doc){
+        return Object.assign({ docId: doc.id }, doc.data() || {})
+      })
     }catch(error){
       console.warn('portal set read failed:', error && error.message ? error.message : error)
-      return []
+      if(kind !== 'check') return []
+      const rows = await readPortalFirestoreRest(':runQuery', { structuredQuery: structuredQuery })
+      if(!Array.isArray(rows) || rows.some(function(row){ return !row || row.error })) throw new Error('Invalid CHECK query response')
+      records = rows.filter(function(row){ return row.document }).map(function(row){
+        const doc = row.document
+        if(typeof doc.name !== 'string' || !doc.fields) throw new Error('Invalid CHECK document')
+        return Object.assign({ docId: doc.name.split('/').pop() }, decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }))
+      })
     }
+    return sortPortalSetDocs(records.map(function(record){
+      return normalizePortalSetDoc(kind, record)
+    }).filter(function(entry){ return entry.docId && entry.payload }))
   }
 
   return sortPortalSetDocs(readLocalPortalSetDocs(kind).map(function(entry){
@@ -8104,8 +8214,14 @@ async function loadPortalPrepBundleFromSources(){
 }
 
 async function loadPortalCheckDataFromSources(){
-  const legacyDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.check)
-  const setDocs = await loadCloudSetDocs('check')
+  const userId = portalState.currentUser && portalState.currentUser.uid
+  const sources = await Promise.all([
+    loadCloudContentDoc(PORTAL_CLOUD_DOCS.check),
+    loadCloudSetDocs('check')
+  ])
+  if(!portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
+  const legacyDoc = sources[0]
+  const setDocs = sources[1]
   const legacyData = legacyDoc && legacyDoc.payload ? normalizeCheckData(legacyDoc.payload) : null
   const prepClassEntries = normalizePortalCheckClassList(prepClasses.map(function(classInfo){
     return { id: classInfo.id, name: classInfo.name }
@@ -8136,7 +8252,7 @@ async function loadPortalCheckDataFromSources(){
 
   portalState.checkSetInventory = buildPortalCheckSetInventory(legacySets, setDocs)
 
-  if(!legacyDoc && !setDocs.length){
+  if(!legacyDoc && !setDocs.length && !portalState.firebaseEnabled){
     portalState.checkSetInventory = []
     return null
   }
@@ -8182,7 +8298,9 @@ async function ensureCheckData(forceReload){
 
   portalState.checkSyncPromise = (async function(){
     if(portalState.currentUser){
+      const userId = portalState.currentUser.uid
       const combined = await loadPortalCheckDataFromSources()
+      if(!portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
       if(combined){
         portalState.contentMeta.check = {
           updatedAt: combined.updatedAt || '',
@@ -8195,19 +8313,14 @@ async function ensureCheckData(forceReload){
 
     const url = String(PORTAL_CONFIG.checkDataUrl || 'check_data.json')
     const requestUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now()
-    try{
+    const parsed = await withPortalReadTimeout((async function(){
       const response = await fetch(requestUrl, { cache: 'no-store' })
       if(!response.ok) throw new Error('HTTP ' + response.status)
-      const parsed = await response.json()
-      portalState.checkData = normalizeCheckData(parsed)
-      portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
-      return portalState.checkData
-    }catch(error){
-      console.error(error)
-      portalState.checkData = { updatedAt: '', classes: [], checkSets: [] }
-      portalState.checkSetInventory = []
-      return portalState.checkData
-    }
+      return response.json()
+    })(), 12000)
+    portalState.checkData = normalizeCheckData(parsed)
+    portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
+    return portalState.checkData
   })().finally(function(){
     portalState.checkSyncPromise = null
   })
