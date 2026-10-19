@@ -46,7 +46,7 @@ assert.ok(!syncJumpButton.includes('querySelectorAll'))
 assert.ok(styleSource.includes('content-visibility:auto;'))
 assert.ok(styleSource.includes('contain-intrinsic-size:auto 86px;'))
 assert.ok(indexSource.includes('20260930-check-scroll-stability-01'))
-assert.ok(indexSource.includes('20261001-check-load-recovery-01'))
+assert.ok(indexSource.includes('20261007-grammar-only-class-01'))
 
 // Run the actual read/entry functions with a stalled SDK and a controllable clock.
 function block(start, end, last = false, text = source){
@@ -118,7 +118,7 @@ function harness(){
     setTimeout: (callback, milliseconds) => { timers.set(++timerId, { callback, milliseconds }); return timerId },
     clearTimeout: id => timers.delete(id),
     console: { warn(){}, error(){} },
-    isPortalAdmin: () => admin,
+    isPortalAdmin: () => admin, isGrammarOnlyStudent: () => false, ensurePortalScreenAccess: () => true,
     sanitizeId: value => value,
     activatePortalScreen: id => { screen = id }, getCurrentActiveScreenId: () => screen,
     renderCheckScreen(){

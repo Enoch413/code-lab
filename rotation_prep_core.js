@@ -300,6 +300,7 @@ function routeAfterUnlock(){
 }
 
 function activateScreen(targetId){
+  if(typeof ensurePortalScreenAccess === 'function' && !ensurePortalScreenAccess(targetId)) return
   stopPrepVideoPlaybackBeforeScreenChange(targetId)
   SCREEN_IDS.forEach(function(id){
     const element = document.getElementById(id)

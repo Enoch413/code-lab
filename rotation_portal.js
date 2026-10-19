@@ -5,6 +5,7 @@ const PORTAL_STORAGE_KEYS = {
 }
 
 const PORTAL_CONFIG = window.ROTATION_PORTAL_CONFIG || {}
+const PORTAL_GRAMMAR_ONLY_CLASS_ID = 'class-grammar-only'
 const PORTAL_CLASS_REFERENCE = [
   { id: 'class-1-gangseo-b', name: '1강서B' },
   { id: 'class-2-gangseo-a', name: '2강서A' },
@@ -16,7 +17,8 @@ const PORTAL_CLASS_REFERENCE = [
   { id: 'class-2-gangseo-b', name: '2강서B' },
   { id: 'class-1-danwon', name: '1단원' },
   { id: 'class-2-danwon', name: '2단원' },
-  { id: 'class-3-danwon', name: '3단원' }
+  { id: 'class-3-danwon', name: '3단원' },
+  { id: PORTAL_GRAMMAR_ONLY_CLASS_ID, name: '초중등' }
 ]
 
 const portalState = {
@@ -2604,6 +2606,7 @@ function showPortalScreen(){
 }
 
 function openCounselPortal(){
+  if(typeof ensurePortalScreenAccess === 'function' && !ensurePortalScreenAccess('counsel-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return

@@ -941,15 +941,48 @@ function canAccessGrammarUnit(unitId){
 
 function syncGrammarAccessVisibility(){
   const canAccess = canAccessGrammarPortal()
+  const visible = canAccess || isGrammarOnlyStudent()
   const nodes = [
     document.getElementById('portal-grammar-lab-btn'),
     document.getElementById('drawer-grammar-lab-btn')
   ]
   nodes.forEach(function(node){
     if(!node) return
-    node.classList.toggle('hidden', !canAccess)
+    node.classList.toggle('hidden', !visible)
     node.disabled = !canAccess
-    node.setAttribute('aria-hidden', canAccess ? 'false' : 'true')
+    node.setAttribute('aria-hidden', visible ? 'false' : 'true')
+  })
+}
+
+function isGrammarOnlyStudent(){
+  return !!portalState.currentUser && !isPortalAdmin() &&
+    getProfileClassIds().indexOf(PORTAL_GRAMMAR_ONLY_CLASS_ID) >= 0
+}
+
+function canAccessPortalScreen(screenId){
+  return !isGrammarOnlyStudent() || [
+    'portal-screen', 'grammar-screen', 'grammar-player-screen',
+    'account-screen', 'password-screen', 'auth-screen', 'boot-screen', 'pw-screen'
+  ].indexOf(screenId) >= 0
+}
+
+function ensurePortalScreenAccess(screenId){
+  if(canAccessPortalScreen(screenId)) return true
+  showToast('초중등 반은 GRAMMAR만 이용할 수 있습니다.', 'var(--red)')
+  showPortalScreen()
+  return false
+}
+
+function syncRegularPortalAccessVisibility(){
+  const restricted = isGrammarOnlyStudent()
+  ;['prep', 'check', 'counsel', 'study-cafe'].forEach(function(module){
+    ;['portal-', 'drawer-'].forEach(function(prefix){
+      const node = document.getElementById(prefix + module + '-btn')
+      if(!node) return
+      node.classList.toggle('hidden', restricted)
+      node.disabled = restricted || (module === 'study-cafe' && PORTAL_STUDY_CAFE_DISABLED)
+      node.setAttribute('aria-hidden', restricted ? 'true' : 'false')
+    })
   })
 }
 
@@ -3048,6 +3081,7 @@ function restoreAppRoute(route){
     restoreFallbackRoute('portal-screen')
     return
   }
+  if(!ensurePortalScreenAccess(route.screenId)) return
 
   if(route.screenId === 'auth-screen'){
     if(portalState.currentUser){
@@ -3093,6 +3127,7 @@ function restoreFallbackRoute(defaultScreenId){
 }
 
 window.onAppScreenActivated = function(screenId){
+  if(!ensurePortalScreenAccess(screenId)) return
   if(screenId !== 'grammar-player-screen' && portalState.grammarPlayer){
     clearGrammarVideoResources()
   }
@@ -3108,6 +3143,7 @@ window.onAppScreenActivated = function(screenId){
 }
 
 function activatePortalScreen(screenId){
+  if(!ensurePortalScreenAccess(screenId)) return
   if(typeof stopPrepVideoPlaybackBeforeScreenChange === 'function'){
     stopPrepVideoPlaybackBeforeScreenChange(screenId)
   }
@@ -3337,6 +3373,9 @@ async function readPortalFirestoreRest(path, body){
 }
 
 async function loadCloudContentDoc(docId){
+  if(isGrammarOnlyStudent() && (docId === PORTAL_CLOUD_DOCS.prep || docId === PORTAL_CLOUD_DOCS.check)){
+    throw new Error('This class can only use GRAMMAR')
+  }
   if(portalState.firebaseEnabled && portalState.db){
     try{
       const reference = portalState.db.collection('portalContent').doc(docId)
@@ -3437,6 +3476,7 @@ async function syncPrepContentAfterLogin(forceReload){
 }
 
 async function openPrepPortal(){
+  if(!ensurePortalScreenAccess('passage-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -3504,6 +3544,7 @@ async function ensureCheckData(forceReload){
 }
 
 async function openCheckPortal(){
+  if(!ensurePortalScreenAccess('check-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -3926,6 +3967,7 @@ function mapResponseToSubmission(row){
 }
 
 async function openCheckSetPortal(setId, options){
+  if(!ensurePortalScreenAccess('check-set-screen')) return
   const settings = options || {}
   const checkSet = getVisibleCheckSets().find(function(entry){
     return entry.id === setId
@@ -4612,6 +4654,7 @@ function setCounselFormStatus(message, isError){
 }
 
 function openCounselFormPortal(type){
+  if(!ensurePortalScreenAccess('counsel-form-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -5308,6 +5351,7 @@ function renderCounselPortal(){
 }
 
 function openCounselHistoryTab(){
+  if(!ensurePortalScreenAccess('counsel-history-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -7060,6 +7104,7 @@ function updatePortalUserCard(){
   if(drawerAdminButton) drawerAdminButton.classList.toggle('hidden', !isPortalAdmin())
   if(accountAdminButton) accountAdminButton.classList.toggle('hidden', !isPortalAdmin())
   syncGrammarAccessVisibility()
+  syncRegularPortalAccessVisibility()
 }
 
 function setElementTextSafe(id, text){
@@ -7821,6 +7866,7 @@ function sortPortalSetDocs(rows){
 }
 
 async function loadCloudSetDocs(kind){
+  if(isGrammarOnlyStudent()) throw new Error('This class can only use GRAMMAR')
   if(portalState.firebaseEnabled && portalState.db){
     const collectionId = getPortalSetCollection(kind)
     let query = portalState.db.collection(collectionId)
@@ -8268,6 +8314,7 @@ async function loadPortalCheckDataFromSources(){
 
 async function syncPrepContentAfterLogin(forceReload){
   if(!portalState.currentUser) return false
+  if(isGrammarOnlyStudent()) return false
   if(portalState.prepSyncPromise && !forceReload) return portalState.prepSyncPromise
 
   portalState.prepSyncPromise = loadPortalPrepBundleFromSources().then(function(bundle){
@@ -8293,6 +8340,7 @@ async function syncPrepContentAfterLogin(forceReload){
 }
 
 async function ensureCheckData(forceReload){
+  if(isGrammarOnlyStudent()) throw new Error('This class can only use GRAMMAR')
   if(portalState.checkData && !forceReload) return portalState.checkData
   if(portalState.checkSyncPromise) return portalState.checkSyncPromise
 

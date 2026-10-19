@@ -17,6 +17,13 @@ service cloud.firestore {
       return signedIn() && userDoc().data.role == 'admin';
     }
 
+    function canUseRegularPortal() {
+      return signedIn() && (
+        userDoc().data.get('role', 'student') == 'admin'
+        || !userDoc().data.get('classIds', []).hasAny(['class-grammar-only'])
+      );
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId);
@@ -30,22 +37,22 @@ service cloud.firestore {
     }
 
     match /checkResponses/{responseId} {
-      allow read: if isAdmin()
+      allow read: if canUseRegularPortal() && (isAdmin()
         || (signedIn() && responseId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create, update: if isAdmin() || (
+        || (signedIn() && resource.data.userId == request.auth.uid));
+      allow create, update: if canUseRegularPortal() && (isAdmin() || (
         signedIn()
         && request.resource.data.userId == request.auth.uid
         && responseId.matches('^' + request.auth.uid + '__.*$')
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /prepVideoProgress/{progressId} {
-      allow read: if isAdmin()
+      allow read: if canUseRegularPortal() && (isAdmin()
         || (signedIn() && progressId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create, update: if signedIn()
+        || (signedIn() && resource.data.userId == request.auth.uid));
+      allow create, update: if canUseRegularPortal()
         && request.resource.data.userId == request.auth.uid
         && progressId.matches('^' + request.auth.uid + '__.*$');
       allow delete: if isAdmin();
@@ -63,26 +70,26 @@ service cloud.firestore {
     }
 
     match /counselRequests/{requestId} {
-      allow read: if isAdmin()
+      allow read: if canUseRegularPortal() && (isAdmin()
         || (signedIn() && requestId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create: if signedIn()
+        || (signedIn() && resource.data.userId == request.auth.uid));
+      allow create: if canUseRegularPortal()
         && request.resource.data.userId == request.auth.uid
         && requestId.matches('^' + request.auth.uid + '__.*$');
-      allow update: if isAdmin() || (
+      allow update: if canUseRegularPortal() && (isAdmin() || (
         signedIn()
         && request.resource.data.userId == request.auth.uid
         && requestId.matches('^' + request.auth.uid + '__.*$')
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /counselSlots/{slotId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
+      allow read: if canUseRegularPortal();
+      allow create: if canUseRegularPortal()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'open';
-      allow update: if isAdmin()
+      allow update: if canUseRegularPortal() && (isAdmin()
         || (
           signedIn()
           && (
@@ -98,24 +105,24 @@ service cloud.firestore {
           && resource.data.userId == request.auth.uid
           && request.resource.data.userId == request.auth.uid
           && (request.resource.data.status == 'completed' || request.resource.data.status == 'canceled')
-        );
-      allow delete: if isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        ));
+      allow delete: if canUseRegularPortal() && (isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid));
     }
 
     match /portalContent/{docId} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (!(docId in ['prep-session', 'check-data']) || canUseRegularPortal());
       allow create, update: if isAdmin();
       allow delete: if false;
     }
 
     match /portalPrepSets/{docId} {
-      allow read: if signedIn();
+      allow read: if canUseRegularPortal();
       allow create, update, delete: if isAdmin();
     }
 
     match /portalCheckSets/{docId} {
-      allow read: if signedIn();
+      allow read: if canUseRegularPortal();
       allow create, update, delete: if isAdmin();
     }
 
@@ -165,9 +172,9 @@ service cloud.firestore {
     }
 
     match /questionIssues/{issueId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin() || (signedIn() && request.resource.data.userId == request.auth.uid);
+      allow read: if canUseRegularPortal() && (isAdmin() || (signedIn() && resource.data.userId == request.auth.uid));
+      allow create: if canUseRegularPortal() && request.resource.data.userId == request.auth.uid;
+      allow update: if canUseRegularPortal() && (isAdmin() || (signedIn() && request.resource.data.userId == request.auth.uid));
       allow delete: if isAdmin();
     }
   }
