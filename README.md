@@ -27,13 +27,24 @@ node tools/test-local.mjs
 
 This runs syntax checks and twelve offline regression suites with Node 24. The old GRAMMAR `--rules` production API mode has been removed; extra arguments fail before tests start.
 
-For Firestore and Storage rules, install Firebase CLI **15.34.0** and Java **21**. Set `JAVA_HOME` and prepend its `bin` directory to `PATH` in the current terminal if Java 11 is the default, then run:
+For Firestore and Storage rules, use the project-local Firebase CLI **15.34.0** lock and Java **21**. Set `JAVA_HOME` and prepend its `bin` directory to `PATH` in the current terminal if Java 11 is the default, then run:
 
 ```powershell
+npm ci --prefix tools/firebase-cli --ignore-scripts
+node tools/test-tooling.mjs
 node tools/test-rules-local.mjs
 ```
 
-The runner accepts no arguments, uses `firebase.local.json`, and starts only loopback Firestore (8786) and Storage (9298) emulators for `demo-codelab-reaudit`. It runs `tools/test-rules-suites.mjs`, which executes the Firestore and Storage checks in sequence. Tests refuse unexpected emulator endpoints. They never use the production project or CLI login credentials for data access. No production project alias or deployment configuration is supplied. Emulator permission checks do not prove that production composite indexes are installed.
+The runner accepts no arguments, uses `firebase.local.json`, and starts only loopback Firestore (8786) and Storage (9298) emulators for `demo-codelab-reaudit`. It runs `tools/test-rules-suites.mjs`, which executes the Firestore and Storage checks in sequence. Tests refuse unexpected emulator endpoints. They never use the production project or CLI login credentials for data access. No production project alias or deployment configuration is supplied. Emulator permission checks do not prove that production composite indexes are installed. Both local runners invoke `tools/firebase-cli` directly, preserving the old global installation. The validated overrides and limitations are recorded in `tools/firebase-cli/README.md`.
+
+For real SDK Auth/profile recovery checks, install the same **10.12.5** SDK used by the application into ignored test storage, then run:
+
+```powershell
+npm install --prefix .local/firebase-sdk --ignore-scripts --save-exact --no-audit --no-fund firebase@10.12.5
+node tools/test-auth-integration-local.mjs
+```
+
+This fixed runner starts only Auth (9098) and Firestore (8786) demo emulators. The actual student-creation function runs against real SDK Auth and Firestore with synthetic accounts and in-memory random passwords. It checks administrator session preservation, compensation/retry, lost acknowledgements, uncertain reads and transactions. The secondary app initializes Auth only, matching the application; initializing unused Firestore in that app caused the earlier test-cleanup timeout. A VM-only serialization adapter bridges object prototypes without replacing SDK network calls. Browser interaction and production login are outside this check. The SDK version is preserved, not upgraded; the CLI-only advisory result does not certify the separate test SDK dependency tree.
 
 The GitHub workflow runs these same local checks without secrets or deployment steps. Python admin tools retain their existing architecture and `firebase-admin==7.7.0`. `tools/requirements-firebase-admin.txt` declares the direct dependency; `tools/requirements-firebase-admin.lock` pins the 35 resolved distributions with hashes, preserving the locally installed versions. The lock was installed and checked in a separate Windows CPython 3.14 environment; other interpreter/platform combinations have not been verified. For a fresh development environment, install with:
 

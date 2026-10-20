@@ -20,5 +20,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: node tools/test-local.mjs
-      - run: npm install --global firebase-tools@15.34.0 --ignore-scripts
+      - run: npm ci --prefix tools/firebase-cli --ignore-scripts
+      - run: node tools/test-tooling.mjs
       - run: node tools/test-rules-local.mjs
+      - run: npm install --prefix .local/firebase-sdk --ignore-scripts --save-exact --no-audit --no-fund firebase@10.12.5
+      - run: node tools/test-auth-integration-local.mjs
