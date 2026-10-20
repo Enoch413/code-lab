@@ -498,6 +498,7 @@ function renderStudy(){
     showPassageScreen()
     return
   }
+  stopActivePrepVideoPlayback()
 
   const passageState = getPassageProgress(currentPassage)
   const referenceBox = document.getElementById('p-box')
@@ -510,6 +511,7 @@ function renderStudy(){
   document.getElementById('study-meta').textContent = studySet.title + ' · ' + getStudySetDateText(studySet)
   document.getElementById('stage-panel').innerHTML = renderPassageVideoPanel(passage, passageState)
   document.getElementById('stage-content').innerHTML = renderPassageVideoBody(passage)
+  if(passage.videoRequiresAuth) loadPrepStorageVideo(passage)
 
   if(referenceBox && referenceText && referenceLabel){
     if(referenceContent){
@@ -565,6 +567,12 @@ function renderPassageVideoBody(passage){
 }
 
 function renderPassageVideoPlayer(passage){
+  if(passage.videoRequiresAuth){
+    return '<div class="video-player-shell">' +
+      '<video class="video-inline-player" controls playsinline preload="metadata" aria-label="' + escapeHtml(passage.videoTitle || passage.title || 'PREP 학습 영상') + '" aria-describedby="prep-video-load-status"></video></div>' +
+      '<p class="video-stage-note" id="prep-video-load-status" role="status" aria-live="polite">영상을 불러오는 중입니다.</p>' +
+      '<button class="btn btn-blue" id="prep-video-retry-btn" type="button" hidden>영상 다시 불러오기</button>'
+  }
   if(passage.videoEmbedUrl){
     return '' +
       '<div class="video-player-shell">' +
@@ -586,7 +594,40 @@ function renderPassageVideoPlayer(passage){
   return '<div class="empty-box video-empty-box">등록된 영상이 없습니다.</div>'
 }
 
+let prepStoragePlayback = null
+
+async function loadPrepStorageVideo(passage){
+  stopActivePrepVideoPlayback()
+  const playback = {controller: new AbortController(), objectUrl: ''}
+  prepStoragePlayback = playback
+  const player = document.querySelector('#stage-content .video-inline-player')
+  const status = document.getElementById('prep-video-load-status')
+  const retry = document.getElementById('prep-video-retry-btn')
+  if(!player || !status || !retry) return
+  retry.hidden = true
+  retry.onclick = function(){ loadPrepStorageVideo(passage) }
+  status.textContent = '영상을 불러오는 중입니다.'
+  try{
+    if(!passage.videoStoragePath) throw new Error('영상 경로 점검이 필요합니다.')
+    const blob = await fetchPortalStorageBlob(passage.videoStoragePath, 'video/mp4', playback.controller.signal)
+    if(prepStoragePlayback !== playback || playback.controller.signal.aborted) return
+    playback.objectUrl = URL.createObjectURL(blob)
+    player.src = playback.objectUrl
+    player.load()
+    status.textContent = '재생 준비가 완료되었습니다.'
+  }catch(error){
+    if(prepStoragePlayback !== playback || playback.controller.signal.aborted) return
+    status.textContent = '영상을 불러오지 못했습니다. 배정 권한과 연결 상태를 확인한 뒤 다시 시도해 주세요.'
+    retry.hidden = false
+  }
+}
+
 function stopActivePrepVideoPlayback(){
+  if(prepStoragePlayback){
+    prepStoragePlayback.controller.abort()
+    if(prepStoragePlayback.objectUrl) URL.revokeObjectURL(prepStoragePlayback.objectUrl)
+    prepStoragePlayback = null
+  }
   const studyScreen = document.getElementById('study-screen')
   if(!studyScreen) return
 

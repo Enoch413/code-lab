@@ -2195,20 +2195,26 @@ async function loadGrammarVideoPart(options){
 }
 
 async function fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, onProgress, forceRefreshToken){
-  const config = window.ROTATION_FIREBASE_CONFIG || {}
-  const bucket = String(config.storageBucket || '').trim()
-  const authUser = portalState.currentUser
   if(!canAccessGrammarObjectPath(objectPath)){
     const permissionError = new Error('GRAMMAR 접근 권한이 없습니다.')
     permissionError.status = 403
     throw permissionError
   }
+  return fetchPortalStorageBlob(objectPath, fallbackContentType, signal, onProgress, forceRefreshToken)
+}
+
+async function fetchPortalStorageBlob(objectPath, fallbackContentType, signal, onProgress, forceRefreshToken){
+  const config = window.ROTATION_FIREBASE_CONFIG || {}
+  const bucket = String(config.storageBucket || '').trim()
+  const authUser = portalState.currentUser
+  const session = portalState.userSession
   if(!bucket) throw new Error('Firebase Storage 주소가 설정되지 않았습니다.')
   if(!portalState.firebaseEnabled || !authUser || typeof authUser.getIdToken !== 'function'){
     throw new Error('Firebase 로그인 상태를 확인할 수 없습니다. 다시 로그인해 주세요.')
   }
 
   const token = await authUser.getIdToken(forceRefreshToken === true)
+  if(portalState.currentUser !== authUser || portalState.userSession !== session) throw new Error('로그인 상태가 변경되었습니다.')
   if(!token) throw new Error('로그인 토큰을 가져오지 못했습니다.')
   const url = 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) +
     '/o/' + encodeURIComponent(objectPath) + '?alt=media'
@@ -2216,12 +2222,13 @@ async function fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, 
     method: 'GET',
     headers: { Authorization: 'Bearer ' + token },
     signal: signal || undefined,
-    cache: 'default',
+    cache: 'no-store',
     credentials: 'omit'
   })
 
   if(response.status === 401 && forceRefreshToken !== true){
-    return fetchGrammarStorageBlob(objectPath, fallbackContentType, signal, onProgress, true)
+    if(portalState.currentUser !== authUser || portalState.userSession !== session) throw new Error('로그인 상태가 변경되었습니다.')
+    return fetchPortalStorageBlob(objectPath, fallbackContentType, signal, onProgress, true)
   }
   if(!response.ok){
     const error = new Error('Firebase Storage HTTP ' + response.status)
@@ -10029,7 +10036,7 @@ async function handlePortalPrepVideoUploadChange(event){
 
   try{
     const storageRef = portalState.storage.ref().child(storagePath)
-    const snapshot = await storageRef.put(file, {
+    await storageRef.put(file, {
       contentType: file.type || 'video/mp4',
       customMetadata: {
         setId: manager.docId,
@@ -10038,8 +10045,6 @@ async function handlePortalPrepVideoUploadChange(event){
       }
     })
     if(!isCurrent()) return
-    const downloadUrl = await snapshot.ref.getDownloadURL()
-    if(!isCurrent()) return
     const now = new Date().toISOString()
     const nextDoc = clonePlainData(manager.currentDoc) || {}
     const nextPayload = clonePlainData(nextDoc.payload) || {}
@@ -10047,14 +10052,14 @@ async function handlePortalPrepVideoUploadChange(event){
     const nextPassage = Object.assign({}, nextPassages[passageIndex] || {})
     const nextVideoTitle = String(nextPassage.videoTitle || nextPassage.title || normalizedPassage.title || ('지문 ' + (passageIndex + 1))).trim()
 
-    nextPassage.videoUrl = downloadUrl
+    nextPassage.videoUrl = ''
     nextPassage.videoEmbedUrl = ''
     nextPassage.videoTitle = nextVideoTitle
     nextPassage.videoFileName = String(file.name || '').trim()
     nextPassage.videoStoragePath = storagePath
     nextPassage.videoUpdatedAt = now
     nextPassage.video = Object.assign({}, nextPassage.video && typeof nextPassage.video === 'object' ? nextPassage.video : {}, {
-      url: downloadUrl,
+      url: '',
       embedUrl: '',
       title: nextVideoTitle,
       fileName: String(file.name || '').trim(),
@@ -10098,6 +10103,13 @@ async function handlePortalPrepVideoUploadChange(event){
     portalState.prepVideoManager.status = '영상 업로드 중 오류가 발생했습니다.'
     renderPortalPrepVideoManager()
     showToast('PREP 영상 업로드 중 오류가 발생했습니다.', 'var(--red)')
+  }
+}
+
+function clearPortalPrepVideoSourceAliases(passage){
+  ;['videoRequiresAuth','videoSrc','videoFileUrl','videoFile','videoLink','videoIframeUrl'].forEach(function(key){ delete passage[key] })
+  if(passage.video && typeof passage.video === 'object'){
+    ;['src','fileUrl','iframeUrl'].forEach(function(key){ delete passage.video[key] })
   }
 }
 
@@ -10151,6 +10163,7 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     nextPassage.videoUpdatedAt = now
     delete nextPassage.videoFileName
     delete nextPassage.videoStoragePath
+    clearPortalPrepVideoSourceAliases(nextPassage)
     nextPassage.video = Object.assign({}, nextPassage.video && typeof nextPassage.video === 'object' ? nextPassage.video : {}, {
       url: normalizedUrl.url,
       embedUrl: normalizedUrl.embedUrl,
@@ -10242,6 +10255,7 @@ async function removePortalPrepPassageVideo(passageIndex){
     delete nextPassage.videoPoster
     delete nextPassage.videoFileName
     delete nextPassage.videoStoragePath
+    clearPortalPrepVideoSourceAliases(nextPassage)
     delete nextPassage.videoUpdatedAt
     delete nextPassage.video
     nextPassages[Number(passageIndex)] = nextPassage
@@ -11253,6 +11267,7 @@ async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
     delete nextPassage.videoPoster
     delete nextPassage.videoFileName
     delete nextPassage.videoStoragePath
+    clearPortalPrepVideoSourceAliases(nextPassage)
     delete nextPassage.videoUpdatedAt
     delete nextPassage.video
     nextPassages[targetPassageIndex] = nextPassage
@@ -13116,6 +13131,7 @@ loadPortalPrepBundleFromSources = async function(){
 }
 
 function resetPortalUserState(){
+  if(typeof window !== 'undefined' && typeof window.stopActivePrepVideoPlayback === 'function') window.stopActivePrepVideoPlayback()
   portalState.userSession = (portalState.userSession || 0) + 1
   portalState.currentPrepVideoProgressLoadedUserId = ''
   portalState.prepSyncRequest = null

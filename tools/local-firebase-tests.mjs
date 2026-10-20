@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from 'node:fs'
 
 export function runLocalFirebaseTests(suite) {
   assert.equal(process.argv.length, 2, 'No arguments accepted')
-  const plans = { rules: ['firestore,storage', 'tools/test-rules-suites.mjs'], auth: ['firestore,auth', 'tools/test-auth-sdk-integration.cjs'] }
+  const plans = { rules: ['firestore,storage', 'tools/test-rules-suites.mjs'], auth: ['firestore,auth', 'tools/test-auth-sdk-integration.cjs'], crossApp: ['firestore,auth,storage', 'tools/test-cross-app-browser.cjs'] }
   assert.ok(Object.hasOwn(plans, suite))
   const root = fileURLToPath(new URL('../', import.meta.url))
   const config = JSON.parse(readFileSync(new URL('../firebase.local.json', import.meta.url), 'utf8'))

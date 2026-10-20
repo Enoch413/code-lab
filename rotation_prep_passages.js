@@ -21,6 +21,8 @@ function buildPassageState(source, index){
     videoTitle: video.title,
     videoDescription: video.description,
     videoProvider: video.provider,
+    videoStoragePath: video.storagePath,
+    videoRequiresAuth: video.requiresAuth,
     hasVideo: video.hasVideo,
     translationText: translationText,
     translationLines: splitLines(translationText),
@@ -57,10 +59,30 @@ function normalizePassageVideo(source, fallbackTitle){
 
   const embedUrl = normalizePassageVideoEmbedUrl(rawEmbedUrl || rawUrl)
   const provider = inferPassageVideoProvider(embedUrl || rawUrl)
+  let storagePath = String(rawVideo.storagePath || source && source.videoStoragePath || '').trim()
+  let requiresAuth = !!storagePath || !!(source && source.videoRequiresAuth === true)
+  for(const candidate of [rawUrl, rawEmbedUrl]){
+    try{
+      const url = new URL(candidate)
+      if(['firebasestorage.googleapis.com', 'storage.googleapis.com'].includes(url.hostname) || url.protocol === 'gs:'){
+        requiresAuth = true
+        const bucket = String((window.ROTATION_FIREBASE_CONFIG || {}).storageBucket || '')
+        if(!storagePath && url.hostname === 'firebasestorage.googleapis.com'){
+          const match = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/)
+          if(match && decodeURIComponent(match[1]) === bucket) storagePath = decodeURIComponent(match[2])
+        }
+        if(!storagePath && url.hostname === 'storage.googleapis.com' && url.pathname.startsWith('/' + bucket + '/')) storagePath = decodeURIComponent(url.pathname.slice(bucket.length + 2))
+        if(!storagePath && url.protocol === 'gs:' && url.hostname === bucket) storagePath = decodeURIComponent(url.pathname.slice(1))
+      }
+    }catch(error){}
+  }
+  if(storagePath && (!storagePath.startsWith('prep-videos/') || storagePath.split('/').some(function(part){ return !part || part === '.' || part === '..' }) || /[\\\x00-\x1f]/.test(storagePath))) storagePath = ''
 
   return {
-    url: rawUrl,
-    embedUrl: embedUrl,
+    url: requiresAuth ? '' : rawUrl,
+    embedUrl: requiresAuth ? '' : embedUrl,
+    storagePath: storagePath,
+    requiresAuth: requiresAuth,
     poster: String(
       rawVideo.poster ||
       rawVideo.thumbnail ||
@@ -79,7 +101,7 @@ function normalizePassageVideo(source, fallbackTitle){
       ''
     ).trim(),
     provider: provider,
-    hasVideo: !!(embedUrl || rawUrl)
+    hasVideo: requiresAuth || !!(embedUrl || rawUrl)
   }
 }
 

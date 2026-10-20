@@ -1,0 +1,8 @@
+{
+  "name": "codelab-browser-checks",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "playwright": "1.64.0-alpha-1790635538000"
+  }
+}
