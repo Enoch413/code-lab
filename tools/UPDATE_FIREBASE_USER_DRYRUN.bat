@@ -11,8 +11,8 @@ if "%~1"=="" (
   echo   UPDATE_FIREBASE_USER_DRYRUN.bat --uid firebaseuid [options]
   echo.
   echo Example:
-  echo   UPDATE_FIREBASE_USER_DRYRUN.bat --login-id synthetic-student-001 --new-login-id msu9999
-  echo   UPDATE_FIREBASE_USER_DRYRUN.bat --login-id synthetic-student-001 --class-ids "class-1-gangseo-b"
+  echo   UPDATE_FIREBASE_USER_DRYRUN.bat --login-id example-student --new-login-id example-student-new
+  echo   UPDATE_FIREBASE_USER_DRYRUN.bat --login-id example-student --class-ids "class-1-gangseo-b"
   echo.
   echo Default service account:
   echo   %DEFAULT_SERVICE_ACCOUNT%

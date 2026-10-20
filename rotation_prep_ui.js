@@ -73,10 +73,9 @@ function getVisiblePrepPassageEntries(){
 
 function escapePrepInlineJsValue(value){
   if(typeof escapeJs === 'function') return escapeJs(value)
-  return String(value == null ? '' : value)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r?\n/g, '\\n')
+  return String(value == null ? '' : value).replace(/[\\'"<>&\u0000-\u001f\u007f\u2028\u2029]/g, function(character){
+    return '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0')
+  })
 }
 
 function getDirectPrepManagedDocId(studySet){
@@ -133,7 +132,7 @@ function renderClassList(){
     }).length
 
     return '' +
-      '<div class="class-item" onclick="requestClassAccess(' + index + ')">' +
+      '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="requestClassAccess(' + index + ')">' +
         '<div class="class-body">' +
           '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
           '<div class="class-preview">' + studyCount + '개의 학습 세트가 준비되어 있습니다.</div>' +
@@ -143,7 +142,7 @@ function renderClassList(){
           '</div>' +
         '</div>' +
         '<div class="p-arrow">&rsaquo;</div>' +
-      '</div>'
+      '</button>'
   }).join('')
 }
 
@@ -263,7 +262,7 @@ function renderPassageScreen(){
       '<div class="p-item ' + (state.done ? 'done' : '') + '" onclick="openPassage(' + passageIndex + ')">' +
         '<div class="p-num">' + (visibleIndex + 1) + '</div>' +
         '<div class="p-body">' +
-          '<div class="p-title">' + escapeHtml(passage.title) + '</div>' +
+          '<button type="button" data-ui-icon-skip="true" class="p-title card-open-action">' + escapeHtml(passage.title) + '</button>' +
           previewHtml +
           '<div class="p-meta">' +
             '<span>' + (passage.hasVideo ? '영상 준비' : '영상 없음') + '</span>' +
@@ -322,7 +321,7 @@ function renderDirectPrepPassageScreen(){
       '<div class="p-item ' + (state.done ? 'done' : '') + '" onclick="openPassageAt(' + entry.passageIndex + ', ' + entry.setIndex + ')">' +
         '<div class="p-num">' + (visibleIndex + 1) + '</div>' +
         '<div class="p-body">' +
-          '<div class="p-title">' + escapeHtml(entry.passage.title) + '</div>' +
+          '<button type="button" data-ui-icon-skip="true" class="p-title card-open-action">' + escapeHtml(entry.passage.title) + '</button>' +
           previewHtml +
           '<div class="p-meta">' +
             '<span>' + escapeHtml(entry.studySet.title) + '</span>' +
@@ -359,7 +358,7 @@ function renderSetList(visibleSets){
       '<div class="' + classNames.join(' ') + '"' + (entry.isAccessible ? ' onclick="openStudySet(' + entry.index + ')"' : '') + '>' +
         '<div class="set-num">' + (visibleIndex + 1) + '</div>' +
         '<div class="set-body">' +
-          '<div class="set-title">' + escapeHtml(entry.studySet.title) + '</div>' +
+          '<button type="button" data-ui-icon-skip="true" class="set-title card-open-action"' + (entry.isAccessible ? '' : ' disabled') + '>' + escapeHtml(entry.studySet.title) + '</button>' +
           '<div class="set-preview">' + escapeHtml(getStudySetDateText(entry.studySet)) + '</div>' +
           '<div class="set-meta">' +
             '<span class="set-badge ' + entry.status + '">' + escapeHtml(getStudySetStatusLabel(entry.status)) + '</span>' +
@@ -441,7 +440,7 @@ function renderStudyMenu(){
     ? sections.map(function(section, index){
         const sectionState = getSectionProgress(currentPassage, section.id)
         return '' +
-          '<button class="study-topic-card" type="button" onclick="openStudySection(\'' + escapeHtml(section.id) + '\')">' +
+          '<button class="study-topic-card" type="button" onclick="openStudySection(\'' + escapePrepInlineJsValue(section.id) + '\')">' +
             '<div class="study-topic-num">' + (index + 1) + '</div>' +
             '<div class="study-topic-body">' +
               '<div class="study-topic-title">' + escapeHtml(section.title) + '</div>' +

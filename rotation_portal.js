@@ -284,7 +284,7 @@ async function submitAuthForm(){
   const password = String(document.getElementById('auth-password').value || '').trim()
 
   if(!email || !password){
-    setAuthError('아이디와 비밀번호를 입력해 주세요.')
+    setAuthError('아이디와 비밀번호를 입력해 주세요.', !email ? 'auth-email' : 'auth-password')
     return
   }
 
@@ -293,7 +293,7 @@ async function submitAuthForm(){
     await loginPortalUser(email, password)
     clearAuthFields()
   }catch(error){
-    setAuthError(getPortalErrorMessage(error))
+    setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
   }finally{
     setAuthLoading(false)
   }
@@ -308,7 +308,7 @@ async function loginPortalUser(email, password){
   const user = readLocalUsers().find(function(entry){
     return entry.email.toLowerCase() === email.toLowerCase() && entry.password === password
   })
-  if(!user) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.')
+  if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
 
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
   portalState.currentUser = buildLocalAuthUser(user)
@@ -678,8 +678,28 @@ function clearAuthError(){
   setAuthError('')
 }
 
-function setAuthError(message){
+function setAuthError(message, fieldId){
   document.getElementById('auth-error').textContent = message || ''
+  const fields = ['auth-email','auth-password'].map(function(id){ return document.getElementById(id) }).filter(Boolean)
+  fields.forEach(function(field){ field.removeAttribute('aria-invalid') })
+  if(message){
+    const field = fields.find(function(node){ return node.id === fieldId })
+    if(field){
+      field.setAttribute('aria-invalid', 'true')
+      if(field.getClientRects().length) field.focus()
+    }
+  }
+}
+
+function getAuthErrorField(error){
+  let code = String(error && error.code || '')
+  if(!code){
+    const match = String(error && error.message || '').match(/auth\/[\w-]+/)
+    code = match ? match[0] : ''
+  }
+  if(['auth/invalid-email','auth/user-not-found'].indexOf(code) >= 0) return 'auth-email'
+  if(['auth/wrong-password','auth/invalid-credential','auth/invalid-login-credentials'].indexOf(code) >= 0) return 'auth-password'
+  return null
 }
 
 function setAuthMeta(message){
@@ -752,10 +772,19 @@ async function submitPasswordChange(){
 
 function getPasswordChangeErrorMessage(error){
   const message = String(error && error.message || '')
-  if(message.indexOf('auth/wrong-password') >= 0) return '현재 비밀번호가 올바르지 않습니다.'
-  if(message.indexOf('auth/weak-password') >= 0) return '새 비밀번호가 너무 약합니다.'
-  if(message.indexOf('auth/requires-recent-login') >= 0) return '보안을 위해 다시 로그인한 뒤 비밀번호를 바꿔 주세요.'
+  const fieldId = getPasswordChangeErrorField(error)
+  if(fieldId === 'password-current') return '현재 비밀번호가 올바르지 않습니다.'
+  if(fieldId === 'password-next') return '새 비밀번호가 너무 약합니다.'
+  if((error && error.code === 'auth/requires-recent-login') || message.indexOf('auth/requires-recent-login') >= 0) return '보안을 위해 다시 로그인한 뒤 비밀번호를 바꿔 주세요.'
   return message || '비밀번호를 변경하지 못했습니다.'
+}
+
+function getPasswordChangeErrorField(error){
+  const code = String(error && error.code || '')
+  const message = String(error && error.message || '')
+  if(code === 'auth/wrong-password' || code === 'auth/invalid-credential' || /auth\/(?:wrong-password|invalid-credential)\b/.test(message)) return 'password-current'
+  if(code === 'auth/weak-password' || message.indexOf('auth/weak-password') >= 0) return 'password-next'
+  return null
 }
 
 async function refreshPortalData(){
@@ -1116,7 +1145,7 @@ function renderCheckScreen(){
         '<div class="set-item-main">' +
           '<div class="set-num">' + (index + 1) + '</div>' +
           '<div class="set-body">' +
-            '<div class="set-title">' + escapeHtml(entry.title) + '</div>' +
+            '<button type="button" data-ui-icon-skip="true" class="set-title card-open-action"' + (entry.isAccessible ? '' : ' disabled') + '>' + escapeHtml(entry.title) + '</button>' +
             '<div class="set-preview">' + escapeHtml(entry.description || '모든 답안을 작성한 뒤 한 번에 제출합니다.') + '</div>' +
             '<div class="set-meta">' +
               metaBits.map(function(bit){
@@ -1466,6 +1495,7 @@ function applyChoiceGroupSelection(group, value){
   group.querySelectorAll('.check-choice-btn').forEach(function(node){
     const choice = String(node && node.dataset && node.dataset.choice || '').trim()
     node.classList.toggle('active', selected.has(choice))
+    node.setAttribute('aria-pressed', selected.has(choice) ? 'true' : 'false')
   })
 }
 
@@ -1536,7 +1566,7 @@ function renderCheckAnswerField(question, selectedAnswer, isLocked){
     return '<div class="check-choice-grid check-choice-grid-binary" data-check-binary-id="' + escapeHtml(question.id) + '">' +
       ['맞음', '틀림'].map(function(choice){
         const activeClass = selectedAnswer === choice ? ' active' : ''
-        return '<button class="check-choice-btn check-choice-btn-binary' + activeClass + '" type="button" data-choice="' + escapeHtml(choice) + '">' + escapeHtml(choice) + '</button>'
+        return '<button class="check-choice-btn check-choice-btn-binary' + activeClass + '" type="button" aria-pressed="' + (activeClass ? 'true' : 'false') + '" data-choice="' + escapeHtml(choice) + '">' + escapeHtml(choice) + '</button>'
       }).join('') +
     '</div>'
   }
@@ -1549,7 +1579,7 @@ function renderCheckAnswerField(question, selectedAnswer, isLocked){
     [1, 2, 3, 4, 5].map(function(choice){
       const value = String(choice)
       const activeClass = selectedChoices.has(value) ? ' active' : ''
-      return '<button class="check-choice-btn' + activeClass + '" type="button" data-choice="' + value + '">' + value + '</button>'
+      return '<button class="check-choice-btn' + activeClass + '" type="button" aria-pressed="' + (activeClass ? 'true' : 'false') + '" data-choice="' + value + '">' + value + '</button>'
     }).join('') +
   '</div>' + (isMultiSelect ? ('<div class="check-choice-hint">' + selectionLimit + '개 선택</div>') : '')
 }
@@ -1592,7 +1622,7 @@ function renderCheckAnswerField(question, selectedAnswer, isLocked){
     return '<div class="check-choice-grid check-choice-grid-binary" data-check-binary-id="' + escapeHtml(question.id) + '">' +
       ['맞음', '틀림'].map(function(choice){
         const activeClass = selectedAnswer === choice ? ' active' : ''
-        return '<button class="check-choice-btn check-choice-btn-binary' + activeClass + '" type="button" data-choice="' + escapeHtml(choice) + '">' + escapeHtml(choice) + '</button>'
+        return '<button class="check-choice-btn check-choice-btn-binary' + activeClass + '" type="button" aria-pressed="' + (activeClass ? 'true' : 'false') + '" data-choice="' + escapeHtml(choice) + '">' + escapeHtml(choice) + '</button>'
       }).join('') +
     '</div>'
   }
@@ -1605,7 +1635,7 @@ function renderCheckAnswerField(question, selectedAnswer, isLocked){
     [1, 2, 3, 4, 5].map(function(choice){
       const value = String(choice)
       const activeClass = selectedChoices.has(value) ? ' active' : ''
-      return '<button class="check-choice-btn' + activeClass + '" type="button" data-choice="' + value + '">' + value + '</button>'
+      return '<button class="check-choice-btn' + activeClass + '" type="button" aria-pressed="' + (activeClass ? 'true' : 'false') + '" data-choice="' + value + '">' + value + '</button>'
     }).join('') +
   '</div>' + (isMultiSelect ? ('<div class="check-choice-hint">' + selectionLimit + '개 선택</div>') : '')
 }
@@ -2182,55 +2212,7 @@ function normalizeUserProfileLocal(source){
 }
 
 function ensureLocalPreviewUsers(){
-  const existingUsers = readLocalUsers()
-  if(existingUsers.length){
-    let touched = false
-    const normalizedUsers = existingUsers.map(function(user){
-      const nextUser = normalizeUserProfileLocal(user)
-      if(typeof user.passwordResetRequired !== 'boolean'){
-        touched = true
-      }
-      return nextUser
-    })
-    if(touched){
-      writeLocalUsers(normalizedUsers)
-    }
-    return { users: normalizedUsers, seeded: false }
-  }
-
-  const firstClassId = prepClasses[0] ? String(prepClasses[0].id || '').trim() : 'class-1'
-  const now = new Date().toISOString()
-  const seededUsers = [
-    normalizeUserProfileLocal({
-      id: 'student-preview-1',
-      loginId: 'student01',
-      email: 'student01@prep.local',
-      password: '',
-      name: '테스트 학생',
-      studentId: 'student01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'student',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    }),
-    normalizeUserProfileLocal({
-      id: 'admin-preview-1',
-      loginId: 'admin01',
-      email: 'admin01@prep.local',
-      password: '',
-      name: '테스트 관리자',
-      studentId: 'admin01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'admin',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    })
-  ]
-
-  writeLocalUsers(seededUsers)
-  return { users: seededUsers, seeded: true }
+  return { users: readLocalUsers(), seeded: false }
 }
 
 async function fetchOrCreateUserProfile(user){
@@ -2356,9 +2338,18 @@ function isPasswordResetRequired(profile){
   return !!(profile && profile.passwordResetRequired)
 }
 
-function setPasswordError(message){
+function setPasswordError(message, fieldId){
   const node = document.getElementById('password-error')
   if(node) node.textContent = message || ''
+  const fields = ['password-current','password-next','password-confirm'].map(function(id){ return document.getElementById(id) }).filter(Boolean)
+  fields.forEach(function(field){ field.removeAttribute('aria-invalid') })
+  if(message && fieldId !== null){
+    const field = fields.find(function(input){ return input.id === fieldId }) || fields.find(function(input){ return !input.value.trim() })
+    if(field){
+      field.setAttribute('aria-invalid', 'true')
+      if(field.getClientRects().length) field.focus()
+    }
+  }
 }
 
 function clearPasswordError(){
@@ -2459,7 +2450,7 @@ function normalizeUserProfileLocal(source){
   const password = String(source && source.password || '').trim()
   const resetRequired = typeof (source && source.passwordResetRequired) === 'boolean'
     ? !!source.passwordResetRequired
-    : (false /* removed historical password fallback */)
+    : true
   return {
     id: String(source && source.id || '').trim(),
     loginId: loginId,
@@ -2478,55 +2469,7 @@ function normalizeUserProfileLocal(source){
 }
 
 function ensureLocalPreviewUsers(){
-  const existingUsers = readLocalUsers()
-  if(existingUsers.length){
-    let touched = false
-    const normalizedUsers = existingUsers.map(function(user){
-      const nextUser = normalizeUserProfileLocal(user)
-      if(typeof user.passwordResetRequired !== 'boolean' || !nextUser.loginId || !nextUser.email){
-        touched = true
-      }
-      return nextUser
-    })
-    if(touched){
-      writeLocalUsers(normalizedUsers)
-    }
-    return { users: normalizedUsers, seeded: false }
-  }
-
-  const firstClassId = prepClasses[0] ? String(prepClasses[0].id || '').trim() : 'class-1'
-  const now = new Date().toISOString()
-  const seededUsers = [
-    normalizeUserProfileLocal({
-      id: 'student-preview-1',
-      loginId: 'student01',
-      email: 'student01@prep.local',
-      password: '',
-      name: '테스트 학생',
-      studentId: 'student01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'student',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    }),
-    normalizeUserProfileLocal({
-      id: 'admin-preview-1',
-      loginId: 'admin01',
-      email: 'admin01@prep.local',
-      password: '',
-      name: '테스트 관리자',
-      studentId: 'admin01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'admin',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    })
-  ]
-
-  writeLocalUsers(seededUsers)
-  return { users: seededUsers, seeded: true }
+  return { users: readLocalUsers(), seeded: false }
 }
 
 function initLocalPortal(){
@@ -2543,7 +2486,7 @@ function initLocalPortal(){
   portalState.currentProfile = localUser ? localUser : null
   portalState.previewUsersSeeded = previewResult.seeded
 
-  setAuthMeta('테스트 계정: student01 /  · 관리자: admin01 / ')
+  setAuthMeta('로컬 미리보기에는 기본 계정이 없습니다. 관리자가 준비한 테스트 계정을 사용하세요.')
   routePortalAfterState()
 }
 
@@ -2647,15 +2590,15 @@ async function submitPasswordChange(){
     return
   }
   if(nextPassword.length < 6){
-    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.')
+    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.', 'password-next')
     return
   }
   if(nextPassword !== confirmPassword){
-    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.')
+    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.', 'password-confirm')
     return
   }
   if(currentPassword === nextPassword){
-    setPasswordError('현재 비밀번호와 다른 값으로 바꿔 주세요.')
+    setPasswordError('현재 비밀번호와 다른 값으로 바꿔 주세요.', 'password-next')
     return
   }
 
@@ -2682,7 +2625,7 @@ async function submitPasswordChange(){
         return entry.id === currentUserId
       })
       if(targetIndex < 0) throw new Error('계정 정보를 찾지 못했습니다.')
-      if(users[targetIndex].password !== currentPassword) throw new Error('현재 비밀번호가 올바르지 않습니다.')
+      if(users[targetIndex].password !== currentPassword) return setPasswordError('현재 비밀번호가 올바르지 않습니다.', 'password-current')
 
       users[targetIndex].password = nextPassword
       users[targetIndex].passwordResetRequired = false
@@ -2704,7 +2647,7 @@ async function submitPasswordChange(){
     showToast('비밀번호를 변경했습니다.', 'var(--green)')
     showPortalScreen()
   }catch(error){
-    setPasswordError(getPasswordChangeErrorMessage(error))
+    setPasswordError(getPasswordChangeErrorMessage(error), getPasswordChangeErrorField(error))
   }
 }
 
@@ -2719,7 +2662,10 @@ function getPortalErrorMessage(error){
 }
 
 function escapeJs(value){
-  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  // Values are inserted into single-quoted JS strings inside HTML attributes.
+  return String(value == null ? '' : value).replace(/[\\'"<>&\u0000-\u001f\u007f\u2028\u2029]/g, function(character){
+    return '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0')
+  })
 }
 
 window.handlePortalRouteAfterLoad = function(){
@@ -2873,44 +2819,7 @@ function findLocalPortalUser(loginId, password){
 }
 
 function ensureLocalPreviewUsers(){
-  const existingUsers = readLocalUsers()
-  if(existingUsers.length){
-    return { users: existingUsers, seeded: false }
-  }
-
-  const firstClassId = prepClasses[0] ? String(prepClasses[0].id || '').trim() : 'class-1'
-  const now = new Date().toISOString()
-  const seededUsers = [
-    normalizeUserProfileLocal({
-      id: 'student-preview-1',
-      loginId: 'student01',
-      email: 'student01@prep.local',
-      password: '',
-      name: '테스트 학생',
-      studentId: 'student01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'student',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    }),
-    normalizeUserProfileLocal({
-      id: 'admin-preview-1',
-      loginId: 'admin01',
-      email: 'admin01@prep.local',
-      password: '',
-      name: '테스트 관리자',
-      studentId: 'admin01',
-      classIds: firstClassId ? [firstClassId] : [],
-      role: 'admin',
-      passwordResetRequired: true,
-      createdAt: now,
-      updatedAt: now
-    })
-  ]
-
-  writeLocalUsers(seededUsers)
-  return { users: seededUsers, seeded: true }
+  return { users: readLocalUsers(), seeded: false }
 }
 
 function ensureCurrentLocalUserHasClass(){
@@ -3099,7 +3008,7 @@ function normalizeUserProfileLocal(source){
   const password = String(source && source.password || '').trim()
   const resetRequired = typeof (source && source.passwordResetRequired) === 'boolean'
     ? !!source.passwordResetRequired
-    : (false /* removed historical password fallback */)
+    : true
   return {
     id: String(source && source.id || '').trim(),
     loginId: loginId,
@@ -3131,7 +3040,7 @@ function initLocalPortal(){
   portalState.previewUsersSeeded = previewResult.seeded
 
   if(previewResult.seeded){
-    setAuthMeta('테스트 계정: student01 /  · 관리자: admin01 / ')
+    setAuthMeta('로컬 미리보기에는 기본 계정이 없습니다. 관리자가 준비한 테스트 계정을 사용하세요.')
   }else{
     setAuthMeta('선생님이 배부한 아이디와 비밀번호로 로그인하세요.')
   }
@@ -3192,7 +3101,7 @@ async function submitAuthForm(){
   const password = String(document.getElementById('auth-password').value || '').trim()
 
   if(!loginId || !password){
-    setAuthError('아이디와 비밀번호를 입력해 주세요.')
+    setAuthError('아이디와 비밀번호를 입력해 주세요.', !loginId ? 'auth-email' : 'auth-password')
     return
   }
 
@@ -3201,7 +3110,7 @@ async function submitAuthForm(){
     await loginPortalUser(loginId, password)
     clearAuthFields()
   }catch(error){
-    setAuthError(getPortalErrorMessage(error))
+    setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
   }finally{
     setAuthLoading(false)
   }
@@ -3219,7 +3128,7 @@ async function loginPortalUser(loginId, password){
   }
 
   const user = findLocalPortalUser(loginId, password)
-  if(!user) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.')
+  if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
 
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
   portalState.currentUser = buildLocalAuthUser(user)

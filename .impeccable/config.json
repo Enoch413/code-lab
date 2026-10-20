@@ -1,0 +1,62 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:25:52.300Z",
+        "reason": "Agent: existing offset green-button shadows on a light-only cream interface, not an ambient glow. This exception preserves the established design requested by the user."
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:29:55.058Z",
+        "reason": "Agent: retained existing project font because the user explicitly requested preserving the established design during accessibility fixes."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:29:55.093Z",
+        "reason": "Agent: existing boot-card top accent and rounded corners retained under the user instruction to preserve the design; this is an aesthetic finding, not a new accessibility defect."
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:29:55.128Z",
+        "reason": "Agent: existing dashboard grouping retained under the user instruction to preserve the design; no flattening or redesign is authorized."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:29:55.164Z",
+        "reason": "Agent: existing home class-bar accent retained under the user instruction to preserve the established design."
+      },
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-19T18:29:55.198Z",
+        "reason": "Agent: source identifies this motion as an indeterminate loading progress bar rather than scrolling content; reduced-motion users receive a static indicator with loading status text."
+      }
+    ]
+  }
+}

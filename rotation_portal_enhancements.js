@@ -529,7 +529,7 @@ function overrideSharedClassListRenderer(){
       const primaryTagText = portalCardMeta.primaryTag || ('세트 ' + studyCount)
 
       return '' +
-        '<div class="class-item" onclick="requestClassAccess(' + index + ')">' +
+        '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="requestClassAccess(' + index + ')">' +
         '<div class="class-body">' +
             '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
             '<div class="class-preview">' + escapeHtml(previewText) + '</div>' +
@@ -539,7 +539,7 @@ function overrideSharedClassListRenderer(){
             '</div>' +
           '</div>' +
           '<div class="p-arrow">&rsaquo;</div>' +
-        '</div>'
+        '</button>'
     }).join('')
   }
 
@@ -1116,6 +1116,9 @@ function openAppDrawer(){
   const backdrop = document.getElementById('app-drawer-backdrop')
   if(drawer) drawer.classList.add('open')
   if(drawer) drawer.setAttribute('aria-hidden', 'false')
+  if(drawer) syncPortalOverlayAccessibility(drawer, true)
+  const trigger = document.getElementById('app-menu-btn')
+  if(trigger) trigger.setAttribute('aria-expanded', 'true')
   if(backdrop) backdrop.classList.remove('hidden')
 }
 
@@ -1124,6 +1127,9 @@ function closeAppDrawer(){
   const backdrop = document.getElementById('app-drawer-backdrop')
   if(drawer) drawer.classList.remove('open')
   if(drawer) drawer.setAttribute('aria-hidden', 'true')
+  if(drawer) syncPortalOverlayAccessibility(drawer, false)
+  const trigger = document.getElementById('app-menu-btn')
+  if(trigger) trigger.setAttribute('aria-expanded', 'false')
   if(backdrop) backdrop.classList.add('hidden')
 }
 
@@ -1729,9 +1735,8 @@ function renderGrammarPlayer(context){
     button.dataset.grammarPartIndex = String(index)
     button.dataset.watchStatus = watchStatus
     button.dataset.uiIconSkip = 'true'
-    button.setAttribute('role', 'tab')
-    button.setAttribute('aria-selected', isActive ? 'true' : 'false')
-    button.tabIndex = isActive ? 0 : -1
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false')
+    button.tabIndex = 0
 
     const title = document.createElement('strong')
     title.textContent = 'PART ' + String(index + 1).padStart(2, '0')
@@ -2264,7 +2269,7 @@ function selectGrammarLevel(levelId){
     history.replaceState({ appRoute: route }, '', window.location.href)
     portalState.currentRouteKey = JSON.stringify(route)
   }
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  window.scrollTo({ top: 0, behavior: portalScrollBehavior() })
 }
 
 function renderGrammarCourse(){
@@ -2287,6 +2292,7 @@ function renderGrammarCourse(){
     return total + Number(unit && unit.videoCount || 0)
   }, 0)
   list.classList.remove('grammar-course-list-error')
+  list.setAttribute('aria-labelledby', 'grammar-tab-' + level.id)
   setElementTextSafe('grammar-course-title', level.level)
   setElementTextSafe('grammar-unit-count', accessibleUnits.length + ' UNITS')
   setElementTextSafe('grammar-video-count', accessibleVideoCount + ' VIDEOS')
@@ -3179,14 +3185,14 @@ function scrollCheckScreenToBottom(){
   if(getCurrentActiveScreenId() !== 'check-set-screen') return
   const submitArea = document.getElementById('check-submit-actions')
   if(submitArea && typeof submitArea.scrollIntoView === 'function'){
-    submitArea.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    submitArea.scrollIntoView({ behavior: portalScrollBehavior(), block: 'end' })
   }
   setTimeout(function(){
     const scrollHeight = Math.max(
       document.documentElement ? document.documentElement.scrollHeight : 0,
       document.body ? document.body.scrollHeight : 0
     )
-    window.scrollTo({ top: scrollHeight, behavior: 'smooth' })
+    window.scrollTo({ top: scrollHeight, behavior: portalScrollBehavior() })
   }, 120)
 }
 
@@ -4129,8 +4135,10 @@ function bindCheckFormInteractions(checkSet, submission){
         setCurrentCheckDraftAnswer(questionId, nextValue)
         group.querySelectorAll('.check-choice-btn').forEach(function(node){
           node.classList.remove('active')
+          node.setAttribute('aria-pressed', 'false')
         })
         if(nextValue) button.classList.add('active')
+        button.setAttribute('aria-pressed', nextValue ? 'true' : 'false')
         renderCheckSubmitArea(checkSet, submission)
       })
     })
@@ -4448,7 +4456,7 @@ async function fetchMyQuestionIssues(checkSet){
         .get()
 
       return snapshot.docs.map(function(doc){
-        return Object.assign({ id: doc.id }, doc.data())
+        return Object.assign({}, doc.data(), { id: doc.id })
       })
     }catch(error){
       console.warn('questionIssues read fallback:', error && error.message ? error.message : error)
@@ -4465,7 +4473,7 @@ async function fetchAllQuestionIssues(){
     try{
       const snapshot = await portalState.db.collection('questionIssues').get()
       return snapshot.docs.map(function(doc){
-        return Object.assign({ id: doc.id }, doc.data())
+        return Object.assign({}, doc.data(), { id: doc.id })
       })
     }catch(error){
       console.warn('questionIssues admin read fallback:', error && error.message ? error.message : error)
@@ -5276,7 +5284,7 @@ async function fetchMyCounselRequests(){
         .get()
       usedCloud = true
       rows = snapshot.docs.map(function(doc){
-        return normalizeCounselRequestRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+        return normalizeCounselRequestRecord(Object.assign({}, doc.data() || {}, { id: doc.id }))
       }).filter(Boolean)
     }catch(error){
       console.warn('counselRequests my read fallback:', error && error.message ? error.message : error)
@@ -5452,7 +5460,7 @@ async function fetchAllCounselRequests(){
       const snapshot = await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).get()
       usedCloud = true
       rows = snapshot.docs.map(function(doc){
-        return normalizeCounselRequestRecord(Object.assign({ id: doc.id }, doc.data() || {}))
+        return normalizeCounselRequestRecord(Object.assign({}, doc.data() || {}, { id: doc.id }))
       }).filter(Boolean)
     }catch(error){
       console.warn('counselRequests admin read fallback:', error && error.message ? error.message : error)
@@ -11434,7 +11442,7 @@ async function loginPortalUser(loginId, password){
   }
 
   const user = findLocalPortalUser(loginId, password)
-  if(!user) throw new Error('?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.')
+  if(!user) throw Object.assign(new Error('?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.'), { code: 'auth/invalid-credential' })
 
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
   portalState.currentUser = buildLocalAuthUser(user)
@@ -11448,19 +11456,19 @@ async function submitPasswordChange(){
   const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
 
   if(!currentPassword || !nextPassword || !confirmPassword){
-    setPasswordError('紐⑤뱺 移몄쓣 ?낅젰??二쇱꽭??')
+    setPasswordError('모든 칸을 입력해 주세요.')
     return
   }
   if(nextPassword.length < 6){
-    setPasswordError('??鍮꾨?踰덊샇??6???댁긽?쇰줈 ?낅젰??二쇱꽭??')
+    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.', 'password-next')
     return
   }
   if(nextPassword !== confirmPassword){
-    setPasswordError('??鍮꾨?踰덊샇 ?뺤씤???쇱튂?섏? ?딆뒿?덈떎.')
+    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.', 'password-confirm')
     return
   }
   if(currentPassword === nextPassword){
-    setPasswordError('?꾩옱 鍮꾨?踰덊샇? ?ㅻⅨ 媛믪쑝濡?諛붽퓭 二쇱꽭??')
+    setPasswordError('현재 비밀번호와 다른 값을 입력해 주세요.', 'password-next')
     return
   }
 
@@ -11494,7 +11502,7 @@ async function submitPasswordChange(){
         return entry.id === currentUserId
       })
       if(targetIndex < 0) throw new Error('Account information was not found.')
-      if(users[targetIndex].password !== currentPassword) throw new Error('Current password is incorrect.')
+      if(users[targetIndex].password !== currentPassword) return setPasswordError('현재 비밀번호가 올바르지 않습니다.', 'password-current')
 
       users[targetIndex].password = nextPassword
       users[targetIndex].passwordResetRequired = false
@@ -11514,17 +11522,16 @@ async function submitPasswordChange(){
     if(backBtn) backBtn.style.display = ''
     if(homeBtn) homeBtn.style.display = ''
 
-    showToast('鍮꾨?踰덊샇瑜?蹂寃쏀뻽?듬땲??', 'var(--green)')
+    showToast('비밀번호를 변경했습니다.', 'var(--green)')
     showPortalScreen()
   }catch(error){
-    setPasswordError(getPasswordChangeErrorMessage(error))
+    setPasswordError(getPasswordChangeErrorMessage(error), getPasswordChangeErrorField(error))
   }
 }
 
 const PORTAL_EXAM_STATE_DOC = 'exam-state'
-const SUPERADMIN_DEFAULT_PASSWORD = ''
 const SUPERADMIN_CLASS_ADMIN_HEADERS = ['classId', 'className', 'managerUid', 'managerLoginId', 'managerName', 'managerEmail', 'managerScope']
-const SUPERADMIN_STUDENT_HEADERS = ['uid', 'status', 'loginId', 'name', 'studentId', 'email', 'classId', 'className']
+const SUPERADMIN_STUDENT_HEADERS = ['uid', 'status', 'loginId', 'name', 'studentId', 'email', 'classId', 'className', 'initialPassword']
 
 function normalizeUserProfile(source){
   const classIds = Array.isArray(source && source.classIds)
@@ -11566,7 +11573,7 @@ function normalizeUserProfileLocal(source){
   const role = String(source && source.role || 'student').trim() || 'student'
   const resetRequired = typeof (source && source.passwordResetRequired) === 'boolean'
     ? !!source.passwordResetRequired
-    : (password === SUPERADMIN_DEFAULT_PASSWORD)
+    : true
   return {
     id: String(source && source.id || '').trim(),
     loginId: loginId,
@@ -12301,6 +12308,7 @@ function normalizeSuperAdminStudentRows(rows){
       loginId: loginId,
       name: String(row && row.name || '').trim(),
       studentId: String(row && (row.studentid || row.studentId) || loginId || '').trim(),
+      initialPassword: String(row && (row.initialpassword || row.initialPassword) || '').trim(),
       email: String(row && row.email || toPortalLoginEmail(loginId) || '').trim().toLowerCase(),
       classId: classId,
       className: String(row && (row.classname || row.className) || classNameById.get(classId) || '').trim()
@@ -12316,7 +12324,10 @@ function savePortalUsersLocally(users){
   }))
 }
 
-async function createPortalStudentProfileByAdmin(record){
+async function createPortalStudentProfileByAdmin(record, initialPassword){
+  if(typeof initialPassword !== 'string' || initialPassword.length < 12){
+    throw new Error('신규 학생의 개별 임시 비밀번호는 12자 이상이어야 합니다.')
+  }
   if(!portalState.firebaseEnabled || !window.firebase || !window.ROTATION_FIREBASE_CONFIG){
     const users = readLocalUsers()
     const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
@@ -12324,7 +12335,7 @@ async function createPortalStudentProfileByAdmin(record){
       id: localId,
       loginId: record.loginId,
       email: record.email,
-      password: SUPERADMIN_DEFAULT_PASSWORD,
+      password: initialPassword,
       name: record.name,
       studentId: record.studentId,
       classIds: record.classIds,
@@ -12342,7 +12353,7 @@ async function createPortalStudentProfileByAdmin(record){
   const secondaryApp = firebase.initializeApp(window.ROTATION_FIREBASE_CONFIG, appName)
   try{
     const secondaryAuth = secondaryApp.auth()
-    const credential = await secondaryAuth.createUserWithEmailAndPassword(record.email, SUPERADMIN_DEFAULT_PASSWORD)
+    const credential = await secondaryAuth.createUserWithEmailAndPassword(record.email, initialPassword)
     const user = credential && credential.user ? credential.user : secondaryAuth.currentUser
     if(!user) throw new Error('학생 계정을 생성하지 못했습니다.')
     if(record.name){
@@ -12350,12 +12361,41 @@ async function createPortalStudentProfileByAdmin(record){
         await user.updateProfile({ displayName: record.name })
       }catch(error){}
     }
-    await portalState.db.collection('users').doc(user.uid).set(Object.assign({}, record, {
-      uid: user.uid
-    }), { merge: true })
-    await secondaryAuth.signOut()
+    const profileRef = portalState.db.collection('users').doc(user.uid)
+    const profile = Object.assign({}, record, { uid: user.uid })
+    try{
+      await profileRef.set(profile, { merge: true })
+    }catch(error){
+      const recoveryError = new Error('학생 계정의 프로필 저장 상태를 확인하거나 계정 생성을 취소하지 못했습니다. UID: ' + user.uid + '. 반복 적용하지 말고 이 UID의 Auth/프로필 상태를 확인해 주세요.')
+      recoveryError.code = 'portal/student-profile-recovery-required'
+      recoveryError.uid = user.uid
+      let snapshot
+      try{
+        // Cached absence cannot prove that the server rejected the profile write.
+        snapshot = await profileRef.get({ source: 'server' })
+      }catch(readError){
+        throw recoveryError
+      }
+      if(snapshot.metadata && (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) throw recoveryError
+      if(snapshot.exists){
+        const saved = snapshot.data() || {}
+        if(!Object.keys(profile).every(function(key){ return JSON.stringify(saved[key]) === JSON.stringify(profile[key]) })) throw recoveryError
+      }else{
+        try{
+          await user.delete()
+        }catch(deleteError){
+          throw recoveryError
+        }
+        const retryError = new Error('프로필 저장에 실패해 이번에 만든 학생 계정을 취소했습니다. 권한·연결 상태를 확인한 뒤 같은 CSV를 다시 적용해 주세요.')
+        retryError.code = 'portal/student-profile-create-rolled-back'
+        throw retryError
+      }
+    }
     return { uid: user.uid }
   }finally{
+    try{
+      await secondaryApp.auth().signOut()
+    }catch(error){}
     try{
       await secondaryApp.delete()
     }catch(error){}
@@ -12551,6 +12591,9 @@ async function applySuperAdminStudentRows(){
       if(!row.loginId || !row.name){
         errors.push('신규 학생은 loginId와 이름이 필요합니다.')
       }
+      if(row.initialPassword.length < 12){
+        errors.push('신규 학생의 initialPassword에 개별 임시 비밀번호를 12자 이상 입력해 주세요.')
+      }
     }
   }
 
@@ -12599,11 +12642,16 @@ async function applySuperAdminStudentRows(){
       createdAt: now,
       updatedAt: now
     }
-    await createPortalStudentProfileByAdmin(profile)
+    await createPortalStudentProfileByAdmin(profile, row.initialPassword)
+    delete row.initialPassword
     createdCount += 1
   }
 
-  state.studentRows = uploadedRows
+  state.studentRows = uploadedRows.map(function(row){
+    const safeRow = Object.assign({}, row)
+    delete safeRow.initialPassword
+    return safeRow
+  })
   if(portalState.firebaseEnabled && portalState.currentUser){
     const refreshed = await fetchOrCreateUserProfile(portalState.currentUser)
     portalState.currentProfile = refreshed
@@ -13038,7 +13086,7 @@ async function loginPortalUser(loginId, password){
   }
 
   const user = findLocalPortalUser(loginId, password)
-  if(!user) throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.')
+  if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
   if(user.loginDisabled) throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
 
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
@@ -13082,3 +13130,98 @@ renderAdminScreen = async function(){
   await renderSuperAdminExamCenter()
   await renderAdminCounselRequests()
 }
+
+const portalAccessibleOverlays = new Map()
+
+function portalScrollBehavior(){
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
+function getPortalFocusableElements(root){
+  return Array.from(root.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')).filter(function(node){
+    return node.getClientRects().length && !node.closest('[inert]') && getComputedStyle(node).visibility !== 'hidden'
+  })
+}
+
+function syncPortalOverlayAccessibility(overlay, open){
+  const previous = portalAccessibleOverlays.get(overlay)
+  if(previous && previous.open === open) return
+  const returnTo = open ? document.activeElement : previous && previous.returnTo
+  portalAccessibleOverlays.delete(overlay)
+  portalAccessibleOverlays.set(overlay, { open: open, returnTo: returnTo })
+  overlay.inert = !open
+  const active = Array.from(portalAccessibleOverlays).filter(function(entry){ return entry[1].open }).at(-1)
+  ;['app-main', 'app-chrome'].forEach(function(id){
+    const node = document.getElementById(id)
+    if(node) node.inert = !!active
+  })
+  portalAccessibleOverlays.forEach(function(state, node){
+    node.inert = !state.open || (!!active && active[0] !== node)
+  })
+  if(open){
+    const dialog = overlay.querySelector('[role="dialog"]') || overlay
+    dialog.tabIndex = -1
+    ;(getPortalFocusableElements(dialog)[0] || dialog).focus({ preventScroll: true })
+  }else if(returnTo && returnTo.isConnected && !returnTo.closest('[inert]') && returnTo.getClientRects().length){
+    returnTo.focus({ preventScroll: true })
+  }
+}
+
+function movePortalTabFocus(tab, key){
+  const list = tab.closest('[role="tablist"]')
+  if(!list) return false
+  const tabs = Array.from(list.querySelectorAll('[role="tab"]')).filter(function(node){
+    return !node.disabled && !node.classList.contains('hidden')
+  })
+  const index = tabs.indexOf(tab)
+  if(index < 0 || !['ArrowRight','ArrowLeft','Home','End'].includes(key)) return false
+  const target = key === 'Home' ? 0 : key === 'End' ? tabs.length - 1 : (index + (key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+  tabs[target].focus()
+  tabs[target].click()
+  return true
+}
+
+function bindPortalAccessibility(){
+  const closeActions = {
+    'app-drawer': closeAppDrawer,
+    'prep-video-manager-modal': closePortalPrepVideoManager,
+    'prep-video-progress-modal': closePortalPrepVideoProgressModal,
+    'check-set-editor-modal': closePortalManagedCheckSetEditor
+  }
+  Object.keys(closeActions).forEach(function(id){
+    const overlay = document.getElementById(id)
+    if(!overlay) return
+    const sync = function(){
+      syncPortalOverlayAccessibility(overlay, id === 'app-drawer' ? overlay.classList.contains('open') : !overlay.classList.contains('hidden'))
+    }
+    sync()
+    new MutationObserver(sync).observe(overlay, { attributes: true, attributeFilter: ['class'] })
+  })
+  document.addEventListener('keydown', function(event){
+    const active = Array.from(portalAccessibleOverlays).filter(function(entry){ return entry[1].open }).at(-1)
+    if(active){
+      const overlay = active[0]
+      if(event.key === 'Escape'){
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        closeActions[overlay.id]()
+        return
+      }
+      if(event.key === 'Tab'){
+        const nodes = getPortalFocusableElements(overlay)
+        const first = nodes[0]
+        const last = nodes.at(-1)
+        if(!first){ event.preventDefault(); return }
+        if(!overlay.contains(document.activeElement) || (event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)){
+          event.preventDefault()
+          ;(event.shiftKey ? last : first).focus()
+        }
+      }
+    }
+    const tab = event.target.closest('[role="tab"]')
+    if(tab && movePortalTabFocus(tab, event.key)) event.preventDefault()
+  }, true)
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindPortalAccessibility)
+else bindPortalAccessibility()

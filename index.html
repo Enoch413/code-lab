@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CODE LAB</title>
 <meta name="theme-color" content="#0d4d44">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,11 +17,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20260930-check-scroll-stability-01">
+<link rel="stylesheet" href="./rotation_prep.css?v=20261020-accessibility-02">
 </head>
 <body>
+<a class="skip-link" href="#app-main">본문으로 건너뛰기</a>
 <div id="app-chrome" class="app-chrome hidden" aria-hidden="true">
-  <button class="app-chrome-btn" type="button" id="app-menu-btn" aria-label="메뉴 열기">☰</button>
+  <button class="app-chrome-btn" type="button" id="app-menu-btn" aria-label="메뉴 열기" aria-controls="app-drawer" aria-expanded="false">☰</button>
   <div class="app-chrome-copy">
     <div class="app-chrome-breadcrumb" id="app-chrome-breadcrumb"></div>
     <div class="app-chrome-title" id="app-chrome-title">CODE LAB</div>
@@ -30,7 +31,7 @@
 </div>
 
 <div id="app-drawer-backdrop" class="app-drawer-backdrop hidden"></div>
-<aside id="app-drawer" class="app-drawer" aria-hidden="true">
+<aside id="app-drawer" class="app-drawer" role="dialog" aria-modal="true" aria-label="CODE LAB 메뉴" aria-hidden="true" inert>
   <div class="app-drawer-head">
     <div>
       <div class="app-drawer-kicker">CODE LAB MENU</div>
@@ -58,20 +59,21 @@
   </div>
 </aside>
 
+<main id="app-main" tabindex="-1">
 <div class="screen" id="auth-screen">
   <div class="auth-shell">
-    <div class="logo">CODE LAB</div>
+    <h1 class="logo">CODE LAB</h1>
 
     <div class="auth-card">
       <div class="auth-grid">
         <label class="auth-field">
           <span>아이디</span>
-          <input type="text" id="auth-email" placeholder="student01" autocomplete="username" inputmode="text" autocapitalize="off" spellcheck="false">
+          <input type="text" id="auth-email" aria-describedby="auth-error" placeholder="student01" autocomplete="username" inputmode="text" autocapitalize="off" spellcheck="false">
         </label>
         <div class="auth-field auth-password-field">
           <label for="auth-password">비밀번호</label>
           <div class="auth-password-control">
-            <input type="password" id="auth-password" placeholder="비밀번호" autocomplete="current-password">
+            <input type="password" id="auth-password" aria-describedby="auth-error" placeholder="비밀번호" autocomplete="current-password">
             <button class="auth-password-toggle" type="button" id="auth-password-toggle" aria-label="비밀번호 표시" aria-pressed="false" title="비밀번호 표시" data-ui-icon-skip="true">
               <svg class="auth-password-toggle-icon auth-password-toggle-icon-show" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"></path>
@@ -88,7 +90,7 @@
         </div>
       </div>
 
-      <div class="auth-error" id="auth-error"></div>
+      <div class="auth-error" id="auth-error" role="alert" aria-atomic="true"></div>
       <div class="auth-actions">
         <button class="btn btn-blue" type="button" id="auth-submit-btn">로그인</button>
       </div>
@@ -168,21 +170,21 @@
   </section>
 
   <div class="grammar-level-tabs" role="tablist" aria-label="문법 레벨 선택">
-    <button class="grammar-level-tab active" type="button" role="tab" aria-selected="true" data-grammar-level="lv01" data-ui-icon-skip="true">
+    <button class="grammar-level-tab active" type="button" role="tab" aria-selected="true" data-grammar-level="lv01" id="grammar-tab-lv01" aria-controls="grammar-course-list" data-ui-icon-skip="true">
       <strong>LV.01</strong>
     </button>
-    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv02" data-ui-icon-skip="true">
+    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv02" id="grammar-tab-lv02" aria-controls="grammar-course-list" data-ui-icon-skip="true">
       <strong>LV.02</strong>
     </button>
-    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv03" data-ui-icon-skip="true">
+    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv03" id="grammar-tab-lv03" aria-controls="grammar-course-list" data-ui-icon-skip="true">
       <strong>LV.03</strong>
     </button>
-    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv04" data-ui-icon-skip="true">
+    <button class="grammar-level-tab" type="button" role="tab" aria-selected="false" data-grammar-level="lv04" id="grammar-tab-lv04" aria-controls="grammar-course-list" data-ui-icon-skip="true">
       <strong>LV.04</strong>
     </button>
   </div>
 
-  <div class="grammar-course-list" id="grammar-course-list" role="tabpanel" aria-live="polite"></div>
+  <div class="grammar-course-list" id="grammar-course-list" role="tabpanel" aria-labelledby="grammar-tab-lv01" tabindex="0" aria-live="polite"></div>
 </div>
 
 <div class="screen" id="grammar-player-screen">
@@ -259,7 +261,7 @@
         <strong>영상 구성</strong>
         <span>순서대로 학습하세요.</span>
       </div>
-      <div class="grammar-part-list" id="grammar-part-list" role="tablist" aria-label="영상 파트 선택"></div>
+      <div class="grammar-part-list" id="grammar-part-list" role="group" aria-label="영상 파트 선택"></div>
     </div>
 
     <p class="grammar-player-note">영상은 로그인 권한을 확인한 뒤 이 기기에 임시로 불러오며, 화면을 나가면 재생 주소가 정리됩니다.</p>
@@ -328,7 +330,7 @@
 
   <section class="group counsel-history-panel counsel-history-card" id="counsel-history-panel">
     <div class="group-title">
-      <h3>상담 신청 내역</h3>
+      <h2>상담 신청 내역</h2>
       <span class="group-count" id="counsel-history-count">0</span>
     </div>
     <div class="admin-list counsel-history-list" id="counsel-history-list"></div>
@@ -345,7 +347,7 @@
 
   <section class="group counsel-form-panel counsel-form-card">
     <div class="group-title">
-      <h3 id="counsel-form-heading">상담 신청서</h3>
+      <h2 id="counsel-form-heading">상담 신청서</h2>
       <span class="group-count" id="counsel-form-type-badge">COUNSEL</span>
     </div>
     <div class="counsel-form-grid">
@@ -408,7 +410,7 @@
 
   <section class="group">
     <div class="group-title">
-      <h3>내 계정 정보</h3>
+      <h2>내 계정 정보</h2>
     </div>
     <div class="account-grid">
       <div class="account-row"><span class="account-label">이름</span><strong class="account-value" id="account-name"></strong></div>
@@ -432,23 +434,23 @@
 
   <section class="group">
     <div class="group-title">
-      <h3>처음 로그인했다면 비밀번호를 먼저 바꿔 주세요.</h3>
+      <h2>처음 로그인했다면 비밀번호를 먼저 바꿔 주세요.</h2>
     </div>
     <div class="auth-grid">
       <label class="auth-field">
         <span>현재 비밀번호</span>
-        <input type="password" id="password-current" placeholder="현재 비밀번호">
+        <input type="password" id="password-current" autocomplete="current-password" aria-describedby="password-error" placeholder="현재 비밀번호">
       </label>
       <label class="auth-field">
         <span>새 비밀번호</span>
-        <input type="password" id="password-next" placeholder="새 비밀번호">
+        <input type="password" id="password-next" autocomplete="new-password" aria-describedby="password-error" placeholder="새 비밀번호">
       </label>
       <label class="auth-field">
         <span>새 비밀번호 확인</span>
-        <input type="password" id="password-confirm" placeholder="새 비밀번호 확인">
+        <input type="password" id="password-confirm" autocomplete="new-password" aria-describedby="password-error" placeholder="새 비밀번호 확인">
       </label>
     </div>
-    <div class="auth-error" id="password-error"></div>
+    <div class="auth-error" id="password-error" role="alert" aria-atomic="true"></div>
     <div class="bottom-actions">
       <button class="btn btn-blue" type="button" id="password-submit-btn">비밀번호 저장</button>
     </div>
@@ -457,7 +459,7 @@
 
 <div class="screen active boot-screen" id="boot-screen">
   <div class="boot-card">
-    <div class="logo">PREP</div>
+    <h1 class="logo">PREP</h1>
     <div class="boot-title" id="boot-title">PREP 자료를 불러오는 중입니다.</div>
     <div class="boot-desc" id="boot-desc">웹에서는 같은 폴더의 <b>session.json</b>을 자동으로 확인합니다.</div>
   </div>
@@ -465,10 +467,10 @@
 </div>
 
 <div class="screen" id="pw-screen">
-  <div class="logo">CODE LAB</div>
+  <h1 class="logo">CODE LAB</h1>
   <div class="tagline">수업 전 미리 준비하는 학습 페이지</div>
-  <input type="tel" id="pw-input" placeholder="공통 비밀번호" maxlength="20" inputmode="numeric" autocomplete="off">
-  <div class="err" id="pw-err"></div>
+  <input type="tel" id="pw-input" aria-label="공통 비밀번호" aria-describedby="pw-err" placeholder="공통 비밀번호" maxlength="20" inputmode="numeric" autocomplete="off">
+  <div class="err" id="pw-err" role="alert" aria-atomic="true"></div>
   <button class="btn btn-blue" style="margin-top:16px;padding:12px 40px" type="button" id="pw-submit-btn">입장</button>
   <footer class="prep-footer overlay">Copyright (c) 2026, 코드 영어 연구소 All rights reserved.</footer>
 </div>
@@ -493,8 +495,8 @@
     <div class="label">선택한 반</div>
     <div class="class-auth-name" id="class-auth-name">1반</div>
     <div class="class-auth-help">이 반에 열려 있는 학습 세트를 보려면 반 비밀번호를 입력해 주세요.</div>
-    <input type="password" class="class-auth-input" id="class-pw-input" placeholder="반 비밀번호" autocomplete="off">
-    <div class="class-auth-err" id="class-pw-err"></div>
+    <input type="password" class="class-auth-input" id="class-pw-input" aria-label="선택한 반 비밀번호" aria-describedby="class-pw-err" placeholder="반 비밀번호" autocomplete="off">
+    <div class="class-auth-err" id="class-pw-err" role="alert" aria-atomic="true"></div>
     <div class="bottom-actions">
       <button class="btn btn-ghost" type="button" id="class-auth-back-btn">반 목록으로</button>
       <button class="btn btn-blue" type="button" id="class-auth-submit-btn">입장</button>
@@ -528,7 +530,7 @@
   <div id="dash" style="display:none;margin-top:24px">
     <section class="group admin-content-panel hidden" id="prep-admin-set-panel">
       <div class="group-title">
-        <h3>PREP 영상 관리</h3>
+        <h2>PREP 영상 관리</h2>
         <span class="group-count" id="prep-admin-set-count">0</span>
       </div>
       <div class="admin-content-toolbar">
@@ -589,7 +591,7 @@
   </div>
 
   <div class="s-title">
-    <h2 id="study-menu-title">지문 1</h2>
+    <h1 id="study-menu-title">지문 1</h1>
     <span class="cnt" id="study-menu-count">0유형</span>
   </div>
 
@@ -597,7 +599,7 @@
 
   <section class="group">
     <div class="group-title">
-      <h3>학습 유형 선택</h3>
+      <h2>학습 유형 선택</h2>
       <span class="group-count">STEP</span>
     </div>
     <div class="study-topic-list" id="study-menu-list"></div>
@@ -616,7 +618,7 @@
   </div>
 
   <div class="s-title">
-    <h2 id="s-title">지문 1</h2>
+    <h1 id="s-title">지문 1</h1>
     <span class="cnt" id="s-cnt">0문제</span>
   </div>
 
@@ -704,7 +706,7 @@
 
   <section class="group">
     <div class="group-title">
-      <h3>LAB INDEX</h3>
+      <h2>LAB INDEX</h2>
       <span class="group-count">4 LAB</span>
     </div>
     <div class="admin-portal-grid">
@@ -768,7 +770,7 @@
   </div>
   <section class="group admin-wide hidden" id="superadmin-exam-center">
     <div class="group-title">
-      <h3>시험 운영 센터</h3>
+      <h2>시험 운영 센터</h2>
     </div>
     <div class="superadmin-exam-center-meta" id="superadmin-exam-center-meta">SUPERADMIN ONLY</div>
     <div class="superadmin-overview" id="superadmin-exam-overview">
@@ -778,7 +780,7 @@
     <div class="superadmin-cycle-grid">
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 1</div>
-        <h4>시험 종료 아카이브</h4>
+        <h3>시험 종료 아카이브</h3>
         <label class="superadmin-field">
           <span>시험명</span>
           <input class="admin-select superadmin-text-input" type="text" id="superadmin-archive-exam-name" placeholder="예: 2026 1학기 중간고사">
@@ -793,7 +795,7 @@
 
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 2</div>
-        <h4>반 / 관리자 재배정</h4>
+        <h3>반 / 관리자 재배정</h3>
         <div class="superadmin-inline-actions">
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-download-class-admin-template-btn">현재 CSV 다운로드</button>
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-upload-class-admin-btn">CSV 업로드</button>
@@ -804,7 +806,8 @@
 
       <section class="superadmin-cycle-card">
         <div class="superadmin-step">STEP 3</div>
-        <h4>학생 변동 반영</h4>
+        <h3>학생 변동 반영</h3>
+        <p>신규 학생은 CSV의 initialPassword에 서로 다른 12자 이상의 임시 비밀번호를 입력하세요. 기존 학생의 비밀번호는 변경하지 않습니다. CSV는 안전한 로컬 위치에 보관하세요.</p>
         <div class="superadmin-inline-actions">
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-download-student-template-btn">현재 CSV 다운로드</button>
           <button class="btn btn-ghost btn-sm" type="button" id="superadmin-upload-student-btn">CSV 업로드</button>
@@ -815,7 +818,7 @@
 
       <section class="superadmin-cycle-card superadmin-cycle-card-danger">
         <div class="superadmin-step">STEP 4</div>
-        <h4>새 시험 시작 초기화</h4>
+        <h3>새 시험 시작 초기화</h3>
         <label class="superadmin-field">
           <span>다음 시험명</span>
           <input class="admin-select superadmin-text-input" type="text" id="superadmin-next-exam-name" placeholder="예: 2026 1학기 기말고사">
@@ -835,11 +838,11 @@
 
   <div class="admin-grid">
     <section class="group">
-      <div class="group-title"><h3>자주 틀리는 유형</h3><span class="group-count" id="admin-type-count">0</span></div>
+      <div class="group-title"><h2>자주 틀리는 유형</h2><span class="group-count" id="admin-type-count">0</span></div>
       <div class="admin-list" id="admin-type-list"></div>
     </section>
     <section class="group">
-      <div class="group-title"><h3>학생별 틀린 문항</h3><span class="group-count" id="admin-response-count">0</span></div>
+      <div class="group-title"><h2>학생별 틀린 문항</h2><span class="group-count" id="admin-response-count">0</span></div>
       <div class="admin-filter-wrap admin-student-filter-wrap">
         <select id="admin-student-filter" class="admin-select" onchange="window.handleAdminStudentFilterChange && window.handleAdminStudentFilterChange(this.value)">
           <option value="">학생 선택</option>
@@ -848,12 +851,12 @@
       <div class="admin-list" id="admin-response-list"></div>
     </section>
     <section class="group">
-      <div class="group-title"><h3>질문 있어요</h3><span class="group-count" id="admin-issue-count">0</span></div>
+      <div class="group-title"><h2>질문 있어요</h2><span class="group-count" id="admin-issue-count">0</span></div>
       <div class="admin-list" id="admin-issue-list"></div>
     </section>
     <section class="group hidden" id="admin-grammar-access-section">
       <div class="group-title">
-        <h3>GRAMMAR 학생 권한</h3>
+        <h2>GRAMMAR 학생 권한</h2>
         <span class="group-count" id="admin-grammar-access-count">0명</span>
       </div>
       <p class="grammar-access-note">학생별로 전체 과정, 선택한 유닛만, 또는 접근 차단을 지정합니다. 저장된 권한은 영상과 교재 PDF에 동일하게 적용됩니다.</p>
@@ -890,7 +893,7 @@
       <section class="grammar-progress-admin" aria-labelledby="admin-grammar-progress-title">
         <div class="grammar-progress-admin-head">
           <div>
-            <h4 id="admin-grammar-progress-title">GRAMMAR 시청 현황</h4>
+            <h3 id="admin-grammar-progress-title">GRAMMAR 시청 현황</h3>
             <p>위에서 선택한 학생의 유닛별 시청 상태를 확인합니다.</p>
           </div>
           <button class="btn btn-ghost btn-sm" type="button" id="admin-grammar-progress-refresh-btn">새로고침</button>
@@ -903,13 +906,14 @@
       </section>
     </section>
     <section class="group">
-      <div class="group-title"><h3>상담 요청</h3><span class="group-count" id="admin-counsel-count">0</span></div>
+      <div class="group-title"><h2>상담 요청</h2><span class="group-count" id="admin-counsel-count">0</span></div>
       <div class="admin-list" id="admin-counsel-list"></div>
     </section>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <button class="check-jump-btn hidden" type="button" id="check-jump-bottom-btn">맨 아래로</button>
 <input type="file" accept=".json,application/json" id="file-input" hidden>
 <input type="file" accept=".json,application/json" id="prep-set-upload-input" hidden>
@@ -990,9 +994,9 @@
 <script src="./rotation_prep_core.js?v=20261007-grammar-only-class-01"></script>
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
-<script src="./rotation_prep_ui.js?v=20260721-current-class-02"></script>
-<script src="./rotation_portal.js?v=20261007-grammar-only-class-01"></script>
+<script src="./rotation_prep_ui.js?v=20261020-accessibility-01"></script>
+<script src="./rotation_portal.js?v=20261020-login-errors-01"></script>
 <script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
-<script src="./rotation_portal_enhancements.js?v=20261020-firebase-scope-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20261020-login-errors-01"></script>
 </body>
 </html>

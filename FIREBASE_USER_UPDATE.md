@@ -19,7 +19,7 @@ Use this when a student wants to change login ID, name, class, role, or password
 Because this project logs in with `loginId` but stores auth users as internal emails,
 changing the login ID also changes the internal Firebase email:
 
-- `synthetic-student-001` -> `synthetic-student-001@prep.local`
+- `example-student` -> `example-student@prep.local`
 
 ## Safe workflow
 
@@ -32,29 +32,29 @@ changing the login ID also changes the internal Firebase email:
 ### 1. Change login ID
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --new-login-id msu9999
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --new-login-id msu9999
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --new-login-id example-student-new
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --new-login-id example-student-new
 ```
 
 ### 2. Change displayed name
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --name ""
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --name ""
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --name "예시 학생"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --name "예시 학생"
 ```
 
 ### 3. Move a student to another class
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --class-ids "class-2-gangseo-a"
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --class-ids "class-2-gangseo-a"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --class-ids "class-2-gangseo-a"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --class-ids "class-2-gangseo-a"
 ```
 
 ### 4. Make a user admin
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id passion413 --role admin --class-ids "class-1-gangseo-b|class-2-gangseo-a|class-1-seonbu|class-3-seonbu"
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id passion413 --role admin --class-ids "class-1-gangseo-b|class-2-gangseo-a|class-1-seonbu|class-3-seonbu"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --role admin --class-ids "class-1-gangseo-b|class-2-gangseo-a|class-1-seonbu|class-3-seonbu"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --role admin --class-ids "class-1-gangseo-b|class-2-gangseo-a|class-1-seonbu|class-3-seonbu"
 ```
 
 ### 4-1. Make a user a superadmin-style account
@@ -67,15 +67,15 @@ changing the login ID also changes the internal Firebase email:
 ### 5. Force password reset again
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --password-reset-required true
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --password-reset-required true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --password-reset-required true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --password-reset-required true
 ```
 
 ### 6. Limit which TOOLS LAB buttons an admin can see
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id khe2016 --allowed-labs "word-lab,builder-lab"
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id khe2016 --allowed-labs "word-lab,builder-lab"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --allowed-labs "word-lab,builder-lab"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --allowed-labs "word-lab,builder-lab"
 ```
 
 Notes:
@@ -88,22 +88,22 @@ Notes:
 ### 7. Set a new temporary password
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --new-password pass5678 --password-reset-required true
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --new-password pass5678 --password-reset-required true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --new-password $studentTemporaryPassword --password-reset-required true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --new-password $studentTemporaryPassword --password-reset-required true
 ```
 
 ### 8. Disable login without deleting data
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --disabled true
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --disabled true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --disabled true
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --disabled true
 ```
 
 ### 9. Re-enable login later
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id synthetic-student-001 --disabled false
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id synthetic-student-001 --disabled false
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --disabled false
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --disabled false
 ```
 
 ## Notes

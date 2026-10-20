@@ -6,3 +6,10 @@ build/
 Thumbs.db
 __pycache__/
 *.pyc
+/backups/
+/.local/
+/.venv/
+/private/
+/secrets/
+/tools/*.csv
+!/tools/firebase_bulk_users_template.csv

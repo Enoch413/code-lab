@@ -45,7 +45,7 @@ assert.ok(!syncJumpButton.includes('querySelectorAll'))
 
 assert.ok(styleSource.includes('content-visibility:auto;'))
 assert.ok(styleSource.includes('contain-intrinsic-size:auto 86px;'))
-assert.ok(indexSource.includes('20260930-check-scroll-stability-01'))
+assert.match(indexSource, /rotation_prep\.css\?v=[^"\s]+/)
 assert.ok(indexSource.includes('20261007-grammar-only-class-01'))
 
 // Run the actual read/entry functions with a stalled SDK and a controllable clock.

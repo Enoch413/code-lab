@@ -156,8 +156,8 @@ def normalize_row(raw_row: dict[str, str], domain: str, row_number: int) -> User
     initial_password = str(raw_row.get("initialPassword", "")).strip()
     email = str(raw_row.get("email", "")).strip().lower() or to_internal_email(login_id, domain)
 
-    if len(initial_password) < 6:
-        raise ValueError(f"row {row_number}: initialPassword must be at least 6 characters")
+    if len(initial_password) < 12:
+        raise ValueError(f"row {row_number}: initialPassword must be at least 12 characters")
 
     return UserRow(
         login_id=login_id,

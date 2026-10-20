@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--login-id",
-        help="Current login ID to find the user. Example: synthetic-student-001",
+        help="Current login ID to find the user. Example: example-student",
     )
     parser.add_argument(
         "--uid",
