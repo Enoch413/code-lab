@@ -12,6 +12,8 @@ Run `node tools/test-security-boundaries.mjs` for synthetic local checks. These 
 
 Run `node tools/test-student-creation-recovery.mjs` for synthetic failed-write, lost-response, compensation, existing-account protection and partial-batch retry checks. They do not initialize a real Firebase SDK.
 
+`storage.rules` is a local shared-project candidate, not a deployed change. `node tools/test-rules-local.mjs` checks Firestore and Storage on loopback demo emulators, including active-profile checks, assigned PREP documents, GRAMMAR grants and PDF LAB shared images. Keep the existing live-rule snapshot and coordinate both applications before any deployment. Existing download-token URLs bypass authenticated rule checks and remain a separate revocation/delivery task; the tests demonstrate this with a synthetic token and never print its value. No emulator test validates or revokes production credentials.
+
 ## Previously published data
 
 Removing working copies does not remove historical commits, GitHub copies or existing deployments, and it does not revoke old passwords. Inventory and credential response, Git-history cleanup and deployment require a separately reviewed operational change. Preserve restricted originals before cleanup. Do not rewrite shared history or reset production accounts as part of a local code fix.

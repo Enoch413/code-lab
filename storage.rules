@@ -1,0 +1,127 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function isActive() {
+      return signedIn()
+        && userDoc().data != null
+        && userDoc().data.get('loginDisabled', false) == false;
+    }
+
+    function isAdmin() {
+      return isActive() && userDoc().data.get('role', '') == 'admin';
+    }
+
+    function isFullAdmin() {
+      return isAdmin() && userDoc().data.get('adminScope', '') == 'all';
+    }
+
+    function isStudent() {
+      return isActive() && userDoc().data.get('role', 'student') == 'student';
+    }
+
+    function canManagePrepClass(classId) {
+      return isAdmin() && (
+        isFullAdmin() || classId in userDoc().data.get('classIds', [])
+      );
+    }
+
+    function canReadReviewedPrepSet(classId, setId) {
+      // Storage permits two document lookups: the current profile and this assignment.
+      let data = firestore.get(/databases/(default)/documents/portalPrepSets/$(setId)).data;
+      return data != null && data.get('accessSchemaVersion', 0) == 1
+        && data.get('classIds', []).size() == 1
+        && classId in data.get('classIds', [])
+        && (canManagePrepClass(classId) || (isStudent()
+          && userDoc().data.get('classIds', []).size() > 0
+          && !userDoc().data.get('classIds', []).hasAny(['class-grammar-only'])
+          && (request.auth.uid in data.get('targetUserIds', [])
+            || (data.get('assignmentMode', '') == 'class'
+              && classId in userDoc().data.get('classIds', [])))));
+    }
+
+    function canReadPrepSet(classId, setId) {
+      return isFullAdmin() || (isActive() && canReadReviewedPrepSet(classId, setId));
+    }
+
+    function canManageGrammar() {
+      return isFullAdmin() && (
+        request.auth.token.get('email', '') == 'superadmin@prep.local' ||
+        request.auth.token.get('email', '') == 'passion413@prep.local' ||
+        request.auth.token.get('email', '') == 'khe2016@prep.local'
+      );
+    }
+
+    function hasAllGrammarAccess() {
+      return canManageGrammar() || (
+        isStudent() &&
+        userDoc().data.get('grammarAccessMode', 'none') == 'all'
+      );
+    }
+
+    function canReadGrammarObject(objectPath) {
+      return hasAllGrammarAccess() || (
+        isStudent() &&
+        userDoc().data.get('grammarAccessMode', 'none') == 'units' &&
+        objectPath in userDoc().data.get('grammarObjectPaths', [])
+      );
+    }
+
+    function isPdfLabImageUpload() {
+      return request.resource != null
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/octet-stream'
+        );
+    }
+
+    match /prep-videos/{classId}/{setId}/{allPaths=**} {
+      allow read: if canReadPrepSet(classId, setId);
+
+      allow create, update: if canManagePrepClass(classId)
+        && canReadPrepSet(classId, setId)
+        && request.resource != null
+        && request.resource.size < 500 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+
+      allow delete: if canManagePrepClass(classId) && canReadPrepSet(classId, setId);
+    }
+
+    match /pdf-lab/shared-library/{allPaths=**} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isPdfLabImageUpload();
+      allow delete: if isAdmin();
+    }
+
+    match /videos/grammar/{fileName} {
+      allow read: if canReadGrammarObject('videos/grammar/' + fileName);
+
+      allow create, update: if canManageGrammar()
+        && request.resource != null
+        && request.resource.size < 100 * 1024 * 1024
+        && request.resource.contentType == 'video/mp4';
+
+      allow delete: if canManageGrammar();
+    }
+
+    match /materials/grammar/{fileName} {
+      allow read: if canReadGrammarObject('materials/grammar/' + fileName);
+
+      allow create, update: if canManageGrammar()
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+
+      allow delete: if canManageGrammar();
+    }
+  }
+}

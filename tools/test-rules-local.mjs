@@ -10,6 +10,9 @@ const config=JSON.parse(readFileSync(new URL('../firebase.local.json',import.met
 assert.equal(config.emulators.firestore.host,'127.0.0.1')
 assert.equal(config.emulators.firestore.port,8786)
 assert.equal(config.firestore.rules,'firestore.rules')
+assert.equal(config.emulators.storage.host,'127.0.0.1')
+assert.equal(config.emulators.storage.port,9298)
+assert.equal(config.storage.rules,'storage.rules')
 assert.equal(config.hosting,undefined)
 const java=spawnSync('java',['-version'],{encoding:'utf8'})
 assert.equal(java.status,0,'Java 21+ must be on PATH; set JAVA_HOME for this terminal only')
@@ -22,6 +25,6 @@ const command=windows?'firebase.cmd':'firebase'
 const pinned=spawnSync(command,['--version'],{cwd:root,env,encoding:'utf8',shell:windows})
 assert.equal(pinned.status,0,'Install the documented pinned Firebase CLI first')
 assert.equal(pinned.stdout.trim(),'15.34.0','Use Firebase CLI 15.34.0 for this suite')
-const result=spawnSync(command,['emulators:exec','--config','firebase.local.json','--project','demo-codelab-reaudit','--only','firestore',windows ? '"node tools/test-firestore-scope.mjs"' : 'node tools/test-firestore-scope.mjs'],{cwd:root,env,stdio:'inherit',shell:windows})
+const result=spawnSync(command,['emulators:exec','--config','firebase.local.json','--project','demo-codelab-reaudit','--only','firestore,storage',windows ? '"node tools/test-rules-suites.mjs"' : 'node tools/test-rules-suites.mjs'],{cwd:root,env,stdio:'inherit',shell:windows})
 if(result.error)throw result.error
 process.exit(result.status === null ? 1 : result.status)
