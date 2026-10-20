@@ -775,7 +775,7 @@
     <div class="superadmin-exam-center-meta" id="superadmin-exam-center-meta">SUPERADMIN ONLY</div>
     <div class="superadmin-overview" id="superadmin-exam-overview">
       <div class="superadmin-overview-title">현재 시험 정보를 불러오는 중입니다.</div>
-      <div class="superadmin-overview-meta">최고 관리자만 시험 종료 아카이브, 반/학생 정리, 새 시험 초기화를 진행할 수 있습니다.</div>
+      <div class="superadmin-overview-meta">최고 관리자만 시험 종료 아카이브와 반/학생 정리를 진행할 수 있습니다. 시험 초기화는 별도 관리 절차가 필요합니다.</div>
     </div>
     <div class="superadmin-cycle-grid">
       <section class="superadmin-cycle-card">
@@ -821,16 +821,16 @@
         <h3>새 시험 시작 초기화</h3>
         <label class="superadmin-field">
           <span>다음 시험명</span>
-          <input class="admin-select superadmin-text-input" type="text" id="superadmin-next-exam-name" placeholder="예: 2026 1학기 기말고사">
+          <input class="admin-select superadmin-text-input" type="text" id="superadmin-next-exam-name" disabled placeholder="예: 2026 1학기 기말고사">
         </label>
         <label class="superadmin-field">
           <span>확인 문구</span>
-          <input class="admin-select superadmin-text-input" type="text" id="superadmin-reset-confirm-text" placeholder="다음 시험명을 다시 입력">
+          <input class="admin-select superadmin-text-input" type="text" id="superadmin-reset-confirm-text" disabled placeholder="다음 시험명을 다시 입력">
         </label>
         <div class="superadmin-inline-actions">
-          <button class="btn btn-blue btn-sm" type="button" id="superadmin-reset-cycle-btn">새 시험 초기화 실행</button>
+          <button class="btn btn-blue btn-sm" type="button" id="superadmin-reset-cycle-btn" disabled aria-describedby="superadmin-reset-status">브라우저 초기화 비활성화</button>
         </div>
-        <div class="superadmin-status superadmin-status-danger" id="superadmin-reset-status">초기화는 아카이브와 반/학생 변경 반영 후 실행하는 것을 권장합니다.</div>
+        <div class="superadmin-status superadmin-status-danger" id="superadmin-reset-status">브라우저에서 시험 데이터를 삭제할 수 없습니다. 검증된 백업과 별도 승인 절차를 갖춘 관리 도구가 필요합니다.</div>
       </section>
     </div>
   </section>
@@ -991,12 +991,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="./rotation_prep_core.js?v=20261007-grammar-only-class-01"></script>
+<script src="./rotation_prep_core.js?v=20261020-p1-fixes-01"></script>
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20261020-accessibility-01"></script>
-<script src="./rotation_portal.js?v=20261020-login-errors-01"></script>
+<script src="./rotation_portal.js?v=20261020-p1-fixes-01"></script>
 <script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
-<script src="./rotation_portal_enhancements.js?v=20261020-login-errors-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20261020-p1-fixes-01"></script>
 </body>
 </html>

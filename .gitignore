@@ -13,3 +13,7 @@ __pycache__/
 /secrets/
 /tools/*.csv
 !/tools/firebase_bulk_users_template.csv
+/firestore-debug.log
+/firebase-debug.log
+/ui-debug.log
+/.playwright-cli/

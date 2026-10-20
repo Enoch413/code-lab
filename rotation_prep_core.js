@@ -428,7 +428,9 @@ function updateSetProgressContext(){
     progress = { done: {} }
     return
   }
-  progressKey = baseProgressKey + '_' + sanitizeId(currentClass.id)
+  const userId = typeof portalState !== 'undefined' && portalState.currentUser ? portalState.currentUser.uid : ''
+  if(!userId){ progressKey = ''; progress = { done: {} }; return }
+  progressKey = baseProgressKey + '_user_' + encodeURIComponent(userId) + '_' + sanitizeId(currentClass.id)
   loadProgress()
   if(typeof window.applyPortalPrepVideoProgressRowsToCurrentPrepClass === 'function'){
     window.applyPortalPrepVideoProgressRowsToCurrentPrepClass()

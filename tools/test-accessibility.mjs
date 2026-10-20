@@ -152,6 +152,7 @@ for(const submit of authHandlers){
     }]))
     const error={textContent:''},button={disabled:false,textContent:''}
     const context=vm.createContext({
+      portalState:{},
       document:{getElementById:id=>fields[id]||(id==='auth-submit-btn'?button:error)},
       setAuthPasswordVisibility:()=>{},
       async loginPortalUser(){

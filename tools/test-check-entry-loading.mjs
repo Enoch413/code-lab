@@ -19,10 +19,10 @@ const loadSets = source.slice(
   source.indexOf('async function loadCloudSetDocs(kind){'),
   source.indexOf('async function saveCloudSetDoc(kind, docId, record){')
 )
-assert.ok(loadSets.includes("where('targetUserIds', 'array-contains', userId)"))
+assert.ok(loadSets.includes("['targetUserIds', 'array-contains', userId]"))
 
 const ensureCheck = source.slice(source.lastIndexOf('async function ensureCheckData(forceReload){'))
-assert.ok(ensureCheck.includes('if(portalState.checkSyncPromise) return portalState.checkSyncPromise'))
+assert.ok(ensureCheck.includes('portalState.checkSyncUserId === userId'))
 
 const initFirebase = portalSource.slice(
   portalSource.indexOf('function initFirebasePortal(){'),
@@ -46,7 +46,7 @@ assert.ok(!syncJumpButton.includes('querySelectorAll'))
 assert.ok(styleSource.includes('content-visibility:auto;'))
 assert.ok(styleSource.includes('contain-intrinsic-size:auto 86px;'))
 assert.match(indexSource, /rotation_prep\.css\?v=[^"\s]+/)
-assert.ok(indexSource.includes('20261007-grammar-only-class-01'))
+assert.ok(indexSource.includes('20261020-p1-fixes-01'))
 
 // Run the actual read/entry functions with a stalled SDK and a controllable clock.
 function block(start, end, last = false, text = source){
@@ -118,7 +118,7 @@ function harness(){
     setTimeout: (callback, milliseconds) => { timers.set(++timerId, { callback, milliseconds }); return timerId },
     clearTimeout: id => timers.delete(id),
     console: { warn(){}, error(){} },
-    isPortalAdmin: () => admin, isGrammarOnlyStudent: () => false, ensurePortalScreenAccess: () => true,
+    isPortalSuperAdmin: () => admin, isPortalAdmin: () => admin, isGrammarOnlyStudent: () => false, ensurePortalScreenAccess: () => true,
     sanitizeId: value => value,
     activatePortalScreen: id => { screen = id }, getCurrentActiveScreenId: () => screen,
     renderCheckScreen(){
@@ -161,7 +161,7 @@ const duplicateEntry = test.context.openCheckPortal()
 assert.equal(test.nodes['check-class-name'].textContent, '2강서A')
 assert.match(test.nodes['check-set-list'].innerHTML, /불러오는 중/)
 assert.equal(test.requests.length, 0)
-assert.equal(test.timers.size, 2, 'Legacy and set reads must start in parallel')
+assert.equal(test.timers.size, 1, 'Students skip the unsafe aggregate document')
 await test.expire(8000)
 await entry
 await duplicateEntry
@@ -169,9 +169,10 @@ assert.equal(test.portalState.checkData.checkSets.length, 2)
 assert.equal(test.portalState.checkData.checkSets[0].questions[0].answer, '1')
 assert.deepEqual(Array.from(test.portalState.checkData.checkSets[0].targetUserIds), ['student-2gangseo'])
 const fallbackQuery = JSON.parse(test.requests.find(request => request.url.endsWith(':runQuery')).body).structuredQuery
-assert.deepEqual(fallbackQuery.where.fieldFilter, {
+assert.deepEqual(fallbackQuery.where.compositeFilter.filters[0].fieldFilter, {
   field: { fieldPath: 'targetUserIds' }, op: 'ARRAY_CONTAINS', value: { stringValue: 'student-2gangseo' }
 })
+assert.deepEqual(fallbackQuery.where.compositeFilter.filters[1].fieldFilter, { field: { fieldPath: 'accessSchemaVersion' }, op: 'EQUAL', value: { integerValue: '1' } })
 assert.equal(test.sdkQueries[0].uid, 'student-2gangseo')
 const recoveredData = test.portalState.checkData
 test.lateReads.forEach(resolve => resolve())
@@ -271,8 +272,9 @@ assert.equal(test.portalState.checkData, null, 'Logout during a read cannot repo
 
 test = harness()
 test.sdk = 'fail'
-assert.equal((await test.context.loadCloudSetDocs('prep')).length, 0)
-assert.equal(test.requests.length, 0, 'PREP read behavior is unchanged')
+test.rest = 'fail'
+await assert.rejects(test.context.loadCloudSetDocs('prep'), /read failed/)
+assert.equal(test.requests.length, 1, 'PREP read failure is surfaced rather than silently empty')
 
 assert.equal(test.context.decodePortalFirestoreValue({ booleanValue: false }), false)
 assert.equal(test.context.decodePortalFirestoreValue({ integerValue: '12' }), 12)

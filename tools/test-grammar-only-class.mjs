@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import vm from 'node:vm'
+
+assert.equal(process.argv.length, 2, 'This test is offline only. Use node tools/test-rules-local.mjs for emulator rule checks.')
 
 const portal = readFileSync(new URL('../rotation_portal.js', import.meta.url), 'utf8')
 const source = readFileSync(new URL('../rotation_portal_enhancements.js', import.meta.url), 'utf8')
@@ -99,47 +99,3 @@ assert.equal(context.canAccessPortalScreen('admin-screen'), true)
 state.currentUser = null
 assert.equal(context.isGrammarOnlyStudent(), false)
 console.log('GRAMMAR-only class navigation and data guards: OK')
-
-// Optional server rule evaluation. Uses mocks only; does not write student data or deploy rules.
-if(process.argv.includes('--rules')){
-  const session = JSON.parse(readFileSync(join(homedir(), '.config/configstore/firebase-tools.json'), 'utf8'))
-  const cases = []
-  for(const [role, classes] of [['student', [classId]], ['student', [classId, 'class-2-gangseo-a']], ['student', ['class-2-gangseo-a']], ['student', []], ['admin', [classId]]]){
-    const restricted = role !== 'admin' && classes.includes(classId)
-    const uid = 'rules-test-user'
-    const routes = [
-      ['portalPrepSets/example', ['get', 'list']], ['portalCheckSets/example', ['get', 'list']],
-      ['portalContent/prep-session', ['get']], ['portalContent/check-data', ['get']],
-      ['checkResponses/' + uid + '__test', ['get', 'create', 'update']],
-      ['prepVideoProgress/' + uid + '__test', ['get', 'create', 'update']],
-      ['counselRequests/' + uid + '__test', ['get', 'create', 'update']],
-      ['counselSlots/example', ['get', 'create', 'update', 'delete']],
-      ['questionIssues/example', ['get', 'create', 'update']],
-      ['grammarVideoProgress/' + uid + '__test', ['get', 'create', 'update', 'delete'], true],
-      ['portalContent/prep-classes', ['get'], true], ['users/' + uid, ['get'], true]
-    ]
-    for(const [path, methods, grammarAllowed] of routes){
-      for(const method of methods){
-        const data = { userId: uid, status: method === 'update' ? 'completed' : 'open' }
-        cases.push({
-          expectation: grammarAllowed || !restricted ? 'ALLOW' : 'DENY',
-          request: { path: '/databases/(default)/documents/' + path, method, auth: { uid, token: {} }, resource: { data } },
-          resource: { data: { userId: uid, status: 'open' } },
-          functionMocks: [{ function: 'get', args: [{ anyValue: {} }], result: { value: { data: { role, classIds: classes } } } }]
-        })
-      }
-    }
-  }
-  cases.push({ expectation: 'DENY', request: { path: '/databases/(default)/documents/portalCheckSets/example', method: 'get', auth: null } })
-  const response = await fetch('https://firebaserules.googleapis.com/v1/projects/code-lab-2584c:test', {
-    method: 'POST', headers: { Authorization: 'Bearer ' + session.tokens.access_token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source: { files: [{ name: 'firestore.rules', content: rules }] }, testSuite: { testCases: cases } })
-  })
-  const result = await response.json()
-  assert.ok(response.ok, JSON.stringify(result))
-  assert.ok(!(result.issues || []).some(issue => issue.severity === 'ERROR'), JSON.stringify(result.issues))
-  assert.equal(result.testResults?.length, cases.length)
-  const failed = result.testResults.map((item, index) => ({ ...item, index })).filter(item => item.state !== 'SUCCESS')
-  assert.equal(failed.length, 0, JSON.stringify(failed))
-  console.log('Firestore rule checks (mocked): ' + cases.length + ' passed')
-}

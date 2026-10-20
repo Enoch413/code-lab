@@ -14,7 +14,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn() && userDoc().data.role == 'admin';
+      return isActive() && userDoc().data.role == 'admin';
     }
 
     function isFullAdmin() {
@@ -34,11 +34,56 @@ service cloud.firestore {
       return docId.split('__')[0] == request.auth.uid.lower();
     }
 
+    function isActive() {
+      return signedIn() && userDoc().data.get('loginDisabled', false) == false;
+    }
+
     function canUseRegularPortal() {
-      return signedIn() && (
-        userDoc().data.get('role', 'student') == 'admin'
-        || !userDoc().data.get('classIds', []).hasAny(['class-grammar-only'])
-      );
+      return isActive() && (isAdmin() || (
+        userDoc().data.get('classIds', []).size() > 0
+        && !userDoc().data.get('classIds', []).hasAny(['class-grammar-only'])
+      ));
+    }
+
+    function manages(data) {
+      return isFullAdmin() || (isAdmin()
+        && data.get('classIds', []).hasAny(userDoc().data.get('classIds', [])));
+    }
+
+    function owns(data) {
+      return isActive() && data.get('userId', '') == request.auth.uid;
+    }
+
+    function ownWrite(data) {
+      return owns(data) && data.get('classIds', []).size() > 0
+        && data.get('classIds', []).hasOnly(userDoc().data.get('classIds', []));
+    }
+
+    function publicCounselSlot(data) {
+      return data.keys().hasOnly(['id', 'requestId', 'userId', 'classId', 'classIds',
+        'requestedAt', 'startAt', 'endAt', 'status', 'updatedAt', 'createdAt',
+        'releasedAt', 'releaseReason', 'canceledAt']);
+    }
+
+    function assignedMaterial(data) {
+      return isFullAdmin() || (data.get('accessSchemaVersion', 0) == 1 && (manages(data) || (canUseRegularPortal() && !isAdmin() && (
+        request.auth.uid in data.get('targetUserIds', [])
+        || (data.get('assignmentMode', '') == 'class'
+          && data.get('classIds', []).hasAny(userDoc().data.get('classIds', [])))
+      ))));
+    }
+
+    function managesNewMaterial(data) {
+      return isFullAdmin() || (isAdmin() && data.get('classIds', []).size() > 0
+        && data.get('classIds', []).hasOnly(userDoc().data.get('classIds', [])));
+    }
+
+    function validMaterial(data) {
+      return data.get('accessSchemaVersion', 0) == 1
+        && data.get('classIds', []).size() == 1
+        && data.get('targetUserIds', []) is list
+        && (data.get('assignmentMode', '') == 'class' && data.get('targetUserIds', []).size() == 0
+          || data.get('assignmentMode', '') == 'personal' && data.get('targetUserIds', []).size() > 0);
     }
 
     match /users/{userId} {
@@ -51,7 +96,7 @@ service cloud.firestore {
         && request.resource.data.get('grammarAccessMode', 'none') == 'none'
         && request.resource.data.get('grammarObjectPaths', []) == []);
       allow update: if isFullAdmin() || (
-        isOwner(userId) &&
+        isOwner(userId) && isActive() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['passwordResetRequired', 'updatedAt']) &&
         request.resource.data.passwordResetRequired is bool &&
         request.resource.data.updatedAt is string
@@ -60,93 +105,93 @@ service cloud.firestore {
     }
 
     match /checkResponses/{responseId} {
-      allow read: if canUseRegularPortal() && (isAdmin()
-        || (signedIn() && responseId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid));
-      allow create, update: if canUseRegularPortal() && (isAdmin() || (
-        signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && responseId.matches('^' + request.auth.uid + '__.*$')
-      ));
-      allow delete: if isAdmin();
+      allow get: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data)
+        || (responseId.split('__')[0] == request.auth.uid
+          && !exists(/databases/$(database)/documents/checkResponses/$(responseId))));
+      allow list: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow create: if canUseRegularPortal() && (managesNewMaterial(request.resource.data)
+        || (ownWrite(request.resource.data) && responseId.split('__')[0] == request.auth.uid));
+      allow update: if canUseRegularPortal() && request.resource.data.userId == resource.data.userId && (manages(resource.data) && managesNewMaterial(request.resource.data)
+        || (owns(resource.data) && ownWrite(request.resource.data)
+          && responseId.split('__')[0] == request.auth.uid));
+      allow delete: if canUseRegularPortal() && manages(resource.data);
     }
 
     match /prepVideoProgress/{progressId} {
-      allow read: if canUseRegularPortal() && (isAdmin()
-        || (signedIn() && progressId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid));
-      allow create, update: if canUseRegularPortal()
-        && request.resource.data.userId == request.auth.uid
-        && progressId.matches('^' + request.auth.uid + '__.*$');
-      allow delete: if isAdmin();
+      allow get: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data)
+        || (progressId.split('__')[0] == request.auth.uid
+          && !exists(/databases/$(database)/documents/prepVideoProgress/$(progressId))));
+      allow list: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow create: if canUseRegularPortal() && (managesNewMaterial(request.resource.data)
+        || (ownWrite(request.resource.data) && progressId.split('__')[0] == request.auth.uid));
+      allow update: if canUseRegularPortal() && request.resource.data.userId == resource.data.userId && (manages(resource.data) && managesNewMaterial(request.resource.data)
+        || (owns(resource.data) && ownWrite(request.resource.data)
+          && progressId.split('__')[0] == request.auth.uid));
+      allow delete: if canUseRegularPortal() && manages(resource.data);
     }
 
     match /grammarVideoProgress/{progressId} {
-      allow read: if isAdmin()
-        || (signedIn() && progressId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create, update: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && progressId.matches('^' + request.auth.uid + '__.*$');
-      allow delete: if isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isActive() && (manages(resource.data) || owns(resource.data)
+        || (progressId.split('__')[0] == request.auth.uid
+          && !exists(/databases/$(database)/documents/grammarVideoProgress/$(progressId))));
+      allow list: if isActive() && (manages(resource.data) || owns(resource.data));
+      allow create: if isActive() && (managesNewMaterial(request.resource.data)
+        || (ownWrite(request.resource.data) && progressId.split('__')[0] == request.auth.uid));
+      allow update: if isActive() && request.resource.data.userId == resource.data.userId && (manages(resource.data) && managesNewMaterial(request.resource.data)
+        || (owns(resource.data) && ownWrite(request.resource.data)
+          && progressId.split('__')[0] == request.auth.uid));
+      allow delete: if isActive() && (manages(resource.data) || owns(resource.data));
     }
 
     match /counselRequests/{requestId} {
-      allow read: if canUseRegularPortal() && (isAdmin()
-        || (signedIn() && requestId.matches('^' + request.auth.uid + '__.*$'))
-        || (signedIn() && resource.data.userId == request.auth.uid));
-      allow create: if canUseRegularPortal()
-        && request.resource.data.userId == request.auth.uid
-        && requestId.matches('^' + request.auth.uid + '__.*$');
-      allow update: if canUseRegularPortal() && (isAdmin() || (
-        signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && requestId.matches('^' + request.auth.uid + '__.*$')
-      ));
-      allow delete: if isAdmin();
+      allow get: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data)
+        || (requestId.split('__')[0] == request.auth.uid
+          && !exists(/databases/$(database)/documents/counselRequests/$(requestId))));
+      allow list: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow create: if canUseRegularPortal() && (managesNewMaterial(request.resource.data)
+        || (ownWrite(request.resource.data) && requestId.split('__')[0] == request.auth.uid));
+      allow update: if canUseRegularPortal() && request.resource.data.userId == resource.data.userId && (manages(resource.data) && managesNewMaterial(request.resource.data)
+        || (owns(resource.data) && ownWrite(request.resource.data)
+          && requestId.split('__')[0] == request.auth.uid));
+      allow delete: if canUseRegularPortal() && manages(resource.data);
     }
 
+    // Slot occupancy must be readable for conflict detection; request contents stay private.
     match /counselSlots/{slotId} {
-      allow read: if canUseRegularPortal();
-      allow create: if canUseRegularPortal()
-        && request.resource.data.userId == request.auth.uid
+      allow get: if canUseRegularPortal() && (
+        !exists(/databases/$(database)/documents/counselSlots/$(slotId))
+        || publicCounselSlot(resource.data) || manages(resource.data) || owns(resource.data));
+      allow list: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow create: if canUseRegularPortal() && publicCounselSlot(request.resource.data) && ownWrite(request.resource.data)
         && request.resource.data.status == 'open';
-      allow update: if canUseRegularPortal() && (isAdmin()
-        || (
-          signedIn()
-          && (
-            resource.data.status == 'completed'
-            || resource.data.status == 'canceled'
-            || resource.data.status == 'cancelled'
-          )
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.status == 'open'
-        )
-        || (
-          signedIn()
-          && resource.data.userId == request.auth.uid
-          && request.resource.data.userId == request.auth.uid
-          && (request.resource.data.status == 'completed' || request.resource.data.status == 'canceled')
-        ));
-      allow delete: if canUseRegularPortal() && (isAdmin()
-        || (signedIn() && resource.data.userId == request.auth.uid));
+      allow update: if canUseRegularPortal()
+        && (publicCounselSlot(request.resource.data)
+          || (!publicCounselSlot(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))) && (
+        (manages(resource.data) && managesNewMaterial(request.resource.data))
+        || (ownWrite(request.resource.data) && (
+          resource.data.status in ['completed', 'canceled', 'cancelled']
+          || owns(resource.data))));
+      allow delete: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
     }
 
+    // Legacy aggregate documents contain other classes' material and need an explicit split.
     match /portalContent/{docId} {
-      allow read: if signedIn() && (!(docId in ['prep-session', 'check-data']) || canUseRegularPortal());
-      allow create, update: if isAdmin();
+      allow read, create, update: if isFullAdmin();
       allow delete: if false;
     }
 
     match /portalPrepSets/{docId} {
-      allow read: if canUseRegularPortal();
-      allow create, update, delete: if isAdmin();
+      allow read: if canUseRegularPortal() && assignedMaterial(resource.data);
+      allow create: if canUseRegularPortal() && managesNewMaterial(request.resource.data) && validMaterial(request.resource.data);
+      allow update: if canUseRegularPortal() && (isFullAdmin() || resource.data.get('accessSchemaVersion', 0) == 1) && managesNewMaterial(resource.data) && managesNewMaterial(request.resource.data) && validMaterial(request.resource.data);
+      allow delete: if canUseRegularPortal() && (isFullAdmin() || resource.data.get('accessSchemaVersion', 0) == 1) && managesNewMaterial(resource.data);
     }
 
     match /portalCheckSets/{docId} {
-      allow read: if canUseRegularPortal();
-      allow create, update, delete: if isAdmin();
+      allow read: if canUseRegularPortal() && assignedMaterial(resource.data);
+      allow create: if canUseRegularPortal() && managesNewMaterial(request.resource.data) && validMaterial(request.resource.data);
+      allow update: if canUseRegularPortal() && (isFullAdmin() || resource.data.get('accessSchemaVersion', 0) == 1) && managesNewMaterial(resource.data) && managesNewMaterial(request.resource.data) && validMaterial(request.resource.data);
+      allow delete: if canUseRegularPortal() && (isFullAdmin() || resource.data.get('accessSchemaVersion', 0) == 1) && managesNewMaterial(resource.data);
     }
 
     match /pdfLabSharedLibraryImports/{docId} {
@@ -209,10 +254,12 @@ service cloud.firestore {
     }
 
     match /questionIssues/{issueId} {
-      allow read: if canUseRegularPortal() && (isAdmin() || (signedIn() && resource.data.userId == request.auth.uid));
-      allow create: if canUseRegularPortal() && request.resource.data.userId == request.auth.uid;
-      allow update: if canUseRegularPortal() && (isAdmin() || (signedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid));
-      allow delete: if isAdmin();
+      allow read: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow create: if canUseRegularPortal() && ownWrite(request.resource.data);
+      allow update: if canUseRegularPortal() && (
+        (manages(resource.data) && managesNewMaterial(request.resource.data))
+        || (owns(resource.data) && ownWrite(request.resource.data)));
+      allow delete: if canUseRegularPortal() && manages(resource.data);
     }
   }
 }

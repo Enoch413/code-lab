@@ -224,12 +224,16 @@ function initFirebasePortal(){
     portalState.storage = typeof firebase.storage === 'function' ? firebase.storage() : null
     setAuthMeta('Firebase 인증과 Firestore 저장이 연결되었습니다.')
     portalState.auth.onAuthStateChanged(function(user){
-      handleResolvedAuthUser(user).catch(function(error){
+      const resolution = handleResolvedAuthUser(user)
+      const session = portalState.userSession
+      resolution.catch(function(error){
+        if(portalState.userSession !== session) return
         console.error(error)
         portalState.authResolved = true
         portalState.currentUser = null
         portalState.currentProfile = null
-        setAuthError('로그인 정보를 불러오지 못했습니다.')
+        portalState.authSessionError = '로그인 정보를 불러오지 못했습니다.'
+        setAuthError(portalState.authSessionError)
         routePortalAfterState()
       })
     })
@@ -317,6 +321,9 @@ async function loginPortalUser(email, password){
 }
 
 async function logoutPortal(){
+  portalState.pendingLoginAttempt = null
+  clearAuthError()
+  if(typeof resetPortalUserState === 'function') resetPortalUserState()
   if(portalState.firebaseEnabled){
     await portalState.auth.signOut()
     return
@@ -596,7 +603,7 @@ function getPortalAdminScope(){
 }
 
 function isPortalAdmin(){
-  return getPortalRole() === 'admin'
+  return getPortalRole() === 'admin' && !(portalState.currentProfile && portalState.currentProfile.loginDisabled)
 }
 
 function isPortalSuperAdmin(){
@@ -675,6 +682,7 @@ function clearAuthFields(){
 }
 
 function clearAuthError(){
+  portalState.authSessionError = ''
   setAuthError('')
 }
 
@@ -1974,8 +1982,8 @@ function resolveSubmittedQuestionNumber(answer, fallback){
 
 async function fetchAllCheckResponses(){
   if(portalState.firebaseEnabled){
-    const snapshot = await portalState.db.collection('checkResponses').get()
-    return snapshot.docs.map(function(doc){
+    const docs = await fetchScopedPortalRecordDocs('checkResponses')
+    return docs.map(function(doc){
       return doc.data()
     })
   }
@@ -3105,14 +3113,17 @@ async function submitAuthForm(){
     return
   }
 
+  const request = {}
+  portalState.authFormRequest = request
   setAuthLoading(true)
   try{
-    await loginPortalUser(loginId, password)
+    const result = await loginPortalUser(loginId, password)
+    if(portalState.authFormRequest !== request || result === false) return
     clearAuthFields()
   }catch(error){
-    setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
+    if(portalState.authFormRequest === request) setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
   }finally{
-    setAuthLoading(false)
+    if(portalState.authFormRequest === request) setAuthLoading(false)
   }
 }
 

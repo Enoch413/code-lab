@@ -1,0 +1,139 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "portalPrepSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portalPrepSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "assignmentMode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portalPrepSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "targetUserIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portalCheckSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portalCheckSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "assignmentMode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portalCheckSets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accessSchemaVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "targetUserIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "grammarVideoProgress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prepVideoProgress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "setId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "checkResponses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "checkSetId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "classIds",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -409,7 +409,7 @@ function decoratePortalButtonIcon(node){
     }
   }
 
-  iconNode.textContent = iconText
+  if(iconNode.textContent !== iconText) iconNode.textContent = iconText
   iconNode.dataset.uiIcon = iconKey
 }
 
@@ -918,11 +918,12 @@ function getProfileGrammarUnitIds(profile){
 }
 
 function canManageGrammarAccess(){
-  if(!portalState.currentUser || !isPortalAdmin()) return false
+  if(!portalState.currentUser || !isPortalSuperAdmin()) return false
   return PORTAL_GRAMMAR_MANAGER_LOGIN_IDS.indexOf(getCurrentGrammarLoginId()) >= 0
 }
 
 function canAccessGrammarPortal(){
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled) return false
   if(!portalState.currentUser) return false
   if(canManageGrammarAccess()) return true
   const mode = getProfileGrammarAccessMode(portalState.currentProfile)
@@ -1415,17 +1416,8 @@ async function fetchGrammarVideoProgressRows(filters){
   let rows = []
   let usedCloud = false
   if(portalState.firebaseEnabled && portalState.db){
-    try{
-      let query = portalState.db.collection(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION)
-      if(userId) query = query.where('userId', '==', userId)
-      const snapshot = await query.get()
-      rows = snapshot.docs.map(function(doc){
-        return normalizeGrammarVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
-      }).filter(Boolean)
-      usedCloud = true
-    }catch(error){
-      console.warn('grammar video progress read fallback:', error && error.message ? error.message : error)
-    }
+    rows = (await fetchScopedPortalRecordDocs(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION, { userId: userId })).map(function(doc){ return normalizeGrammarVideoProgressRecord(Object.assign({}, doc.data() || {}, { id: doc.id })) }).filter(Boolean)
+    usedCloud = true
   }
   if(!usedCloud) rows = readLocalGrammarVideoProgressRows()
   return rows.filter(function(row){
@@ -1446,12 +1438,14 @@ async function ensureCurrentGrammarProgressLoaded(forceReload){
   if(portalState.grammarProgress.loadPromise && !forceReload){
     return portalState.grammarProgress.loadPromise
   }
+  const session = portalState.userSession
   portalState.grammarProgress.loadPromise = fetchGrammarVideoProgressRows({ userId: userId }).then(function(rows){
+    if(portalState.userSession !== session) return []
     portalState.grammarProgress.rows = rows
     portalState.grammarProgress.loadedUserId = userId
     return rows
   }).finally(function(){
-    portalState.grammarProgress.loadPromise = null
+    if(portalState.userSession === session) portalState.grammarProgress.loadPromise = null
   })
   return portalState.grammarProgress.loadPromise
 }
@@ -3240,7 +3234,7 @@ function syncCheckJumpButtonVisibility(){
 
 function showAuthScreen(errorMessage){
   syncAuthClassOptions()
-  if(errorMessage) setAuthError(errorMessage)
+  if(errorMessage || portalState.authSessionError) setAuthError(errorMessage || portalState.authSessionError)
   else clearAuthError()
   activatePortalScreen('auth-screen')
 }
@@ -3383,6 +3377,8 @@ async function loadCloudContentDoc(docId){
     throw new Error('This class can only use GRAMMAR')
   }
   if(portalState.firebaseEnabled && portalState.db){
+    // Aggregate legacy content cannot be filtered safely for a class or individual.
+    if(!isPortalSuperAdmin()) return null
     try{
       const reference = portalState.db.collection('portalContent').doc(docId)
       const snapshot = docId === PORTAL_CLOUD_DOCS.check
@@ -3397,7 +3393,7 @@ async function loadCloudContentDoc(docId){
         if(doc && (typeof doc.name !== 'string' || !doc.fields)) throw new Error('Invalid CHECK content document')
         return doc ? decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }) : null
       }
-      return null
+      throw error
     }
   }
 
@@ -3923,23 +3919,15 @@ async function loadExistingCheckSubmission(checkSet){
   if(!checkSet || !portalState.currentUser) return null
   const responseId = buildCheckResponseId(checkSet.id)
   if(portalState.firebaseEnabled){
-    try{
-      const snapshot = await portalState.db.collection('checkResponses').doc(responseId).get()
-      if(snapshot.exists) return mapResponseToSubmission(snapshot.data())
-    }catch(error){
-      console.warn('checkResponses direct read fallback:', error && error.message ? error.message : error)
-    }
-
-    try{
-      const snapshot = await portalState.db.collection('checkResponses')
-        .where('userId', '==', portalState.currentUser.uid)
-        .where('checkSetId', '==', checkSet.id)
-        .limit(1)
-        .get()
-      if(!snapshot.empty) return mapResponseToSubmission(snapshot.docs[0].data())
-    }catch(error){
-      console.warn('checkResponses query fallback:', error && error.message ? error.message : error)
-    }
+    const session = portalState.userSession
+    const snapshot = await portalState.db.collection('checkResponses').doc(responseId).get({ source: 'server' })
+    if(portalState.userSession !== session) throw new Error('CHECK user changed')
+    if(snapshot.exists) return mapResponseToSubmission(snapshot.data())
+    const legacy = await portalState.db.collection('checkResponses')
+      .where('userId', '==', portalState.currentUser.uid)
+      .where('checkSetId', '==', checkSet.id).limit(1).get({ source: 'server' })
+    if(portalState.userSession !== session) throw new Error('CHECK user changed')
+    if(!legacy.empty) throw new Error('Legacy CHECK response requires a canonical document ID before editing')
     return null
   }
 
@@ -3987,20 +3975,34 @@ async function openCheckSetPortal(setId, options){
     return
   }
 
-  portalState.currentCheckSet = checkSet
-  portalState.currentCheckSubmission = await loadExistingCheckSubmission(checkSet)
-  portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, portalState.currentCheckSubmission)
-  portalState.currentCheckEditTargets = {}
-  portalState.currentCheckExpandedResults = {}
-  portalState.currentCheckFilter = countPendingCheckQuestions(checkSet, portalState.currentCheckSubmission) ? 'pending' : 'all'
-  portalState.currentQuestionIssues = portalState.currentCheckSubmission
-    ? await fetchMyQuestionIssues(checkSet)
-    : []
-
-  renderCurrentCheckSet()
-  activatePortalScreen('check-set-screen')
-  if(settings.preserveHistory){
-    syncAppHistoryState('check-set-screen', true)
+  const session = portalState.userSession
+  const request = {}
+  portalState.checkSetOpenRequest = request
+  const screenId = typeof getCurrentActiveScreenId === 'function' ? getCurrentActiveScreenId() : ''
+  const isCurrent = function(){ return portalState.userSession === session && portalState.checkSetOpenRequest === request && (!screenId || getCurrentActiveScreenId() === screenId) }
+  try{
+    const submission = await loadExistingCheckSubmission(checkSet)
+    if(!isCurrent()) return false
+    const issues = submission ? await fetchMyQuestionIssues(checkSet) : []
+    if(!isCurrent()) return false
+    const drafts = buildInitialCheckDraftAnswers(checkSet, submission)
+    const filter = countPendingCheckQuestions(checkSet, submission) ? 'pending' : 'all'
+    portalState.currentCheckSet = checkSet
+    portalState.currentCheckSubmission = submission
+    portalState.currentCheckDraftAnswers = drafts
+    portalState.currentCheckEditTargets = {}
+    portalState.currentCheckExpandedResults = {}
+    portalState.currentCheckFilter = filter
+    portalState.currentQuestionIssues = issues
+    renderCurrentCheckSet()
+    activatePortalScreen('check-set-screen')
+    if(settings.preserveHistory) syncAppHistoryState('check-set-screen', true)
+    return true
+  }catch(error){
+    if(!isCurrent()) return false
+    console.error(error)
+    showToast('CHECK 세트를 불러오지 못했습니다. 기존 화면을 유지합니다. 세트를 다시 선택해 주세요.', 'var(--red)')
+    return false
   }
 }
 
@@ -4258,7 +4260,8 @@ async function submitCurrentCheckSet(){
   }
 }
 
-async function saveCheckSubmission(checkSet, submission){
+async function saveCheckSubmission(checkSet, submission, changes){
+  const session = portalState.userSession
   const profile = portalState.currentProfile || {}
   const payload = {
     id: buildCheckResponseId(checkSet.id),
@@ -4276,17 +4279,51 @@ async function saveCheckSubmission(checkSet, submission){
     latestBatch: submission.latestBatch || null
   }
 
-  if(portalState.firebaseEnabled){
-    const docRef = portalState.db.collection('checkResponses').doc(payload.id)
-    await docRef.set(payload, { merge: true })
-    return
+  function mergeLatest(latest){
+    const latestSubmission = latest ? mapResponseToSubmission(latest) : null
+    const latestAnswers = new Map((latestSubmission && latestSubmission.answers || []).map(function(answer){ return [answer.questionId, answer] }))
+    if(!changes) throw new Error('CHECK changes must be explicit')
+    if(changes.wrongNote){
+      const note = changes.wrongNote
+      const answer = latestAnswers.get(note.questionId)
+      if(!answer || answer.isCorrect !== false) throw new Error('CHECK answer changed; reload before marking the note')
+      latestAnswers.set(note.questionId, Object.assign({}, answer, { wrongNoteCompleted: note.completed, wrongNoteCompletedAt: note.completed ? note.completedAt : '' }))
+      const answers = sortCheckSubmissionAnswers(Array.from(latestAnswers.values()))
+      return Object.assign({}, latestSubmission, { answers: answers, summary: buildCheckSubmissionSummary(answers) })
+    }
+    const baseAnswers = new Map((changes.base && changes.base.answers || []).map(function(answer){ return [answer.questionId, answer] }))
+    const batch = changes.answers.map(function(answer){
+      const previous = latestAnswers.get(answer.questionId)
+      const expected = baseAnswers.get(answer.questionId)
+      if(previous){
+        if(previous.userAnswer === answer.userAnswer) return previous
+        if(!expected || previous.userAnswer !== expected.userAnswer || getCheckAnswerEditCount(previous) !== getCheckAnswerEditCount(expected)) throw new Error('CHECK answer changed; reload before retrying')
+        if(!canCheckAnswerBeEdited(previous)) throw new Error('CHECK answer edit limit reached')
+        return Object.assign({}, answer, { originalUserAnswer: previous.originalUserAnswer || previous.userAnswer, previousUserAnswer: previous.userAnswer, revisionCount: getCheckAnswerEditCount(previous) + 1 })
+      }
+      if(expected) throw new Error('CHECK answer disappeared; reload before retrying')
+      return Object.assign({}, answer, { revisionCount: 0 })
+    })
+    return mergeCheckSubmission(latestSubmission, batch)
   }
 
-  const rows = readLocalResponses().filter(function(entry){
-    return entry.id !== payload.id
-  })
-  rows.push(payload)
+  if(portalState.firebaseEnabled){
+    const docRef = portalState.db.collection('checkResponses').doc(payload.id)
+    return portalState.db.runTransaction(async function(transaction){
+      const snapshot = await transaction.get(docRef)
+      if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== payload.userId) throw new Error('CHECK user changed')
+      const merged = mergeLatest(snapshot.exists ? snapshot.data() : null)
+      transaction.set(docRef, Object.assign({}, payload, merged), { merge: true })
+      return merged
+    })
+  }
+
+  const existing = readLocalResponses()
+  const merged = mergeLatest(existing.find(function(entry){ return entry.id === payload.id }) || null)
+  const rows = existing.filter(function(entry){ return entry.id !== payload.id })
+  rows.push(Object.assign({}, payload, merged))
   writeLocalResponses(rows)
+  return merged
 }
 
 function buildInitialCheckDraftAnswers(checkSet, submission){
@@ -4449,17 +4486,19 @@ async function fetchMyQuestionIssues(checkSet){
   if(!checkSet || !portalState.currentUser) return []
 
   if(portalState.firebaseEnabled){
+    const session = portalState.userSession
     try{
       const snapshot = await portalState.db.collection('questionIssues')
         .where('userId', '==', portalState.currentUser.uid)
         .where('checkSetId', '==', checkSet.id)
         .get()
 
+      if(portalState.userSession !== session) throw new Error('Portal user changed')
       return snapshot.docs.map(function(doc){
         return Object.assign({}, doc.data(), { id: doc.id })
       })
     }catch(error){
-      console.warn('questionIssues read fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
 
@@ -4470,14 +4509,7 @@ async function fetchMyQuestionIssues(checkSet){
 
 async function fetchAllQuestionIssues(){
   if(portalState.firebaseEnabled){
-    try{
-      const snapshot = await portalState.db.collection('questionIssues').get()
-      return snapshot.docs.map(function(doc){
-        return Object.assign({}, doc.data(), { id: doc.id })
-      })
-    }catch(error){
-      console.warn('questionIssues admin read fallback:', error && error.message ? error.message : error)
-    }
+    return (await fetchScopedPortalRecordDocs('questionIssues')).map(function(doc){ return Object.assign({}, doc.data(), { id: doc.id }) })
   }
   return readLocalQuestionIssues()
 }
@@ -4491,7 +4523,7 @@ async function updateQuestionIssueRecord(issueId, updates){
       await portalState.db.collection('questionIssues').doc(targetId).set(updates, { merge: true })
       return true
     }catch(error){
-      console.warn('questionIssues update fallback:', error && error.message ? error.message : error)
+      throw new Error('질문 상태를 저장하지 못했습니다. 입력을 유지한 채 다시 시도해 주세요.')
     }
   }
 
@@ -4512,7 +4544,9 @@ async function updateQuestionIssueRecord(issueId, updates){
 }
 
 window.submitCheckQuestionIssue = function(questionId){
-  submitCheckQuestionIssueImpl(questionId)
+  return submitCheckQuestionIssueImpl(questionId).catch(function(error){
+    showToast(String(error && error.message || '질문을 저장하지 못했습니다.'), 'var(--red)')
+  })
 }
 
 async function submitCheckQuestionIssueImpl(questionId){
@@ -4579,12 +4613,7 @@ async function submitCheckQuestionIssueImpl(questionId){
     try{
       await portalState.db.collection('questionIssues').doc(issueId).set(payload, { merge: true })
     }catch(error){
-      console.warn('questionIssues write fallback:', error && error.message ? error.message : error)
-      const rows = readLocalQuestionIssues().filter(function(entry){
-        return entry.id !== issueId
-      })
-      rows.push(payload)
-      writeLocalQuestionIssues(rows)
+      throw new Error('질문을 전송하지 못했습니다. 다시 시도해 주세요.')
     }
   }else{
     const rows = readLocalQuestionIssues().filter(function(entry){
@@ -4977,8 +5006,33 @@ function updateLocalCounselSlot(slotId, updates){
   return changed
 }
 
+async function saveCloudCounselRequest(requestId, payload){
+  const session = portalState.userSession
+  const db = portalState.db
+  const requestRef = db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(requestId)
+  const slotId = payload.slotId
+  const slotRef = db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(slotId)
+  return db.runTransaction(async function(transaction){
+    const request = await transaction.get(requestRef)
+    const latest = request.exists ? request.data() : null
+    if(latest && (latest.userId !== payload.userId || !isCounselRequestOpen(latest))) throw new Error('counsel-request-changed')
+    const slot = await transaction.get(slotRef)
+    const oldSlotId = latest && latest.slotId && latest.slotId !== slotId ? latest.slotId : ''
+    const oldRef = oldSlotId ? db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(oldSlotId) : null
+    const oldSlot = oldRef ? await transaction.get(oldRef) : null
+    const occupied = slot.exists ? slot.data() : null
+    if(occupied && isCounselRequestOpen(occupied) && (occupied.requestId !== requestId || occupied.userId !== payload.userId)) throw new Error('counsel-slot-conflict')
+    if(oldSlot && oldSlot.exists && (oldSlot.data().requestId !== requestId || oldSlot.data().userId !== payload.userId)) throw new Error('counsel-request-changed')
+    if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== payload.userId) throw new Error('Portal user changed')
+    transaction.set(requestRef, Object.assign({}, payload, { createdAt: latest && latest.createdAt || payload.createdAt }), { merge: true })
+    transaction.set(slotRef, buildCounselSlotRecord(slotId, requestId, payload, 'open'))
+    if(oldSlot && oldSlot.exists) transaction.set(oldRef, { status: 'canceled', updatedAt: payload.updatedAt }, { merge: true })
+    return true
+  })
+}
+
 async function reserveCloudCounselSlot(slotId, requestId, payload){
-  if(!portalState.firebaseEnabled || !portalState.db || typeof portalState.db.runTransaction !== 'function') return false
+  if(!portalState.firebaseEnabled || !portalState.db || typeof portalState.db.runTransaction !== 'function') throw new Error('Counsel transaction unavailable')
   const slotRef = portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(slotId)
   const slotRecord = buildCounselSlotRecord(slotId, requestId, payload, 'open')
   await portalState.db.runTransaction(function(transaction){
@@ -5004,7 +5058,7 @@ async function reserveCounselSlot(slotId, requestId, payload){
       if(String(error && error.message || '').indexOf('counsel-slot-conflict') >= 0){
         return { ok: false, conflict: true }
       }
-      console.warn('counselSlots reservation fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
   return reserveLocalCounselSlot(slotId, requestId, payload)
@@ -5022,7 +5076,7 @@ async function markCounselSlotCompleted(slotId, updates){
       await portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(targetId).set(payload, { merge: true })
       return true
     }catch(error){
-      console.warn('counselSlots update fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
   return updateLocalCounselSlot(targetId, payload)
@@ -5037,7 +5091,7 @@ async function releaseCounselSlot(slotId, requestId, updates, status){
       await portalState.db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(targetId).set(payload, { merge: true })
       return true
     }catch(error){
-      console.warn('counselSlots release fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
   return updateLocalCounselSlot(targetId, payload)
@@ -5099,6 +5153,7 @@ function normalizeCounselRequestRecord(source){
 }
 
 async function submitCounselRequest(){
+  if(portalState.isSubmittingCounsel) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -5163,7 +5218,8 @@ async function submitCounselRequest(){
     showToast('수정할 수 없는 상담 신청입니다.', 'var(--red)')
     return
   }
-  const docId = isEditMode ? editId : buildCounselRequestDocId(userId)
+  const docId = isEditMode ? editId : (portalState.pendingCounselRequestId || buildCounselRequestDocId(userId))
+  portalState.pendingCounselRequestId = docId
   const slotId = buildCounselSlotId(requestedAt)
   const slotStartMs = getCounselSlotStartMs(requestedAt)
   const slotEndMs = getCounselSlotEndMs(requestedAt)
@@ -5200,13 +5256,15 @@ async function submitCounselRequest(){
     return
   }
 
+  const session = portalState.userSession
+  portalState.isSubmittingCounsel = true
   try{
     if(submitButton) submitButton.disabled = true
     setCounselFormStatus('상담 시간을 확인하는 중입니다...', false)
     const previousSlotId = isEditMode ? String(editRecord.slotId || buildCounselSlotId(editRecord.requestedAt) || '').trim() : ''
     const shouldReserveSlot = !isEditMode || previousSlotId !== slotId
     let reservation = null
-    if(shouldReserveSlot){
+    if(shouldReserveSlot && !portalState.firebaseEnabled){
       reservation = await reserveCounselSlot(slotId, docId, payload)
       if(!reservation || !reservation.ok){
         const message = '이미 신청된 상담 시간입니다. 다른 시간을 선택해 주세요.'
@@ -5219,20 +5277,10 @@ async function submitCounselRequest(){
     setCounselFormStatus(isEditMode ? '상담 신청을 수정하는 중입니다...' : '상담 신청을 저장하는 중입니다...', false)
     let savedToCloud = false
     if(portalState.firebaseEnabled && portalState.db){
-      try{
-        await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(docId).set(payload, { merge: true })
-        savedToCloud = true
-      }catch(error){
-        console.warn('counselRequests write fallback:', error && error.message ? error.message : error)
-        if(reservation && reservation.cloud){
-          await markCounselSlotCompleted(slotId, {
-            requestId: docId,
-            releasedAt: new Date().toISOString(),
-            releaseReason: 'request-save-failed'
-          })
-        }
-      }
+      await saveCloudCounselRequest(docId, payload)
+      savedToCloud = true
     }
+    if(portalState.userSession !== session) return
     if(!savedToCloud){
       const rows = readLocalCounselRequests()
       let replacedLocalRow = false
@@ -5246,13 +5294,14 @@ async function submitCounselRequest(){
       if(isEditMode && !replacedLocalRow) nextRows.push(payload)
       writeLocalCounselRequests(nextRows)
     }
-    if(isEditMode && previousSlotId && previousSlotId !== slotId){
+    if(!portalState.firebaseEnabled && isEditMode && previousSlotId && previousSlotId !== slotId){
       await releaseCounselSlot(previousSlotId, docId, {
         userId: userId,
         releasedAt: new Date().toISOString(),
         releaseReason: 'request-edited'
       }, 'canceled')
     }
+    portalState.pendingCounselRequestId = ''
     portalState.currentCounselEditId = ''
     portalState.currentCounselEditRecord = null
     showToast(isEditMode ? '상담 신청을 수정했습니다.' : (savedToCloud ? '상담 신청이 관리자에게 전달되었습니다.' : '상담 신청이 이 브라우저에 임시 저장되었습니다.'), 'var(--green)')
@@ -5260,9 +5309,15 @@ async function submitCounselRequest(){
     else openCounselPortal()
   }catch(error){
     console.error(error)
+    if(portalState.userSession !== session) return
+    if(String(error && error.message || '').includes('counsel-slot-conflict')){
+      setCounselFormStatus('이미 예약된 상담 시간입니다. 다른 시간을 선택해 주세요.', true)
+      return
+    }
     setCounselFormStatus('상담 신청 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.', true)
     showToast('상담 신청 저장에 실패했습니다.', 'var(--red)')
   }finally{
+    if(portalState.userSession === session) portalState.isSubmittingCounsel = false
     if(submitButton) submitButton.disabled = false
   }
 }
@@ -5278,16 +5333,18 @@ async function fetchMyCounselRequests(){
   let rows = []
   let usedCloud = false
   if(portalState.firebaseEnabled && portalState.db){
+    const session = portalState.userSession
     try{
       const snapshot = await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION)
         .where('userId', '==', userId)
         .get()
+      if(portalState.userSession !== session) throw new Error('Portal user changed')
       usedCloud = true
       rows = snapshot.docs.map(function(doc){
         return normalizeCounselRequestRecord(Object.assign({}, doc.data() || {}, { id: doc.id }))
       }).filter(Boolean)
     }catch(error){
-      console.warn('counselRequests my read fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
   if(!usedCloud){
@@ -5413,7 +5470,7 @@ async function editMyCounselRequestImpl(requestId){
 }
 
 window.cancelMyCounselRequest = function(requestId, slotId){
-  cancelMyCounselRequestImpl(requestId, slotId)
+  return cancelMyCounselRequestImpl(requestId, slotId).catch(function(){ showToast('상담 취소에 실패했습니다. 다시 시도해 주세요.', 'var(--red)') })
 }
 
 async function cancelMyCounselRequestImpl(requestId, slotId){
@@ -5443,7 +5500,7 @@ async function cancelMyCounselRequestImpl(requestId, slotId){
     showToast('상담 취소에 실패했습니다.', 'var(--red)')
     return
   }
-  await releaseCounselSlot(slotId || entry.slotId || buildCounselSlotId(entry.requestedAt), entry.id, {
+  if(!portalState.firebaseEnabled) await releaseCounselSlot(slotId || entry.slotId || buildCounselSlotId(entry.requestedAt), entry.id, {
     userId: userId,
     canceledAt: canceledAt,
     releaseReason: 'request-canceled'
@@ -5456,15 +5513,8 @@ async function fetchAllCounselRequests(){
   let rows = []
   let usedCloud = false
   if(portalState.firebaseEnabled && portalState.db){
-    try{
-      const snapshot = await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).get()
-      usedCloud = true
-      rows = snapshot.docs.map(function(doc){
-        return normalizeCounselRequestRecord(Object.assign({}, doc.data() || {}, { id: doc.id }))
-      }).filter(Boolean)
-    }catch(error){
-      console.warn('counselRequests admin read fallback:', error && error.message ? error.message : error)
-    }
+    rows = (await fetchScopedPortalRecordDocs(PORTAL_COUNSEL_REQUEST_COLLECTION)).map(function(doc){ return normalizeCounselRequestRecord(Object.assign({}, doc.data() || {}, { id: doc.id })) }).filter(Boolean)
+    usedCloud = true
   }
   if(!usedCloud){
     rows = readLocalCounselRequests()
@@ -5540,10 +5590,23 @@ async function updateCounselRequestRecord(requestId, updates){
 
   if(portalState.firebaseEnabled && portalState.db){
     try{
-      await portalState.db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(targetId).set(updates, { merge: true })
+      const session = portalState.userSession
+      const db = portalState.db
+      const requestRef = db.collection(PORTAL_COUNSEL_REQUEST_COLLECTION).doc(targetId)
+      await db.runTransaction(async function(transaction){
+        const snapshot = await transaction.get(requestRef)
+        if(!snapshot.exists || !isCounselRequestOpen(snapshot.data())) throw new Error('counsel-request-changed')
+        const current = snapshot.data()
+        const slotRef = db.collection(PORTAL_COUNSEL_SLOT_COLLECTION).doc(current.slotId || buildCounselSlotId(current.requestedAt))
+        const slot = await transaction.get(slotRef)
+        if(slot.exists && slot.data().requestId !== targetId) throw new Error('counsel-slot-changed')
+        if(portalState.userSession !== session) throw new Error('Portal user changed')
+        transaction.set(requestRef, updates, { merge: true })
+        if(slot.exists) transaction.set(slotRef, { status: updates.status, updatedAt: updates.updatedAt }, { merge: true })
+      })
       return true
     }catch(error){
-      console.warn('counselRequests update fallback:', error && error.message ? error.message : error)
+      return false
     }
   }
 
@@ -5559,7 +5622,7 @@ async function updateCounselRequestRecord(requestId, updates){
 }
 
 window.completeAdminCounselRequest = function(requestId, slotId){
-  completeAdminCounselRequestImpl(requestId, slotId)
+  return completeAdminCounselRequestImpl(requestId, slotId).catch(function(){ showToast('상담 완료 처리에 실패했습니다. 다시 시도해 주세요.', 'var(--red)') })
 }
 
 async function completeAdminCounselRequestImpl(requestId, slotId){
@@ -5587,7 +5650,7 @@ async function completeAdminCounselRequestImpl(requestId, slotId){
     return
   }
 
-  await markCounselSlotCompleted(slotId, Object.assign({
+  if(!portalState.firebaseEnabled) await markCounselSlotCompleted(slotId, Object.assign({
     requestId: targetId
   }, updates))
   await renderAdminScreen()
@@ -5659,7 +5722,7 @@ function normalizeQuestionIssueStatus(entry){
 }
 
 window.resolveAdminQuestionIssue = function(issueId, issueCreatedAt){
-  resolveAdminQuestionIssueImpl(issueId, issueCreatedAt)
+  return resolveAdminQuestionIssueImpl(issueId, issueCreatedAt).catch(function(){ showToast('질문 상태를 저장하지 못했습니다. 다시 시도해 주세요.', 'var(--red)') })
 }
 
 async function resolveAdminQuestionIssueImpl(issueId, issueCreatedAt){
@@ -5773,9 +5836,11 @@ window.toggleAdminSection = function(sectionId){
 }
 
 async function renderAdminScreen(){
+  const session = portalState.userSession
   ensureAdminCollapsibleSections()
   const responses = await fetchAllCheckResponses()
   const studentProfiles = await fetchAdminStudentProfiles()
+  if(portalState.userSession !== session || !isPortalAdmin()) return
   const studentResponses = responses.filter(function(entry){
     return entry.role !== 'admin'
   })
@@ -5840,6 +5905,7 @@ async function renderAdminScreen(){
   )
 
   const issueRows = filterAdminIssuesByState(await fetchAllQuestionIssues())
+  if(portalState.userSession !== session || !isPortalAdmin()) return
   document.getElementById('admin-issue-count').textContent = String(issueRows.length)
   document.getElementById('admin-issue-list').innerHTML = issueRows.length
     ? issueRows.map(buildAdminIssueItems).join('')
@@ -5848,14 +5914,48 @@ async function renderAdminScreen(){
   updateAdminUploadStatus()
 }
 
+async function fetchScopedPortalRecordDocs(collectionId, filters){
+  if(!portalState.currentUser || portalState.currentProfile && portalState.currentProfile.loginDisabled) throw new Error('Authentication unavailable')
+  const session = portalState.userSession
+  const userId = portalState.currentUser.uid
+  const equalities = filters || {}
+  if(!isPortalAdmin() && equalities.userId && equalities.userId !== userId) return []
+  let collection = portalState.db.collection(collectionId)
+  Object.keys(equalities).forEach(function(field){
+    if(equalities[field]) collection = collection.where(field, '==', equalities[field])
+  })
+  let result
+  if(isPortalSuperAdmin()) result = (await collection.get({ source: 'server' })).docs
+  else if(!isPortalAdmin()) result = (await (equalities.userId ? collection : collection.where('userId', '==', userId)).get({ source: 'server' })).docs
+  else {
+    const ids = Array.from(new Set(getProfileClassIds()))
+    const docs = new Map()
+    for(let start = 0; start < ids.length; start += 30){
+      const snapshot = await collection.where('classIds', 'array-contains-any', ids.slice(start, start + 30)).get({ source: 'server' })
+      if(portalState.userSession !== session) throw new Error('Portal user changed')
+      snapshot.docs.forEach(function(doc){ docs.set(doc.id, doc) })
+    }
+    result = Array.from(docs.values())
+  }
+  if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('Portal user changed')
+  return result
+}
+
 async function fetchScopedPortalUserDocs(){
+  if(!isPortalAdmin()) throw new Error('Administrator required')
+  const session = portalState.userSession
   const profile = portalState.currentProfile || {}
   const users = portalState.db.collection('users')
-  if(normalizeAdminScopeValue(profile.adminScope) === 'all') return (await users.get()).docs
+  if(normalizeAdminScopeValue(profile.adminScope) === 'all'){
+    const snapshot = await users.get({ source: 'server' })
+    if(portalState.userSession !== session) throw new Error('Portal user changed')
+    return snapshot.docs
+  }
   const ids = Array.from(new Set((profile.classIds || []).filter(Boolean)))
   const docs = new Map()
   for(let start = 0; start < ids.length; start += 30){
     const snapshot = await users.where('classIds', 'array-contains-any', ids.slice(start, start + 30)).get()
+    if(portalState.userSession !== session) throw new Error('Portal user changed')
     snapshot.docs.forEach(function(doc){ docs.set(doc.id, doc) })
   }
   return Array.from(docs.values())
@@ -5870,11 +5970,11 @@ async function fetchAdminStudentProfiles(){
         return normalizeUserProfile(Object.assign({}, doc.data() || {}, { uid: doc.id }))
       })
     }catch(error){
-      console.warn('users admin read fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
 
-  if(!rows.length && typeof readLocalUsers === 'function'){
+  if(!portalState.firebaseEnabled && !rows.length && typeof readLocalUsers === 'function'){
     rows = readLocalUsers().map(function(entry){
       return normalizeUserProfile(Object.assign({}, entry, {
         uid: entry && (entry.uid || entry.id)
@@ -7332,6 +7432,7 @@ window.submitSingleCheckAnswerEdit = function(questionId){
 }
 
 async function submitSingleCheckAnswerEditImpl(questionId){
+  const session = portalState.userSession
   const checkSet = portalState.currentCheckSet
   const submission = portalState.currentCheckSubmission
   const targetId = String(questionId || '').trim()
@@ -7355,19 +7456,22 @@ async function submitSingleCheckAnswerEditImpl(questionId){
 
   portalState.isSubmittingCheck = true
   try{
-    const nextSubmission = mergeCheckSubmission(submission, [batchAnswer])
-    await saveCheckSubmission(checkSet, nextSubmission)
+    const nextSubmission = await saveCheckSubmission(checkSet, mergeCheckSubmission(submission, [batchAnswer]), { answers: [batchAnswer], base: submission })
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     portalState.currentCheckSubmission = nextSubmission
     setCurrentCheckDraftAnswer(targetId, '')
     setCheckAnswerEditing(targetId, false)
-    portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
+    const issues = await fetchMyQuestionIssues(checkSet)
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
+    portalState.currentQuestionIssues = issues
     renderCheckForm(checkSet, nextSubmission)
     showToast('답 수정이 반영됐습니다.', 'var(--green)')
   }catch(error){
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     console.error(error)
     showToast('답 수정 저장에 실패했습니다.', 'var(--red)')
   }finally{
-    portalState.isSubmittingCheck = false
+    if(portalState.userSession === session) portalState.isSubmittingCheck = false
   }
 }
 
@@ -7376,6 +7480,7 @@ window.completeCheckWrongNote = function(questionId){
 }
 
 async function completeCheckWrongNoteImpl(questionId){
+  const session = portalState.userSession
   const checkSet = portalState.currentCheckSet
   const submission = portalState.currentCheckSubmission
   const targetId = String(questionId || '').trim()
@@ -7404,18 +7509,20 @@ async function completeCheckWrongNoteImpl(questionId){
         }))
       })
     : null
-  const nextSubmission = Object.assign({}, submission, {
+  let nextSubmission = Object.assign({}, submission, {
     summary: buildCheckSubmissionSummary(nextAnswers),
     answers: nextAnswers,
     latestBatch: latestBatch
   })
 
   try{
-    await saveCheckSubmission(checkSet, nextSubmission)
+    nextSubmission = await saveCheckSubmission(checkSet, nextSubmission, { wrongNote: { questionId: targetId, completed: nextCompleted, completedAt: completedAt } })
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     portalState.currentCheckSubmission = nextSubmission
     renderCheckForm(checkSet, nextSubmission)
     showToast(nextCompleted ? '오답노트를 완료로 표시했습니다.' : '오답노트 표시를 취소했습니다.', 'var(--green)')
   }catch(error){
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     console.error(error)
     showToast('오답노트 상태 저장에 실패했습니다.', 'var(--red)')
   }
@@ -7611,6 +7718,7 @@ function buildCheckSubmitToastMessage(batchAnswers){
 }
 
 async function submitCurrentCheckSet(){
+  const session = portalState.userSession
   if(portalState.isSubmittingCheck) return
   const checkSet = portalState.currentCheckSet
   if(!checkSet) return
@@ -7628,21 +7736,23 @@ async function submitCurrentCheckSet(){
       return
     }
 
-    const submission = mergeCheckSubmission(portalState.currentCheckSubmission, batchAnswers)
-
-    await saveCheckSubmission(checkSet, submission)
+    const submission = await saveCheckSubmission(checkSet, mergeCheckSubmission(portalState.currentCheckSubmission, batchAnswers), { answers: batchAnswers, base: portalState.currentCheckSubmission })
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     portalState.currentCheckSubmission = submission
     portalState.currentCheckDraftAnswers = buildInitialCheckDraftAnswers(checkSet, submission)
     portalState.currentCheckEditTargets = {}
     portalState.currentCheckFilter = 'submitted'
-    portalState.currentQuestionIssues = await fetchMyQuestionIssues(checkSet)
+    const issues = await fetchMyQuestionIssues(checkSet)
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
+    portalState.currentQuestionIssues = issues
     renderCheckForm(checkSet, submission)
     showToast(buildCheckSubmitToastMessage(batchAnswers), 'var(--green)')
   }catch(error){
+    if(portalState.userSession !== session || portalState.currentCheckSet !== checkSet) return
     console.error(error)
     showToast('답안 제출에 실패했습니다.', 'var(--red)')
   }finally{
-    portalState.isSubmittingCheck = false
+    if(portalState.userSession === session) portalState.isSubmittingCheck = false
   }
 }
 
@@ -7860,12 +7970,21 @@ function normalizePortalSetDoc(kind, source){
   const classIds = Array.isArray(source && source.classIds)
     ? source.classIds.map(function(classId){ return String(classId || '').trim() }).filter(Boolean)
     : derivePortalSetClassIds(kind, payload)
+  const assignment = Object.assign({}, payload || {}, source || {})
+  const personal = ['personal', 'student'].indexOf(String(assignment.assignmentMode || '').trim().toLowerCase()) >= 0
+    || ['targetUserIds', 'targetStudentIds', 'targetStudentId', 'targetLoginIds', 'targetEmails', 'targetStudentNames', 'targetStudentName'].some(function(field){
+      const value = assignment[field]
+      return Array.isArray(value) ? value.some(function(id){ return String(id || '').trim() }) : !!String(value || '').trim()
+    })
   return {
     docId: String(source && (source.docId || source.id) || '').trim(),
     title: String(source && source.title || '').trim(),
     fileName: String(source && source.fileName || '').trim(),
     payload: payload,
-    classIds: classIds,
+    accessSchemaVersion: Number(source && source.accessSchemaVersion || 0),
+    classIds: Array.from(new Set(classIds)),
+    assignmentMode: personal ? 'personal' : 'class',
+    targetUserIds: Array.from(new Set((Array.isArray(source && source.targetUserIds) ? source.targetUserIds : Array.isArray(payload && payload.targetUserIds) ? payload.targetUserIds : []).map(String).map(function(id){ return id.trim() }).filter(Boolean))),
     createdAt: String(source && (source.createdAt || source.updatedAt) || '').trim(),
     updatedAt: String(source && source.updatedAt || '').trim(),
     sortOrder: Number(source && source.sortOrder || 0),
@@ -7888,49 +8007,54 @@ function sortPortalSetDocs(rows){
 
 async function loadCloudSetDocs(kind){
   if(isGrammarOnlyStudent()) throw new Error('This class can only use GRAMMAR')
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled) throw new Error('Account disabled')
   if(portalState.firebaseEnabled && portalState.db){
+    const session = portalState.userSession
     const collectionId = getPortalSetCollection(kind)
-    let query = portalState.db.collection(collectionId)
-    const structuredQuery = { from: [{ collectionId: collectionId }] }
-    if(kind === 'check' && !(typeof isPortalAdmin === 'function' && isPortalAdmin())){
-      const userId = String(portalState.currentUser && portalState.currentUser.uid || '').trim()
-      if(!userId) throw new Error('CHECK authentication unavailable')
-      query = query.where('targetUserIds', 'array-contains', userId)
-      structuredQuery.where = { fieldFilter: {
-        field: { fieldPath: 'targetUserIds' },
-        op: 'ARRAY_CONTAINS',
-        value: { stringValue: userId }
-      } }
+    const userId = String(portalState.currentUser && portalState.currentUser.uid || '').trim()
+    if(!userId) throw new Error('Authentication unavailable')
+    const classIds = Array.from(new Set(portalState.currentProfile && portalState.currentProfile.classIds || []))
+    const plans = []
+    if(isPortalSuperAdmin()) plans.push([])
+    else {
+      if(!isPortalAdmin()) plans.push([['targetUserIds', 'array-contains', userId], ['accessSchemaVersion', '==', 1]])
+      for(let start = 0; start < classIds.length; start += 30){
+        const clauses = [['classIds', 'array-contains-any', classIds.slice(start, start + 30)], ['accessSchemaVersion', '==', 1]]
+        if(!isPortalAdmin()) clauses.push(['assignmentMode', '==', 'class'])
+        plans.push(clauses)
+      }
     }
-    let records
-    try{
-      const snapshot = kind === 'check'
-        ? await withPortalReadTimeout(query.get({ source: 'server' }), 8000)
-        : await query.get()
-      records = snapshot.docs.map(function(doc){
-        return Object.assign({ docId: doc.id }, doc.data() || {})
-      })
-    }catch(error){
-      console.warn('portal set read failed:', error && error.message ? error.message : error)
-      if(kind !== 'check') return []
-      const rows = await readPortalFirestoreRest(':runQuery', { structuredQuery: structuredQuery })
-      if(!Array.isArray(rows) || rows.some(function(row){ return !row || row.error })) throw new Error('Invalid CHECK query response')
-      records = rows.filter(function(row){ return row.document }).map(function(row){
-        const doc = row.document
-        if(typeof doc.name !== 'string' || !doc.fields) throw new Error('Invalid CHECK document')
-        return Object.assign({ docId: doc.name.split('/').pop() }, decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }))
-      })
+    const records = new Map()
+    for(const clauses of plans){
+      let query = portalState.db.collection(collectionId)
+      clauses.forEach(function(clause){ query = query.where(clause[0], clause[1], clause[2]) })
+      let docs
+      try{
+        const snapshot = await withPortalReadTimeout(query.get({ source: 'server' }), 8000)
+        docs = snapshot.docs.map(function(doc){ return Object.assign({}, doc.data() || {}, { docId: doc.id }) })
+      }catch(error){
+        const filters = clauses.map(function(clause){
+          return { fieldFilter: { field: { fieldPath: clause[0] },
+            op: clause[1] === '==' ? 'EQUAL' : clause[1] === 'array-contains' ? 'ARRAY_CONTAINS' : 'ARRAY_CONTAINS_ANY',
+            value: Array.isArray(clause[2]) ? { arrayValue: { values: clause[2].map(function(id){ return { stringValue: id } }) } } : typeof clause[2] === 'number' ? { integerValue: String(clause[2]) } : { stringValue: clause[2] }
+          } }
+        })
+        const structuredQuery = { from: [{ collectionId: collectionId }] }
+        if(filters.length) structuredQuery.where = filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters: filters } }
+        const rows = await readPortalFirestoreRest(':runQuery', { structuredQuery: structuredQuery })
+        if(!Array.isArray(rows) || rows.some(function(row){ return !row || row.error })) throw new Error('Invalid material query response')
+        docs = rows.filter(function(row){ return row.document }).map(function(row){
+          const doc = row.document
+          if(typeof doc.name !== 'string' || !doc.fields) throw new Error('Invalid material document')
+          return Object.assign({}, decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }), { docId: doc.name.split('/').pop() })
+        })
+      }
+      if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('Portal user changed')
+      docs.forEach(function(doc){ records.set(doc.docId, doc) })
     }
-    return sortPortalSetDocs(records.map(function(record){
-      return normalizePortalSetDoc(kind, record)
-    }).filter(function(entry){ return entry.docId && entry.payload }))
+    return sortPortalSetDocs(Array.from(records.values()).map(function(record){ return normalizePortalSetDoc(kind, record) }).filter(function(entry){ return entry.docId && entry.payload }))
   }
-
-  return sortPortalSetDocs(readLocalPortalSetDocs(kind).map(function(entry){
-    return normalizePortalSetDoc(kind, entry)
-  }).filter(function(entry){
-    return entry.docId && entry.payload
-  }))
+  return sortPortalSetDocs(readLocalPortalSetDocs(kind).map(function(entry){ return normalizePortalSetDoc(kind, entry) }).filter(function(entry){ return entry.docId && entry.payload }))
 }
 
 async function saveCloudSetDoc(kind, docId, record){
@@ -7947,6 +8071,11 @@ async function saveCloudSetDoc(kind, docId, record){
     updatedBy: portalState.currentUser ? portalState.currentUser.uid : '',
     updatedByName: portalState.currentProfile && portalState.currentProfile.name ? portalState.currentProfile.name : ''
   }))
+
+  if(nextDoc.classIds.length !== 1) throw new Error('자료는 반별 문서로 분리한 뒤 저장해 주세요.')
+  if(kind === 'prep' && Array.isArray(nextDoc.payload && nextDoc.payload.classAssignments) && nextDoc.payload.classAssignments.some(function(assignment){ return String(assignment.classId || '').trim() !== nextDoc.classIds[0] })) throw new Error('다른 반의 지문 배정이 섞인 자료입니다. 반별로 분리해 주세요.')
+  nextDoc.accessSchemaVersion = 1
+  if(nextDoc.assignmentMode === 'personal' && !nextDoc.targetUserIds.length) throw new Error('개인 배정 자료에는 대상 학생의 Auth UID(targetUserIds)가 필요합니다. 이름만으로 배정할 수 없습니다.')
 
   if(portalState.firebaseEnabled && portalState.db){
     try{
@@ -8231,6 +8360,7 @@ function getLatestPortalTimestamp(values){
 }
 
 async function loadPortalPrepBundleFromSources(){
+  const session = portalState.userSession
   const catalogDoc = await loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
   const legacyDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep)
   const setDocs = await loadCloudSetDocs('prep')
@@ -8259,6 +8389,7 @@ async function loadPortalPrepBundleFromSources(){
     return normalizeStoredPrepSet(doc.payload, index, classes)
   }).filter(Boolean)
 
+  if(portalState.userSession !== session) throw new Error('PREP user changed')
   portalState.prepSetInventory = buildPortalPrepSetInventory(legacySets, setDocs, classes)
 
   if(!legacyBundle && !setDocs.length && !classes.length){
@@ -8281,12 +8412,13 @@ async function loadPortalPrepBundleFromSources(){
 }
 
 async function loadPortalCheckDataFromSources(){
+  const session = portalState.userSession
   const userId = portalState.currentUser && portalState.currentUser.uid
   const sources = await Promise.all([
     loadCloudContentDoc(PORTAL_CLOUD_DOCS.check),
     loadCloudSetDocs('check')
   ])
-  if(!portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
+  if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
   const legacyDoc = sources[0]
   const setDocs = sources[1]
   const legacyData = legacyDoc && legacyDoc.payload ? normalizeCheckData(legacyDoc.payload) : null
@@ -8338,8 +8470,9 @@ async function syncPrepContentAfterLogin(forceReload){
   if(isGrammarOnlyStudent()) return false
   if(portalState.prepSyncPromise && !forceReload) return portalState.prepSyncPromise
 
+  const session = portalState.userSession
   portalState.prepSyncPromise = loadPortalPrepBundleFromSources().then(function(bundle){
-    if(!bundle) return false
+    if(portalState.userSession !== session || !bundle) return false
     portalState.contentMeta.prep = {
       updatedAt: bundle.updatedAt || '',
       fileName: '세트별 PREP 데이터'
@@ -8354,7 +8487,7 @@ async function syncPrepContentAfterLogin(forceReload){
     console.error(error)
     return false
   }).finally(function(){
-    portalState.prepSyncPromise = null
+    if(portalState.userSession === session) portalState.prepSyncPromise = null
   })
 
   return portalState.prepSyncPromise
@@ -8362,19 +8495,23 @@ async function syncPrepContentAfterLogin(forceReload){
 
 async function ensureCheckData(forceReload){
   if(isGrammarOnlyStudent()) throw new Error('This class can only use GRAMMAR')
-  if(portalState.checkData && !forceReload) return portalState.checkData
-  if(portalState.checkSyncPromise) return portalState.checkSyncPromise
+  const userId = portalState.currentUser && portalState.currentUser.uid || ''
+  const session = portalState.userSession
+  if(portalState.checkData && portalState.checkDataUserId === userId && !forceReload) return portalState.checkData
+  if(portalState.checkSyncPromise && portalState.checkSyncUserId === userId) return portalState.checkSyncPromise
+  portalState.checkSyncUserId = userId
 
   portalState.checkSyncPromise = (async function(){
     if(portalState.currentUser){
       const userId = portalState.currentUser.uid
       const combined = await loadPortalCheckDataFromSources()
-      if(!portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
+      if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
       if(combined){
         portalState.contentMeta.check = {
           updatedAt: combined.updatedAt || '',
           fileName: '세트별 CHECK 데이터'
         }
+        portalState.checkDataUserId = userId
         portalState.checkData = combined
         return portalState.checkData
       }
@@ -8387,11 +8524,13 @@ async function ensureCheckData(forceReload){
       if(!response.ok) throw new Error('HTTP ' + response.status)
       return response.json()
     })(), 12000)
+    if(portalState.userSession !== session || (portalState.currentUser && portalState.currentUser.uid || '') !== userId) throw new Error('CHECK user changed')
+    portalState.checkDataUserId = userId
     portalState.checkData = normalizeCheckData(parsed)
     portalState.checkSetInventory = buildPortalCheckSetInventory(portalState.checkData.checkSets, [])
     return portalState.checkData
   })().finally(function(){
-    portalState.checkSyncPromise = null
+    if(portalState.userSession === session && portalState.checkSyncUserId === userId) portalState.checkSyncPromise = null
   })
 
   return portalState.checkSyncPromise
@@ -8414,6 +8553,7 @@ function canManagePortalClass(classInfo){
 }
 
 async function savePrepClassCatalog(classInfo){
+  if(portalState.firebaseEnabled && !isPortalSuperAdmin()) return null
   const classList = mergePortalPrepClasses(
     prepClasses,
     classInfo ? [classInfo] : []
@@ -8903,17 +9043,8 @@ async function fetchPortalPrepVideoProgressRows(filters){
   let usedCloud = false
 
   if(portalState.firebaseEnabled && portalState.db){
-    try{
-      let query = portalState.db.collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
-      if(targetSetId) query = query.where('setId', '==', targetSetId)
-      const snapshot = await query.get()
-      usedCloud = true
-      rows = snapshot.docs.map(function(doc){
-        return normalizePortalPrepVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
-      }).filter(Boolean)
-    }catch(error){
-      console.warn('prep video progress read fallback:', error && error.message ? error.message : error)
-    }
+    rows = (await fetchScopedPortalRecordDocs(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION, { setId: targetSetId })).map(function(doc){ return normalizePortalPrepVideoProgressRecord(Object.assign({}, doc.data() || {}, { id: doc.id })) }).filter(Boolean)
+    usedCloud = true
   }
 
   if(!usedCloud){
@@ -8935,16 +9066,19 @@ async function fetchCurrentPortalPrepVideoProgressRows(){
   if(!userId || isPortalAdmin()) return []
 
   if(portalState.firebaseEnabled && portalState.db){
+    const session = portalState.userSession
     try{
       const snapshot = await portalState.db
         .collection(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
         .where('userId', '==', userId)
-        .get()
+        .get({ source: 'server' })
+      if(portalState.userSession !== session) throw new Error('Portal user changed')
+      if(snapshot.metadata && (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) throw new Error('PREP progress is not server confirmed')
       return snapshot.docs.map(function(doc){
         return normalizePortalPrepVideoProgressRecord(Object.assign({ id: doc.id }, doc.data() || {}))
       }).filter(Boolean)
     }catch(error){
-      console.warn('current prep video progress read fallback:', error && error.message ? error.message : error)
+      throw error
     }
   }
 
@@ -8981,11 +9115,11 @@ function findPortalPrepVideoProgressRow(rows, setId, passageId, passageIndex){
 
 function applyPortalPrepVideoProgressRowsToCurrentPrepClass(){
   const userId = getPortalPrepVideoProgressUserId()
+  if(!userId || portalState.currentPrepVideoProgressLoadedUserId !== userId) return false
   const rows = (Array.isArray(portalState.currentPrepVideoProgressRows) ? portalState.currentPrepVideoProgressRows : [])
     .filter(function(row){
       return String(row && row.userId || '').trim() === userId
     })
-  if(!userId || !rows.length) return false
   if(typeof getCurrentClass !== 'function' || typeof getPassageProgressStorageKey !== 'function') return false
   if(typeof progressKey === 'undefined' || !progressKey) return false
 
@@ -9010,10 +9144,8 @@ function applyPortalPrepVideoProgressRowsToCurrentPrepClass(){
       const setId = getPortalPrepProgressSetId(studySet, setIndex)
       const passageId = getPortalPrepProgressPassageId(passage, passageIndex)
       const row = findPortalPrepVideoProgressRow(rows, setId, passageId, passageIndex)
-      if(!row) return
-
       const storageKey = getPassageProgressStorageKey(setIndex, passageIndex)
-      const nextDone = !!row.done
+      const nextDone = !!(row && row.done)
       const currentDone = !!(progress.done && progress.done[storageKey])
       if(currentDone === nextDone) return
 
@@ -9043,8 +9175,13 @@ function refreshVisiblePortalPrepProgressAfterHydration(changed){
 }
 
 async function refreshPortalPrepVideoProgressForCurrentUser(){
+  const session = portalState.userSession
+  const userId = getPortalPrepVideoProgressUserId()
+  portalState.currentPrepVideoProgressLoadedUserId = ''
   const rows = await fetchCurrentPortalPrepVideoProgressRows()
+  if(portalState.userSession !== session || getPortalPrepVideoProgressUserId() !== userId) return []
   portalState.currentPrepVideoProgressRows = rows
+  portalState.currentPrepVideoProgressLoadedUserId = userId
   const changed = applyPortalPrepVideoProgressRowsToCurrentPrepClass()
   refreshVisiblePortalPrepProgressAfterHydration(changed)
   return rows
@@ -9353,9 +9490,13 @@ async function openPortalPrepVideoProgressModal(docId){
     status: '불러오는 중'
   })
   renderPortalPrepVideoProgressModal()
+  const session = portalState.userSession
+  const modal = portalState.prepVideoProgressModal
+  const isCurrent = function(){ return portalState.userSession === session && portalState.prepVideoProgressModal === modal && modal.open }
 
   try{
     const currentDoc = await getCloudSetDoc('prep', targetDocId)
+    if(!isCurrent()) return
     if(!currentDoc || !currentDoc.payload) throw new Error('PREP 세트 정보를 찾지 못했습니다.')
     const classId = getPortalPrepProgressClassId(inventoryRecord || currentDoc, currentDoc)
     const classInfo = getPortalClassInfoById(classId)
@@ -9364,7 +9505,9 @@ async function openPortalPrepVideoProgressModal(docId){
     }
     const setId = getPortalPrepProgressSetId(currentDoc.payload, 0)
     const students = normalizePortalPrepProgressStudents(await fetchAdminStudentProfiles(), classId)
+    if(!isCurrent()) return
     const progressRows = await fetchPortalPrepVideoProgressRows({ setId: setId, classId: classId })
+    if(!isCurrent()) return
 
     portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
       open: true,
@@ -9380,6 +9523,7 @@ async function openPortalPrepVideoProgressModal(docId){
     })
     renderPortalPrepVideoProgressModal()
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     portalState.prepVideoProgressModal = Object.assign({}, portalState.prepVideoProgressModal || {}, {
       open: true,
@@ -9419,6 +9563,20 @@ function buildPortalPrepVideoManagerPassages(currentDoc){
   })
 }
 
+function capturePortalPrepVideoDrafts(listNode){
+  const docId = listNode && listNode.dataset.prepDocId
+  if(!docId) return
+  portalState.prepVideoDrafts = portalState.prepVideoDrafts || {}
+  const key = 'doc:' + docId
+  const drafts = portalState.prepVideoDrafts[key] = portalState.prepVideoDrafts[key] || {}
+  listNode.querySelectorAll('[data-passage-index]').forEach(function(input){
+    const index = input.dataset.passageIndex
+    const draft = drafts[index] = drafts[index] || {}
+    if(input.id.indexOf('prep-video-title-input-') === 0) draft.title = input.value
+    if(input.id.indexOf('prep-video-url-input-') === 0) draft.url = input.value
+  })
+}
+
 function renderPortalPrepVideoManager(){
   const modal = document.getElementById('prep-video-manager-modal')
   const titleNode = document.getElementById('prep-video-manager-title')
@@ -9428,7 +9586,16 @@ function renderPortalPrepVideoManager(){
   const statusNode = document.getElementById('prep-video-manager-status')
   if(!modal || !titleNode || !metaNode || !listNode || !statusNode) return
 
+  capturePortalPrepVideoDrafts(listNode)
   const manager = portalState.prepVideoManager || {}
+  portalState.prepVideoDrafts = portalState.prepVideoDrafts || {}
+  const draftKey = 'doc:' + manager.docId
+  const drafts = portalState.prepVideoDrafts[draftKey] = portalState.prepVideoDrafts[draftKey] || {}
+  if(Number.isInteger(manager.savedPassageIndex)){
+    delete drafts[manager.savedPassageIndex]
+    delete manager.savedPassageIndex
+  }
+  listNode.dataset.prepDocId = manager.docId || ''
   manager.isUploading = !!manager.isSaving
   if(!manager.open){
     modal.classList.add('hidden')
@@ -9523,6 +9690,7 @@ function renderPortalPrepVideoManager(){
       if(saveButton){
         saveButton.textContent = isSaving ? '저장 중...' : '저장'
         saveButton.disabled = !!manager.isSaving
+        saveButton.setAttribute('aria-label', String(passage.index + 1) + '번 지문 저장')
         saveButton.setAttribute('onclick', 'window.savePortalPrepPassageVideoUrl(' + passage.index + ')')
       }
 
@@ -9552,7 +9720,7 @@ function renderPortalPrepVideoManager(){
         titleInputNode.id = 'prep-video-title-input-' + passage.index
         titleInputNode.setAttribute('data-passage-index', String(passage.index))
         titleInputNode.placeholder = '영상 이름'
-        titleInputNode.value = passage.videoTitle || passage.title || ''
+        titleInputNode.value = drafts[passage.index] && drafts[passage.index].title != null ? drafts[passage.index].title : passage.videoTitle || passage.title || ''
         titleInputNode.disabled = !!manager.isSaving
       }
 
@@ -9577,7 +9745,7 @@ function renderPortalPrepVideoManager(){
         inputNode.id = 'prep-video-url-input-' + passage.index
         inputNode.setAttribute('data-passage-index', String(passage.index))
         inputNode.placeholder = 'https://www.youtube.com/watch?v=...'
-        inputNode.value = passage.videoUrl || ''
+        inputNode.value = drafts[passage.index] && drafts[passage.index].url != null ? drafts[passage.index].url : passage.videoUrl || ''
         inputNode.disabled = !!manager.isSaving
       }
 
@@ -9587,9 +9755,7 @@ function renderPortalPrepVideoManager(){
         fieldNode.parentNode.insertBefore(externalLink, fieldNode.nextSibling)
       }
     })
-    syncPortalPrepVideoManagerFooterActions()
   }else{
-    syncPortalPrepVideoManagerFooterActions()
     const emptyNode = listNode.querySelector('.empty-box')
     if(emptyNode) emptyNode.textContent = '이 PREP 세트에는 지문이 없습니다.'
   }
@@ -9599,23 +9765,7 @@ function renderPortalPrepVideoManager(){
   document.body.classList.add('modal-open')
 }
 
-function syncPortalPrepVideoManagerFooterActions(){
-  const modal = document.getElementById('prep-video-manager-modal')
-  const footerActions = modal ? modal.querySelector('.prep-video-manager-foot .prep-video-manager-actions') : null
-  const cancelButton = document.getElementById('prep-video-manager-cancel-btn')
-  if(!modal || !footerActions || !cancelButton) return
 
-  Array.from(footerActions.querySelectorAll('.prep-video-footer-save-btn')).forEach(function(button){
-    button.parentNode.removeChild(button)
-  })
-
-  Array.from(modal.querySelectorAll('.prep-video-manager-item-actions .btn')).forEach(function(button){
-    const onclickValue = String(button.getAttribute('onclick') || '')
-    if(onclickValue.indexOf('savePortalPrepPassageVideoUrl') < 0) return
-    button.classList.add('prep-video-footer-save-btn')
-    footerActions.insertBefore(button, cancelButton)
-  })
-}
 
 function closePortalPrepVideoManager(options){
   const settings = options || {}
@@ -9648,8 +9798,12 @@ async function openPortalPrepVideoManager(docId){
     if(!closePortalPrepVideoManager()) return
   }
 
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session }
+
   try{
     const currentDoc = await getCloudSetDoc('prep', docId)
+    if(!isCurrent()) return
     if(!currentDoc || !currentDoc.payload){
       showToast('영상 업로드할 PREP 세트를 찾지 못했습니다.', 'var(--red)')
       return
@@ -9685,6 +9839,7 @@ async function openPortalPrepVideoManager(docId){
     }
     renderPortalPrepVideoManager()
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     showToast('PREP 영상 관리 화면을 여는 중 오류가 발생했습니다.', 'var(--red)')
   }
@@ -9704,6 +9859,8 @@ async function handlePortalPrepVideoUploadChange(event){
   if(!file) return
 
   const manager = portalState.prepVideoManager || {}
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session && portalState.prepVideoManager === manager && manager.open }
   const passageIndex = Number(manager.pendingPassageIndex)
   if(!manager.open || !manager.currentDoc || !Number.isInteger(passageIndex) || passageIndex < 0){
     showToast('영상 업로드 대상을 찾지 못했습니다.', 'var(--red)')
@@ -9750,7 +9907,9 @@ async function handlePortalPrepVideoUploadChange(event){
         classId: classId
       }
     })
+    if(!isCurrent()) return
     const downloadUrl = await snapshot.ref.getDownloadURL()
+    if(!isCurrent()) return
     const now = new Date().toISOString()
     const nextDoc = clonePlainData(manager.currentDoc) || {}
     const nextPayload = clonePlainData(nextDoc.payload) || {}
@@ -9778,13 +9937,16 @@ async function handlePortalPrepVideoUploadChange(event){
     await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
       payload: nextPayload
     }))
+    if(!isCurrent()) return
 
     if(oldStoragePath && oldStoragePath !== storagePath){
       deletePortalStorageFileByPath(oldStoragePath)
     }
 
     await syncPrepContentAfterLogin(true)
+    if(!isCurrent()) return
     const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
+    if(!isCurrent()) return
     portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
     portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || manager.title || '').trim()
     portalState.prepVideoManager.isSaving = false
@@ -9799,6 +9961,7 @@ async function handlePortalPrepVideoUploadChange(event){
     renderPortalPrepVideoManager()
     showToast('PREP 지문 영상을 업로드했습니다.', 'var(--green)')
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
@@ -9810,6 +9973,8 @@ async function handlePortalPrepVideoUploadChange(event){
 
 async function savePortalPrepPassageVideoUrl(passageIndex){
   const manager = portalState.prepVideoManager || {}
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session && portalState.prepVideoManager === manager && manager.open }
   if(!manager.open || manager.isSaving || !manager.currentDoc) return
 
   const normalizedUrl = normalizePortalPrepYouTubeUrl(getPortalPrepVideoInputValue(passageIndex))
@@ -9875,14 +10040,18 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
       payload: nextPayload
     }))
+    if(!isCurrent()) return
     if(oldStoragePath){
       deletePortalStorageFileByPath(oldStoragePath)
     }
 
     await syncPrepContentAfterLogin(true)
+    if(!isCurrent()) return
     const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
+    if(!isCurrent()) return
     portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
     portalState.prepVideoManager.title = String((refreshedDoc && refreshedDoc.title) || (isPortalDirectPrepVideoPayload(nextPayload) ? nextTitle : '') || manager.title || '').trim()
+    portalState.prepVideoManager.savedPassageIndex = Number(passageIndex)
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
     portalState.prepVideoManager.status = '"' + nextTitle + '" 영상 수정이 저장되었습니다.'
@@ -9895,6 +10064,7 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
     renderPortalPrepVideoManager()
     showToast('PREP 영상 정보를 저장했습니다.', 'var(--green)')
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
@@ -9906,6 +10076,8 @@ async function savePortalPrepPassageVideoUrl(passageIndex){
 
 async function removePortalPrepPassageVideo(passageIndex){
   const manager = portalState.prepVideoManager || {}
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session && portalState.prepVideoManager === manager && manager.open }
   if(!manager.open || manager.isSaving || !manager.currentDoc) return
   if(false && !canUsePortalCloudStorage()){
     showToast('Firebase Storage 연결이 필요합니다.', 'var(--red)')
@@ -9948,12 +10120,15 @@ async function removePortalPrepPassageVideo(passageIndex){
     await saveCloudSetDoc('prep', manager.docId, Object.assign({}, nextDoc, {
       payload: nextPayload
     }))
+    if(!isCurrent()) return
     if(oldStoragePath){
       deletePortalStorageFileByPath(oldStoragePath)
     }
 
     await syncPrepContentAfterLogin(true)
+    if(!isCurrent()) return
     const refreshedDoc = await getCloudSetDoc('prep', manager.docId)
+    if(!isCurrent()) return
     portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
@@ -9967,6 +10142,7 @@ async function removePortalPrepPassageVideo(passageIndex){
     renderPortalPrepVideoManager()
     showToast('PREP 지문 영상을 삭제했습니다.', 'var(--green)')
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     portalState.prepVideoManager.isSaving = false
     portalState.prepVideoManager.pendingPassageIndex = -1
@@ -10334,16 +10510,7 @@ async function fetchCheckResponsesForSet(checkSetId){
   if(!targetId) return []
 
   if(portalState.firebaseEnabled && portalState.db){
-    try{
-      const snapshot = await portalState.db.collection('checkResponses')
-        .where('checkSetId', '==', targetId)
-        .get()
-      return snapshot.docs.map(function(doc){
-        return Object.assign({ id: doc.id }, doc.data() || {})
-      })
-    }catch(error){
-      console.warn('checkResponses set read fallback:', error && error.message ? error.message : error)
-    }
+    return (await fetchScopedPortalRecordDocs('checkResponses', { checkSetId: targetId })).map(function(doc){ return Object.assign({}, doc.data() || {}, { id: doc.id }) }).filter(function(row){ return row.checkSetId === targetId })
   }
 
   return (Array.isArray(readLocalResponses()) ? readLocalResponses() : []).filter(function(entry){
@@ -10922,8 +11089,12 @@ async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
     return
   }
 
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session }
+
   try{
     const currentDoc = await getCloudSetDoc('prep', targetDocId)
+    if(!isCurrent()) return
     const rawPassages = Array.isArray(currentDoc && currentDoc.payload && currentDoc.payload.passages)
       ? currentDoc.payload.passages
       : []
@@ -10960,11 +11131,13 @@ async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
     await saveCloudSetDoc('prep', targetDocId, Object.assign({}, nextDoc, {
       payload: nextPayload
     }))
+    if(!isCurrent()) return
     if(oldStoragePath){
       deletePortalStorageFileByPath(oldStoragePath)
     }
 
     await syncPrepContentAfterLogin(true)
+    if(!isCurrent()) return
     const targetClassId = Array.isArray(currentDoc.classIds) && currentDoc.classIds.length
       ? currentDoc.classIds[0]
       : ''
@@ -10974,6 +11147,7 @@ async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
 
     if(portalState.prepVideoManager && portalState.prepVideoManager.open && String(portalState.prepVideoManager.docId || '') === targetDocId){
       const refreshedDoc = await getCloudSetDoc('prep', targetDocId)
+      if(!isCurrent()) return
       portalState.prepVideoManager.currentDoc = refreshedDoc ? clonePlainData(refreshedDoc) : Object.assign({}, nextDoc, { payload: nextPayload })
       portalState.prepVideoManager.status = '"' + (normalizedPassage.title || ('지문 ' + (targetPassageIndex + 1))) + '" 영상을 삭제했습니다.'
       renderPortalPrepVideoManager()
@@ -10983,6 +11157,7 @@ async function removePortalPrepPassageVideoFromSet(docId, passageIndex){
     syncPortalAdminSetPanels('passage-screen')
     showToast('PREP 지문 영상을 삭제했습니다.', 'var(--green)')
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     showToast('PREP 영상 삭제 중 오류가 발생했습니다.', 'var(--red)')
   }
@@ -11185,8 +11360,12 @@ async function openPortalManagedCheckSetEditor(docId){
     if(!closePortalManagedCheckSetEditor()) return
   }
 
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session }
+
   try{
     const currentDoc = await getCloudSetDoc('check', targetId)
+    if(!isCurrent()) return
     if(!currentDoc || !currentDoc.payload){
       showToast('수정할 CHECK 세트를 찾지 못했습니다.', 'var(--red)')
       return
@@ -11214,6 +11393,7 @@ async function openPortalManagedCheckSetEditor(docId){
     portalState.checkSetEditor = nextEditor
     renderPortalManagedCheckSetEditor()
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     showToast('CHECK 세트를 불러오는 중 오류가 발생했습니다.', 'var(--red)')
   }
@@ -11221,6 +11401,8 @@ async function openPortalManagedCheckSetEditor(docId){
 
 async function savePortalManagedCheckSetEditor(mode){
   const editor = portalState.checkSetEditor || {}
+  const session = portalState.userSession
+  const isCurrent = function(){ return portalState.userSession === session && portalState.checkSetEditor === editor && editor.open }
   const saveMode = mode === 'group' ? 'group' : 'single'
   if(!editor.open || editor.isSaving) return
   if(!editor.currentDoc || !editor.docId){
@@ -11264,6 +11446,7 @@ async function savePortalManagedCheckSetEditor(mode){
     if(saveMode === 'group'){
       const sourceGroupKey = getPortalManagedCheckSetSourceGroupKey(editor.currentDoc)
       const allDocs = await loadCloudSetDocs('check')
+      if(!isCurrent()) return
       const matchingDocs = allDocs.filter(function(doc){
         return canManagePortalCheckSetRecord(doc) && getPortalManagedCheckSetSourceGroupKey(doc) === sourceGroupKey
       })
@@ -11292,13 +11475,16 @@ async function savePortalManagedCheckSetEditor(mode){
       for(let index = 0; index < saveTargets.length; index += 1){
         const target = saveTargets[index]
         await saveCloudSetDoc('check', target.docId, target.record)
+        if(!isCurrent()) return
         savedDocIds.push(target.docId)
       }
 
       await ensureCheckData(true)
+      if(!isCurrent()) return
       const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
       if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId && savedDocIds.indexOf(currentSetId) >= 0){
         await openCheckSetPortal(currentSetId, { preserveHistory: true })
+        if(!isCurrent()) return
       }else{
         renderCheckScreen()
       }
@@ -11315,11 +11501,14 @@ async function savePortalManagedCheckSetEditor(mode){
       title: title,
       payload: nextPayload
     }))
+    if(!isCurrent()) return
 
     await ensureCheckData(true)
+    if(!isCurrent()) return
     const currentSetId = String(portalState.currentCheckSet && portalState.currentCheckSet.id || '').trim()
     if(getCurrentActiveScreenId() === 'check-set-screen' && currentSetId === editor.docId){
       await openCheckSetPortal(editor.docId, { preserveHistory: true })
+      if(!isCurrent()) return
     }else{
       renderCheckScreen()
     }
@@ -11329,6 +11518,7 @@ async function savePortalManagedCheckSetEditor(mode){
     syncPortalAdminSetPanels('check-screen')
     showToast('CHECK 세트를 저장했습니다.', 'var(--green)')
   }catch(error){
+    if(!isCurrent()) return
     console.error(error)
     editor.isSaving = false
     editor.savingScope = ''
@@ -11636,16 +11826,19 @@ async function loadPortalExamState(forceReload){
   if(portalState.examState && !forceReload) return portalState.examState
   if(portalState.examStatePromise && !forceReload) return portalState.examStatePromise
 
+  const session = portalState.userSession
   portalState.examStatePromise = loadCloudContentDoc(PORTAL_EXAM_STATE_DOC).then(function(doc){
+    if(portalState.userSession !== session) return null
     const payload = doc && doc.payload && typeof doc.payload === 'object'
       ? doc.payload
       : {}
     return applyPortalExamState(payload)
   }).catch(function(error){
     console.warn('exam-state read failed:', error && error.message ? error.message : error)
-    return applyPortalExamState({})
+    if(portalState.userSession !== session) return null
+    throw error
   }).finally(function(){
-    portalState.examStatePromise = null
+    if(portalState.userSession === session) portalState.examStatePromise = null
   })
 
   return portalState.examStatePromise
@@ -11835,11 +12028,11 @@ async function fetchAllPortalUsersForSuperAdmin(){
         return normalizeUserProfile(Object.assign({}, doc.data() || {}, { uid: doc.id }))
       })
     }catch(error){
-      console.warn('users superadmin read failed:', error && error.message ? error.message : error)
+      throw error
     }
   }
 
-  if(!rows.length && typeof readLocalUsers === 'function'){
+  if(!portalState.firebaseEnabled && !rows.length && typeof readLocalUsers === 'function'){
     rows = readLocalUsers().map(function(entry){
       return normalizeUserProfile(Object.assign({}, entry, {
         uid: entry && (entry.uid || entry.id)
@@ -12709,124 +12902,7 @@ async function deletePortalCollectionDocuments(collectionName){
 }
 
 async function resetSuperAdminExamCycle(){
-  if(!isPortalSuperAdmin()){
-    showToast('최고 관리자만 새 시험 초기화를 실행할 수 있습니다.', 'var(--red)')
-    return
-  }
-
-  const nextExamNameInput = getPortalExamCenterNode('superadmin-next-exam-name')
-  const confirmInput = getPortalExamCenterNode('superadmin-reset-confirm-text')
-  const nextExamName = String(nextExamNameInput && nextExamNameInput.value || '').trim()
-  const confirmText = String(confirmInput && confirmInput.value || '').trim()
-
-  if(!nextExamName){
-    throw new Error('다음 시험명을 입력해 주세요.')
-  }
-  if(confirmText !== '새 시험 시작'){
-    throw new Error('확인 문구로 "새 시험 시작"을 정확히 입력해 주세요.')
-  }
-  if(typeof window.confirm === 'function' && !window.confirm('현재 시험의 운영 데이터를 초기화하고 새 시험을 시작할까요?')) return
-
-  const currentExamState = await loadPortalExamState(false)
-  const nextExamKey = buildPortalExamKey(nextExamName)
-  const pdfLabResetToken = buildPdfLabResetToken()
-  const now = new Date().toISOString()
-
-  const deletedResponses = await deletePortalCollectionDocuments('checkResponses')
-  const deletedIssues = await deletePortalCollectionDocuments('questionIssues')
-  const deletedCounselRequests = await deletePortalCollectionDocuments(PORTAL_COUNSEL_REQUEST_COLLECTION)
-  const deletedCounselSlots = await deletePortalCollectionDocuments(PORTAL_COUNSEL_SLOT_COLLECTION)
-  const deletedPrepProgress = await deletePortalCollectionDocuments(PORTAL_PREP_VIDEO_PROGRESS_COLLECTION)
-  const deletedPrepSets = await deletePortalCollectionDocuments('portalPrepSets')
-  const deletedCheckSets = await deletePortalCollectionDocuments('portalCheckSets')
-
-  const classCatalogDoc = await loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
-  const classCatalogPayload = classCatalogDoc && classCatalogDoc.payload && typeof classCatalogDoc.payload === 'object'
-    ? classCatalogDoc.payload
-    : { classes: normalizePortalPrepClassList(prepClasses) }
-
-  await saveCloudContentDoc(PORTAL_CLOUD_DOCS.prep, {
-    version: 2,
-    prepConfig: normalizePortalPrepConfig(classCatalogPayload.prepConfig, {
-      pageTitle: APP_CONFIG.defaultTitle,
-      generatedAt: now,
-      examKey: nextExamKey
-    }),
-    classes: normalizePortalPrepClassList(classCatalogPayload.classes),
-    studySets: []
-  }, 'session.json')
-
-  await saveCloudContentDoc(PORTAL_CLOUD_DOCS.check, {
-    updatedAt: now,
-    classes: normalizePortalCheckClassList(normalizePortalPrepClassList(classCatalogPayload.classes).map(function(classInfo){
-      return { id: classInfo.id, name: classInfo.name }
-    })),
-    checkSets: []
-  }, 'check_data.json')
-
-  await saveCloudContentDoc(PORTAL_CLASS_CATALOG_DOC, {
-    prepConfig: normalizePortalPrepConfig(classCatalogPayload.prepConfig, {
-      generatedAt: now,
-      examKey: nextExamKey
-    }),
-    classes: normalizePortalPrepClassList(classCatalogPayload.classes)
-  }, 'prep-classes.json')
-
-  await savePortalExamState({
-    examName: nextExamName,
-    examKey: nextExamKey,
-    previousExamName: currentExamState.examName || currentExamState.lastArchiveExamName || '',
-    previousExamKey: currentExamState.examKey || '',
-    lastResetAt: now,
-    lastResetBy: portalState.currentUser ? portalState.currentUser.uid : '',
-    lastResetByName: getPortalDisplayIdentity(),
-    pdfLabResetToken: pdfLabResetToken
-  })
-
-  portalState.checkData = null
-  portalState.currentCheckSet = null
-  portalState.currentCheckSubmission = null
-  portalState.currentQuestionIssues = []
-  portalState.currentCheckDraftAnswers = {}
-  portalState.currentCheckEditTargets = {}
-  portalState.adminCheckAnalytics = null
-
-  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.issues){
-    try{
-      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.issues)
-    }catch(error){}
-  }
-  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.counselRequests){
-    try{
-      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.counselRequests)
-    }catch(error){}
-  }
-  if(PORTAL_ENHANCEMENT_KEYS && PORTAL_ENHANCEMENT_KEYS.counselSlots){
-    try{
-      localStorage.removeItem(PORTAL_ENHANCEMENT_KEYS.counselSlots)
-    }catch(error){}
-  }
-  try{
-    localStorage.removeItem(getAdminQuestionIssueHiddenStorageKey())
-  }catch(error){}
-
-  await syncPrepContentAfterLogin(true)
-  await ensureCheckData(true)
-  if(getCurrentActiveScreenId() === 'admin-screen'){
-    await renderAdminScreen()
-  }
-
-  return {
-    deletedResponses: deletedResponses,
-    deletedIssues: deletedIssues,
-    deletedCounselRequests: deletedCounselRequests,
-    deletedCounselSlots: deletedCounselSlots,
-    deletedPrepProgress: deletedPrepProgress,
-    deletedPrepSets: deletedPrepSets,
-    deletedCheckSets: deletedCheckSets,
-    nextExamKey: nextExamKey,
-    pdfLabResetToken: pdfLabResetToken
-  }
+  throw new Error('브라우저 시험 초기화는 비활성화되었습니다. 검증된 백업과 별도 승인 절차를 갖춘 관리 도구를 사용해 주세요.')
 }
 
 async function handleSuperAdminArchive(mode){
@@ -12948,6 +13024,7 @@ function ensureSuperAdminExamCenterBindings(){
 }
 
 async function renderSuperAdminExamCenter(){
+  const session = portalState.userSession
   const section = getPortalExamCenterNode('superadmin-exam-center')
   if(!section) return
   ensureSuperAdminExamCenterBindings()
@@ -12965,6 +13042,7 @@ async function renderSuperAdminExamCenter(){
     loadCloudSetDocs('check')
   ])
 
+  if(portalState.userSession !== session || !isPortalSuperAdmin()) return
   const activeStudents = summarizePortalCounts(users, function(user){
     return String(user && user.role || '').trim() !== 'admin' && !(user && user.loginDisabled)
   })
@@ -13022,20 +13100,102 @@ loadPortalPrepBundleFromSources = async function(){
   return bundle
 }
 
+function resetPortalUserState(){
+  portalState.userSession = (portalState.userSession || 0) + 1
+  portalState.currentPrepVideoProgressLoadedUserId = ''
+  ;['checkData', 'checkSyncPromise', 'prepSyncPromise', 'currentCheckSet', 'currentCheckSubmission', 'currentCounselEditRecord'].forEach(function(key){ portalState[key] = null })
+  ;['checkSetInventory', 'prepSetInventory', 'currentQuestionIssues', 'myCounselRequests', 'currentPrepVideoProgressRows'].forEach(function(key){ portalState[key] = [] })
+  portalState.prepVideoDrafts = {}
+  portalState.currentCheckDraftAnswers = {}
+  portalState.currentCheckEditTargets = {}
+  portalState.currentCounselEditId = ''
+  portalState.pendingCounselRequestId = ''
+  portalState.isSubmittingCounsel = false
+  portalState.checkDataUserId = ''
+  portalState.contentMeta = {}
+  portalState.examState = null
+  portalState.examStatePromise = null
+  portalState.examCenter = {}
+  portalState.adminCheckAnalytics = null
+  portalState.adminClassFilter = 'all'
+  portalState.adminCheckSetFilter = 'all'
+  portalState.adminStudentFilter = ''
+  portalState.currentCheckExpandedResults = {}
+  portalState.isSubmittingCheck = false
+  if(portalState.grammarProgress){
+    portalState.grammarProgress.rows = []
+    portalState.grammarProgress.loadedUserId = ''
+    portalState.grammarProgress.loadPromise = null
+    portalState.grammarProgress.tracker = null
+  }
+  if(typeof clearGrammarVideoResources === 'function') clearGrammarVideoResources()
+  if(portalState.grammarAccessAdmin) Object.assign(portalState.grammarAccessAdmin, { students: [], selectedUid: '', isSaving: false })
+  if(portalState.prepVideoManager) portalState.prepVideoManager = { open: false, isSaving: false, docId: '', title: '', currentDoc: null, pendingPassageIndex: -1 }
+  if(portalState.prepVideoProgressModal) portalState.prepVideoProgressModal = { open: false, isLoading: false, docId: '', title: '', currentDoc: null, students: [], progressRows: [] }
+  if(portalState.checkSetEditor) portalState.checkSetEditor = { open: false, isSaving: false, savingScope: '', docId: '', title: '', startDate: '', endDate: '', currentDoc: null, questions: [], initialDigest: '' }
+  if(typeof window !== 'undefined') window.ROTATION_PORTAL_EXAM_KEY = ''
+  if(typeof document !== 'undefined'){
+    ;['prep-video-manager', 'prep-video-progress', 'check-set-editor'].forEach(function(prefix){
+      const modal = document.getElementById(prefix + '-modal')
+      if(!modal) return
+      modal.classList.add('hidden')
+      modal.setAttribute('aria-hidden', 'true')
+      modal.querySelectorAll('input, textarea').forEach(function(input){ input.value = '' })
+      ;['title', 'meta', 'status', 'list'].forEach(function(suffix){
+        const node = document.getElementById(prefix + '-' + suffix)
+        if(node) node.replaceChildren()
+        if(node && suffix === 'list') delete node.dataset.prepDocId
+      })
+      if(typeof syncPortalOverlayAccessibility === 'function') syncPortalOverlayAccessibility(modal, false)
+    })
+    document.body.classList.remove('modal-open')
+    ;['admin-stats', 'admin-type-list', 'admin-response-list', 'admin-issue-list', 'admin-counsel-list', 'admin-student-filter', 'admin-grammar-access-student-select', 'admin-grammar-access-summary', 'admin-grammar-progress-list', 'admin-grammar-progress-summary', 'superadmin-exam-overview'].forEach(function(id){
+      const node = document.getElementById(id)
+      if(node) node.replaceChildren()
+    })
+  }
+  if(typeof progress !== 'undefined') progress = { done: {} }
+  if(typeof progressKey !== 'undefined') progressKey = ''
+  if(typeof bundleData !== 'undefined') bundleData = null
+  if(typeof studySets !== 'undefined') studySets = []
+  if(typeof prepClasses !== 'undefined') prepClasses = []
+}
+
+async function signOutDisabledPortalUser(){
+  portalState.authSessionError = '현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.'
+  portalState.currentUser = null
+  portalState.currentProfile = null
+  try{
+    localStorage.removeItem(PORTAL_STORAGE_KEYS.currentUserId)
+  }catch(error){}
+  routePortalAfterState()
+  // Publish before sign-out: its null notification may arrive on either side of the promise.
+  try{
+    if(portalState.firebaseEnabled && portalState.auth && portalState.auth.currentUser){
+      await portalState.auth.signOut()
+    }
+  }catch(error){}
+}
+
 async function handleResolvedAuthUser(user){
+  if(user) portalState.authSessionError = ''
   portalState.authResolved = true
+  resetPortalUserState()
+  const session = portalState.userSession
   portalState.currentUser = user
-  portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
+  portalState.currentProfile = null
+  let profile
+  try{
+    profile = user ? await fetchOrCreateUserProfile(user) : null
+  }catch(error){
+    if(portalState.userSession !== session) return
+    throw error
+  }
+  if(portalState.userSession !== session) return
+  portalState.currentProfile = profile
 
   if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
-    try{
-      if(portalState.auth && portalState.auth.currentUser){
-        await portalState.auth.signOut()
-      }
-    }catch(error){}
-    portalState.currentUser = null
-    portalState.currentProfile = null
-    setAuthError('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+    return signOutDisabledPortalUser()
   }
 
   routePortalAfterState()
@@ -13069,17 +13229,39 @@ async function fetchOrCreateUserProfile(user){
 }
 
 async function loginPortalUser(loginId, password){
+  portalState.authSessionError = ''
   if(portalState.firebaseEnabled){
-    const credential = await portalState.auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
-    const user = credential && credential.user ? credential.user : portalState.auth.currentUser
+    const auth = portalState.auth
+    const request = {}
+    portalState.pendingLoginAttempt = request
+    const startedSession = portalState.userSession
+    let credential
+    try{
+      credential = await auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
+    }catch(error){
+      if(portalState.pendingLoginAttempt !== request || portalState.userSession !== startedSession) return false
+      throw error
+    }
+    const user = credential && credential.user ? credential.user : auth.currentUser
+    if(portalState.pendingLoginAttempt !== request || portalState.auth !== auth || !user || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+    if(portalState.currentUser && portalState.currentUser.uid === user.uid && portalState.currentProfile) return true
+    if((!portalState.currentUser || portalState.currentUser.uid !== user.uid) && typeof resetPortalUserState === 'function') resetPortalUserState()
+    const session = portalState.userSession
     portalState.authResolved = true
     portalState.currentUser = user || null
-    portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
+    portalState.currentProfile = null
+    let profile
+    try{
+      profile = user ? await fetchOrCreateUserProfile(user) : null
+    }catch(error){
+      if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+      throw error
+    }
+    if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+    portalState.currentProfile = profile
     if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
-      await portalState.auth.signOut()
-      portalState.currentUser = null
-      portalState.currentProfile = null
-      throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
+      await signOutDisabledPortalUser()
+      return false
     }
     routePortalAfterState()
     return
@@ -13089,6 +13271,7 @@ async function loginPortalUser(loginId, password){
   if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
   if(user.loginDisabled) throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
 
+  if(typeof resetPortalUserState === 'function') resetPortalUserState()
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
   portalState.currentUser = buildLocalAuthUser(user)
   portalState.currentProfile = user
@@ -13098,18 +13281,7 @@ async function loginPortalUser(loginId, password){
 const originalRoutePortalAfterStateForExamCenter = routePortalAfterState
 routePortalAfterState = function(){
   if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
-    try{
-      if(portalState.firebaseEnabled && portalState.auth && portalState.auth.currentUser){
-        portalState.auth.signOut()
-      }
-    }catch(error){}
-    try{
-      localStorage.removeItem(PORTAL_STORAGE_KEYS.currentUserId)
-    }catch(error){}
-    portalState.currentUser = null
-    portalState.currentProfile = null
-    showAuthScreen('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
-    return
+    return signOutDisabledPortalUser()
   }
   if(!portalState.currentUser){
     resetStudyCafeEmbed({ clearFrame: true })

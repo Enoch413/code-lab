@@ -32,10 +32,12 @@ for(const [text, name] of [[portal,'escapeJs'],[prep,'escapePrepInlineJsValue']]
 const forged = { id:'real-document-id', data:()=>({id:'forged-data-id',userId:'synthetic-user'}) }
 const ctx = vm.createContext({
   portalState:{firebaseEnabled:true,currentUser:{uid:'synthetic-user'},db:{collection:()=>({get:async()=>({docs:[forged]}),where(){return this}})}},
+  isPortalSuperAdmin:()=>false, isPortalAdmin:()=>false,
   normalizeCounselRequestRecord:value=>value,
   getCurrentCounselUserId:()=> 'synthetic-user',
   PORTAL_COUNSEL_REQUEST_COLLECTION:'counselRequests'
 })
+vm.runInContext(definition(source, 'fetchScopedPortalRecordDocs'), ctx)
 for(const name of ['fetchMyQuestionIssues','fetchAllQuestionIssues','fetchMyCounselRequests','fetchAllCounselRequests']){
   vm.runInContext(definition(source, name), ctx)
   const rows = await ctx[name]({id:'synthetic-set'})
