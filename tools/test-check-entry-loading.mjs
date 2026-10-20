@@ -38,7 +38,7 @@ assert.ok(source.includes('requestAnimationFrame(function(){'))
 
 const syncJumpButton = source.slice(
   source.indexOf('function syncCheckJumpButtonVisibility(){'),
-  source.indexOf('function showAuthScreen(errorMessage){')
+  source.indexOf('function showPortalScreen(){')
 )
 assert.ok(syncJumpButton.includes('form.childElementCount > 13'))
 assert.ok(!syncJumpButton.includes('querySelectorAll'))
@@ -46,7 +46,7 @@ assert.ok(!syncJumpButton.includes('querySelectorAll'))
 assert.ok(styleSource.includes('content-visibility:auto;'))
 assert.ok(styleSource.includes('contain-intrinsic-size:auto 86px;'))
 assert.match(indexSource, /rotation_prep\.css\?v=[^"\s]+/)
-assert.ok(indexSource.includes('20261020-p1-fixes-01'))
+assert.match(indexSource,/rotation_prep_core\.js\?v=[^"\s]+/)
 
 // Run the actual read/entry functions with a stalled SDK and a controllable clock.
 function block(start, end, last = false, text = source){

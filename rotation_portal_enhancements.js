@@ -31,6 +31,7 @@ const PORTAL_ENHANCEMENT_KEYS = {
   issueHiddenPrefix: 'rotation_portal_hidden_question_issues_v1_',
   prepVideoProgress: 'rotation_portal_prep_video_progress_v1',
   grammarVideoProgress: 'rotation_portal_grammar_video_progress_v1',
+  grammarProgressPendingPrefix: 'rotation_portal_grammar_pending_v1_',
   counselRequests: 'rotation_portal_counsel_requests_v1',
   counselSlots: 'rotation_portal_counsel_slots_v1'
 }
@@ -310,6 +311,7 @@ function initPortalEnhancements(){
   window.addEventListener('resize', syncAppChromeLayout)
   document.addEventListener('visibilitychange', handleGrammarProgressVisibilityChange)
   window.addEventListener('beforeunload', handleGrammarProgressBeforeUnload)
+  window.addEventListener('online', retryPendingGrammarProgress)
   if(!history.state || !history.state.appRoute){
     syncAppHistoryState(getCurrentActiveScreenId(), true)
   }else{
@@ -562,6 +564,8 @@ function bindPasswordSubmitOverride(){
 }
 
 function bindPortalEnhancementEvents(){
+  bindClick('prep-entry-retry-btn', function(){ openPrepPortal({ forceReload: true }) })
+  bindClick('prep-entry-home-btn', showPortalScreen)
   bindClick('app-menu-btn', openAppDrawer)
   bindClick('app-drawer-close-btn', closeAppDrawer)
   bindClick('app-drawer-backdrop', closeAppDrawer)
@@ -1212,11 +1216,12 @@ function canAccessGrammarObjectPath(objectPath){
 function getGrammarProgressUserId(profile){
   const source = profile || portalState.currentProfile || {}
   const authUser = profile ? {} : (portalState.currentUser || {})
-  return String(source.uid || source.id || authUser.uid || '').trim()
+  return String(authUser.uid || source.uid || source.id || '').trim()
 }
 
 function shouldTrackGrammarProgress(){
   if(!portalState.currentUser || !portalState.currentProfile) return false
+  if(portalState.currentProfile.loginDisabled) return false
   return String(portalState.currentProfile.role || 'student').trim().toLowerCase() !== 'admin'
 }
 
@@ -1364,6 +1369,83 @@ function mergeGrammarVideoProgressRecord(record, targetRows){
   return rows
 }
 
+function getPendingGrammarProgressKey(userId){
+  return PORTAL_ENHANCEMENT_KEYS.grammarProgressPendingPrefix + encodeURIComponent(userId)
+}
+
+function readPendingGrammarProgressRows(userId){
+  try{
+    const rows = JSON.parse(localStorage.getItem(getPendingGrammarProgressKey(userId)) || '[]')
+    return (Array.isArray(rows) ? rows : []).map(normalizeGrammarVideoProgressRecord).filter(function(row){
+      return row && row.userId === userId && row.id === buildGrammarProgressDocId(userId, row.unitId, row.partIndex)
+    })
+  }catch(error){
+    console.warn('grammar pending progress read failed:', error)
+    return []
+  }
+}
+
+function stageGrammarProgressRecord(record, acknowledged){
+  try{
+    if(!portalState.firebaseEnabled){
+      if(!acknowledged) saveLocalGrammarVideoProgressRecord(record)
+      return true
+    }
+    const stored = readPendingGrammarProgressRows(record.userId)
+    let pending = normalizeGrammarVideoProgressRecord(Object.assign({}, record, { name: '', email: '', loginId: '', studentId: '', classIds: [] }))
+    if(!acknowledged) pending = mergeGrammarProgressRecords(stored.find(function(row){ return row.id === pending.id }), pending)
+    const rows = stored.filter(function(row){
+      return row.id !== pending.id || (acknowledged && JSON.stringify(row) !== JSON.stringify(pending))
+    })
+    if(!acknowledged) rows.push(pending)
+    const key = getPendingGrammarProgressKey(record.userId)
+    if(rows.length) localStorage.setItem(key, JSON.stringify(rows))
+    else localStorage.removeItem(key)
+    portalState.grammarProgress.pendingStorageWarning = false
+    return true
+  }catch(error){
+    console.warn('grammar pending progress write failed:', error)
+    if(!portalState.grammarProgress.pendingStorageWarning){
+      portalState.grammarProgress.pendingStorageWarning = true
+      showToast('기기에 진행 기록을 보관하지 못했습니다. 연결 상태와 저장 공간을 확인하고 화면을 닫지 마세요.', 'var(--red)')
+    }
+    return false
+  }
+}
+
+function mergeGrammarProgressRecords(previous, next){
+  if(!previous) return normalizeGrammarVideoProgressRecord(next)
+  const duration = Math.max(Number(previous.duration) || 0, Number(next.duration) || 0)
+  const latest = String(previous.updatedAt || '') > String(next.updatedAt || '') ? previous : next
+  const completed = !!previous.completed || !!next.completed
+  const ranges = normalizeGrammarWatchedRanges((previous.watchedRanges || []).concat(next.watchedRanges || []), duration)
+  return normalizeGrammarVideoProgressRecord(Object.assign({}, previous, next, {
+    duration: duration, watchedRanges: ranges, watchedSeconds: getGrammarWatchedSeconds(ranges, duration),
+    completed: completed, status: completed ? 'completed' : 'in_progress',
+    currentTime: completed ? duration : latest.currentTime,
+    completionRatio: completed ? 1 : getGrammarCompletionRatio(ranges, duration),
+    startedAt: [previous.startedAt, next.startedAt].filter(Boolean).sort()[0] || '',
+    completedAt: previous.completedAt || next.completedAt || '', updatedAt: latest.updatedAt
+  }))
+}
+
+async function retryPendingGrammarProgress(){
+  if(!portalState.firebaseEnabled || !portalState.db || !shouldTrackGrammarProgress()) return false
+  const session = portalState.userSession
+  const userId = getGrammarProgressUserId()
+  try{
+    for(const record of readPendingGrammarProgressRows(userId)){
+      if(portalState.userSession !== session || getGrammarProgressUserId() !== userId) return false
+      await persistGrammarProgressRecord(record)
+    }
+    if(portalState.userSession === session) syncGrammarPlayerWatchStatus()
+    return true
+  }catch(error){
+    console.warn('grammar progress retry remains pending:', error)
+    return false
+  }
+}
+
 function getGrammarVideoProgressRow(unitId, partIndex, rows){
   const normalizedUnitId = String(unitId || '').trim()
   const normalizedPartIndex = Math.max(0, Math.floor(Number(partIndex) || 0))
@@ -1441,9 +1523,23 @@ async function ensureCurrentGrammarProgressLoaded(forceReload){
   const session = portalState.userSession
   portalState.grammarProgress.loadPromise = fetchGrammarVideoProgressRows({ userId: userId }).then(function(rows){
     if(portalState.userSession !== session) return []
+    if(portalState.firebaseEnabled){
+      readPendingGrammarProgressRows(userId).forEach(function(record){
+        const previous = rows.find(function(row){ return row.id === record.id })
+        rows = mergeGrammarVideoProgressRecord(mergeGrammarProgressRecords(previous, record), rows)
+      })
+    }
     portalState.grammarProgress.rows = rows
     portalState.grammarProgress.loadedUserId = userId
+    retryPendingGrammarProgress()
     return rows
+  }).catch(function(error){
+    if(portalState.userSession !== session) return []
+    const pending = portalState.firebaseEnabled ? readPendingGrammarProgressRows(userId) : []
+    if(!pending.length) throw error
+    portalState.grammarProgress.rows = pending
+    showToast('기기에 보관된 진행 기록을 열었습니다. 서버 동기화는 연결 후 다시 시도합니다.', 'var(--orange)')
+    return pending
   }).finally(function(){
     if(portalState.userSession === session) portalState.grammarProgress.loadPromise = null
   })
@@ -1490,7 +1586,7 @@ function buildGrammarProgressRecord(reason){
   const tracker = portalState.grammarProgress.tracker
   const context = getCurrentGrammarUnitContext()
   const profile = portalState.currentProfile || {}
-  if(!tracker || !context || !tracker.userId || tracker.unitId !== context.unit.id) return null
+  if(!tracker || !context || !tracker.userId || tracker.userId !== getGrammarProgressUserId() || tracker.unitId !== context.unit.id) return null
   if(!tracker.startedAt && !tracker.completed) return null
   const now = new Date().toISOString()
   const duration = Math.max(0, Number(tracker.duration) || 0)
@@ -1530,12 +1626,30 @@ function buildGrammarProgressRecord(reason){
 
 async function persistGrammarProgressRecord(record){
   if(!record) return false
-  portalState.grammarProgress.rows = mergeGrammarVideoProgressRecord(record, portalState.grammarProgress.rows)
-  if(portalState.firebaseEnabled && portalState.db){
-    await portalState.db.collection(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION).doc(record.id).set(record, { merge: true })
+  const session = portalState.userSession
+  const userId = getGrammarProgressUserId()
+  if(!shouldTrackGrammarProgress() || record.userId !== userId) throw new Error('GRAMMAR user changed')
+  let saved = record
+  if(portalState.firebaseEnabled){
+    if(!portalState.db) throw new Error('GRAMMAR Firestore unavailable')
+    const profile = portalState.currentProfile
+    record = mergeGrammarProgressRecords(record, readPendingGrammarProgressRows(userId).find(function(row){ return row.id === record.id }) || record)
+    const current = Object.assign({}, record, { classIds: getProfileClassIds(), name: profile.name || '', email: profile.email || '', loginId: profile.loginId || '', studentId: profile.studentId || '' })
+    const ref = portalState.db.collection(PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION).doc(record.id)
+    saved = await portalState.db.runTransaction(async function(transaction){
+      const snapshot = await transaction.get(ref)
+      if(portalState.userSession !== session || getGrammarProgressUserId() !== userId) throw new Error('GRAMMAR user changed')
+      const merged = mergeGrammarProgressRecords(snapshot.exists ? normalizeGrammarVideoProgressRecord(snapshot.data()) : null, current)
+      transaction.set(ref, merged, { merge: true })
+      return merged
+    })
   }else{
     saveLocalGrammarVideoProgressRecord(record)
   }
+  if(portalState.userSession !== session || getGrammarProgressUserId() !== userId) return true
+  stageGrammarProgressRecord(record, true)
+  const pending = portalState.firebaseEnabled ? readPendingGrammarProgressRows(userId).find(function(row){ return row.id === record.id }) : null
+  portalState.grammarProgress.rows = mergeGrammarVideoProgressRecord(pending ? mergeGrammarProgressRecords(saved, pending) : saved, portalState.grammarProgress.rows)
   return true
 }
 
@@ -1549,15 +1663,19 @@ function flushGrammarProgress(reason){
   }
   const record = buildGrammarProgressRecord(reason)
   if(!record) return Promise.resolve(false)
+  stageGrammarProgressRecord(record)
+  const session = portalState.userSession
   tracker.dirty = false
   state.savePromise = (state.savePromise || Promise.resolve()).catch(function(){}).then(function(){
+    if(portalState.userSession !== session || getGrammarProgressUserId() !== record.userId) return false
     return persistGrammarProgressRecord(record)
   }).then(function(result){
+    if(portalState.userSession !== session) return false
     syncGrammarPlayerWatchStatus()
     if(getCurrentActiveScreenId() === 'grammar-screen') renderGrammarCourse()
     return result
   }).catch(function(error){
-    tracker.dirty = true
+    if(portalState.userSession === session) tracker.dirty = true
     console.warn('grammar video progress save failed:', error && error.message ? error.message : error)
     return false
   })
@@ -1567,6 +1685,8 @@ function flushGrammarProgress(reason){
 function scheduleGrammarProgressSave(reason, immediate){
   const state = portalState.grammarProgress
   if(!shouldTrackGrammarProgress() || !state.tracker || !state.tracker.dirty) return
+  const record = buildGrammarProgressRecord(reason)
+  if(record) stageGrammarProgressRecord(record)
   if(state.saveTimer){
     if(!immediate) return
     window.clearTimeout(state.saveTimer)
@@ -1625,6 +1745,9 @@ function syncGrammarPlayerWatchStatus(){
     detail = formatGrammarWatchTime(currentTime) + (duration ? (' / ' + formatGrammarWatchTime(duration)) : '') + ' · 실제 시청 ' + Math.round(ratio * 100) + '%'
   }
   if(status === 'completed') detail = '영상 끝까지 시청했습니다.'
+  if(portalState.firebaseEnabled && readPendingGrammarProgressRows(getGrammarProgressUserId()).some(function(row){ return row.unitId === context.unit.id && row.partIndex === portalState.grammarPlayer.partIndex })){
+    detail += ' · 기기에 보관됨 (서버 동기화 대기)'
+  }
   setElementTextSafe('grammar-watch-status-detail', detail)
   const bar = document.getElementById('grammar-watch-meter-bar')
   if(bar) bar.style.width = Math.round(ratio * 100) + '%'
@@ -2962,6 +3085,7 @@ function navigateAppChromeBreadcrumb(screenId, index, label){
     return
   }
   if(target === 'PREP'){
+    if(portalState.prepEntryPhase) return openPrepPortal()
     if(PREP_SCREEN_IDS.indexOf(screenId) >= 0 && typeof showPassageScreen === 'function'){
       showPassageScreen()
       return
@@ -3109,6 +3233,7 @@ function restoreAppRoute(route){
   if(route.screenId === 'check-set-screen') return openCheckSetPortal(route.checkSetId, { preserveHistory: true })
   if(route.screenId === 'admin-screen') return openAdminPortal()
   if(PREP_SCREEN_IDS.indexOf(route.screenId) >= 0 && typeof window.restorePrepNavigationState === 'function'){
+    if(!bundleData || portalState.prepEntryPhase) return openPrepPortal()
     return window.restorePrepNavigationState(route)
   }
 
@@ -3232,12 +3357,6 @@ function syncCheckJumpButtonVisibility(){
   button.classList.toggle('hidden', (!canScrollMore && !hasLongVisibleForm) || nearBottom)
 }
 
-function showAuthScreen(errorMessage){
-  syncAuthClassOptions()
-  if(errorMessage || portalState.authSessionError) setAuthError(errorMessage || portalState.authSessionError)
-  else clearAuthError()
-  activatePortalScreen('auth-screen')
-}
 
 function showPortalScreen(){
   if(!portalState.currentUser){
@@ -3286,33 +3405,6 @@ function openPasswordScreen(forceChange){
   activatePortalScreen('password-screen')
 }
 
-function routePortalAfterState(){
-  syncAuthClassOptions()
-  if(bundleData) unlockAllPrepClasses()
-
-  if(!portalState.authResolved){
-    showAuthScreen('로그인 상태를 확인하는 중입니다.')
-    return
-  }
-
-  if(!portalState.currentUser){
-    showAuthScreen('')
-    return
-  }
-
-  clearAuthError()
-  updatePortalUserCard()
-
-  Promise.resolve(syncPrepContentAfterLogin(false)).finally(function(){
-    updatePortalUserCard()
-    if(isPasswordResetRequired(portalState.currentProfile)){
-      openPasswordScreen(true)
-      return
-    }
-    showPortalScreen()
-    if(typeof handlePortalHashRoute === 'function') handlePortalHashRoute()
-  })
-}
 
 function withPortalReadTimeout(promise, milliseconds){
   let timer
@@ -3477,14 +3569,52 @@ async function syncPrepContentAfterLogin(forceReload){
   return portalState.prepSyncPromise
 }
 
-async function openPrepPortal(){
+function renderPrepEntryState(phase){
+  portalState.prepEntryPhase = phase
+  const screen = document.getElementById('passage-screen')
+  const panel = document.getElementById('prep-entry-status')
+  if(!screen || !panel) return
+  if(phase) screen.dataset.prepEntryState = phase
+  else delete screen.dataset.prepEntryState
+  panel.classList.toggle('hidden', !phase)
+  document.getElementById('prep-entry-message').textContent = phase === 'error'
+    ? 'PREP 데이터를 불러오지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'
+    : 'PREP 자료와 학습 기록을 불러오는 중입니다. 메인에서 다른 LAB을 이용할 수 있습니다.'
+  const retry = document.getElementById('prep-entry-retry-btn')
+  retry.classList.toggle('hidden', phase !== 'error')
+  retry.disabled = phase !== 'error'
+  document.getElementById('p-list').setAttribute('aria-busy', phase === 'loading' ? 'true' : 'false')
+}
+
+async function openPrepPortal(options){
   if(!ensurePortalScreenAccess('passage-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
     return
   }
 
-  await syncPrepContentAfterLogin(false)
+  const settings = options || {}
+  const request = {}
+  const session = portalState.userSession
+  portalState.prepEntryRequest = request
+  renderPrepEntryState('loading')
+  activatePortalScreen('passage-screen')
+  let loaded
+  try{
+    loaded = await syncPrepContentAfterLogin(settings.forceReload === true)
+  }catch(error){
+    if(portalState.userSession === session && portalState.prepEntryRequest === request) portalState.prepSyncError = 'PREP read failed'
+  }
+  if(portalState.userSession !== session || portalState.prepEntryRequest !== request || getCurrentActiveScreenId() !== 'passage-screen') return false
+  if(!loaded && portalState.prepSyncError){
+    renderPrepEntryState('error')
+    return false
+  }
+  renderPrepEntryState('')
+  if(settings.restoreRoute && typeof window.restorePrepNavigationState === 'function'){
+    window.restorePrepNavigationState(settings.restoreRoute)
+    return true
+  }
 
   hideAllScreensBeforePrep()
   if(!bundleData){
@@ -3497,7 +3627,7 @@ async function openPrepPortal(){
       showNoSessionState()
     }
     updateAppChrome(getCurrentActiveScreenId())
-    return
+    return true
   }
 
   if(isPortalAdmin()){
@@ -3506,13 +3636,14 @@ async function openPrepPortal(){
     }
     showPassageScreen()
     syncPortalAdminSetPanels('passage-screen')
-    return
+    return true
   }
 
   if(typeof ensureStudentPrepSelection === 'function'){
     ensureStudentPrepSelection()
   }
   showPassageScreen()
+  return true
 }
 
 async function ensureCheckData(forceReload){
@@ -3782,16 +3913,18 @@ function refreshPortalData(){
   }
   if(PREP_SCREEN_IDS.indexOf(screenId) >= 0){
     const route = captureAppRoute(screenId)
-    return Promise.resolve(syncPrepContentAfterLogin(true)).then(function(){
-      if(route && typeof window.restorePrepNavigationState === 'function'){
-        window.restorePrepNavigationState(route)
-      }else{
-        openPrepPortal()
-      }
-      showToast('PREP 데이터를 새로 불러왔습니다.', 'var(--green)')
+    return openPrepPortal({ forceReload: true, restoreRoute: portalState.prepEntryPhase ? null : route }).then(function(loaded){
+      if(loaded) showToast('PREP 데이터를 새로 불러왔습니다.', 'var(--green)')
+      return loaded
     })
   }
-  return Promise.resolve(syncPrepContentAfterLogin(true)).then(function(){
+  const session = portalState.userSession
+  return Promise.resolve(syncPrepContentAfterLogin(true)).then(function(loaded){
+    if(portalState.userSession !== session || getCurrentActiveScreenId() !== screenId) return false
+    if(!loaded){
+      if(portalState.prepSyncError) showToast('PREP 데이터를 불러오지 못했습니다. PREP에서 다시 시도해 주세요.', 'var(--red)')
+      return false
+    }
     if(screenId === 'portal-screen') showPortalScreen()
     if(screenId === 'account-screen') openAccountScreen()
     if(screenId === 'admin-portal-screen') openToolsPortal()
@@ -3943,19 +4076,20 @@ function mapResponseToSubmission(row){
   const latestBatchIds = Array.isArray(row && row.latestBatch && row.latestBatch.questionIds)
     ? row.latestBatch.questionIds.map(function(value){ return String(value || '').trim() }).filter(Boolean)
     : answers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean)
-  const latestBatchSummary = row && row.latestBatch && row.latestBatch.summary
-    ? row.latestBatch.summary
-    : buildCheckSubmissionSummary(answers.filter(function(answer){
+  const latestBatchSummary = buildCheckSubmissionSummary(answers.filter(function(answer){
         return latestBatchIds.includes(String(answer && answer.questionId || '').trim())
       }))
+
   return {
     submittedAt: String(row && row.submittedAt || '').trim(),
-    summary: row && row.summary ? row.summary : buildCheckSubmissionSummary(answers),
+    summary: buildCheckSubmissionSummary(answers),
     answers: answers,
     latestBatch: latestBatchIds.length ? {
       submittedAt: String(row && row.latestBatch && row.latestBatch.submittedAt || row && row.submittedAt || '').trim(),
       questionIds: latestBatchIds,
-      summary: latestBatchSummary
+      summary: latestBatchSummary,
+      editedCount: Number(row && row.latestBatch && row.latestBatch.editedCount || 0),
+      newCount: Number(row && row.latestBatch && row.latestBatch.newCount || Math.max(0, latestBatchIds.length - Number(row && row.latestBatch && row.latestBatch.editedCount || 0)))
     } : null
   }
 }
@@ -4356,7 +4490,7 @@ function buildCheckSubmissionSummary(answers){
   const list = Array.isArray(answers) ? answers : []
   return {
     total: list.length,
-    correct: list.filter(function(answer){ return !!(answer && answer.isCorrect) }).length,
+    correct: list.filter(function(answer){ return answer && answer.isCorrect === true }).length,
     wrong: list.filter(function(answer){ return answer && answer.isCorrect === false }).length
   }
 }
@@ -4470,6 +4604,9 @@ function mergeCheckSubmission(existingSubmission, batchAnswers){
   })
   const mergedAnswers = sortCheckSubmissionAnswers(Array.from(mergedMap.values()))
   const submittedAt = new Date().toISOString()
+  const editedCount = batchAnswers.filter(function(answer){
+    return getCheckAnswerEditCount(answer) > 0
+  }).length
   return {
     submittedAt: submittedAt,
     summary: buildCheckSubmissionSummary(mergedAnswers),
@@ -4477,7 +4614,9 @@ function mergeCheckSubmission(existingSubmission, batchAnswers){
     latestBatch: {
       submittedAt: submittedAt,
       questionIds: batchAnswers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean),
-      summary: buildCheckSubmissionSummary(batchAnswers)
+      summary: buildCheckSubmissionSummary(batchAnswers),
+      editedCount: editedCount,
+      newCount: Math.max(0, batchAnswers.length - editedCount)
     }
   }
 }
@@ -6803,7 +6942,7 @@ function getAdminAnswerStatus(response, question){
     }
   }
   if(answer.isCorrect === true) return { status: 'correct', text: 'O', answer: answer }
-  return { status: 'submitted', text: '제출', answer: answer }
+  return { status: 'submitted', text: '채점 미확인', answer: answer }
 }
 
 function isAdminStudentExpectedForQuestion(student, question){
@@ -6844,7 +6983,7 @@ function buildAdminCheckAnalytics(filteredRows, studentProfiles, classFilteredRo
         }else{
           wrongNotePendingStudents.push(student.label)
         }
-      }else{
+      }else if(result.status === 'correct'){
         correctCount += 1
       }
     })
@@ -7097,6 +7236,7 @@ function buildAdminAnalyticsExcelHtml(analytics){
     '<style>body{font-family:Malgun Gothic,Arial,sans-serif} table{border-collapse:collapse;margin-bottom:24px} th,td{border:1px solid #999;padding:6px 8px;mso-number-format:"\\@";vertical-align:top} th{background:#e9f3f1;font-weight:700}.title{font-size:18px;font-weight:800;margin:0 0 8px}.meta{color:#555;margin:0 0 18px}</style>' +
     '</head><body>' +
       '<div class="title">CHECK 오답 통계</div>' +
+      '<p class="meta">자기 학습·2차 오답 생성용 참고 기록이며 공식 성적이 아닙니다.</p>' +
       '<div class="meta">세트: ' + escapeHtml(analytics.selectedSetTitle || '전체 세트') + ' / 생성: ' + escapeHtml(formatAdminTime(analytics.generatedAt)) + '</div>' +
       '<h2>문항별 오답 랭킹</h2>' +
       '<table>' +
@@ -7846,56 +7986,6 @@ function collectCheckBatchAnswers(checkSet, submission){
   }).filter(Boolean)
 }
 
-function mergeCheckSubmission(existingSubmission, batchAnswers){
-  const mergedMap = new Map((existingSubmission && Array.isArray(existingSubmission.answers) ? existingSubmission.answers : []).map(function(answer){
-    return [String(answer && answer.questionId || '').trim(), answer]
-  }).filter(function(entry){ return entry[0] }))
-  batchAnswers.forEach(function(answer){
-    mergedMap.set(String(answer && answer.questionId || '').trim(), answer)
-  })
-  const mergedAnswers = sortCheckSubmissionAnswers(Array.from(mergedMap.values()))
-  const submittedAt = new Date().toISOString()
-  const editedCount = batchAnswers.filter(function(answer){
-    return getCheckAnswerEditCount(answer) > 0
-  }).length
-  return {
-    submittedAt: submittedAt,
-    summary: buildCheckSubmissionSummary(mergedAnswers),
-    answers: mergedAnswers,
-    latestBatch: {
-      submittedAt: submittedAt,
-      questionIds: batchAnswers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean),
-      summary: buildCheckSubmissionSummary(batchAnswers),
-      editedCount: editedCount,
-      newCount: Math.max(0, batchAnswers.length - editedCount)
-    }
-  }
-}
-
-function mapResponseToSubmission(row){
-  const answers = sortCheckSubmissionAnswers(Array.isArray(row && row.answers) ? row.answers : [])
-  const latestBatchIds = Array.isArray(row && row.latestBatch && row.latestBatch.questionIds)
-    ? row.latestBatch.questionIds.map(function(value){ return String(value || '').trim() }).filter(Boolean)
-    : answers.map(function(answer){ return String(answer && answer.questionId || '').trim() }).filter(Boolean)
-  const latestBatchSummary = row && row.latestBatch && row.latestBatch.summary
-    ? row.latestBatch.summary
-    : buildCheckSubmissionSummary(answers.filter(function(answer){
-        return latestBatchIds.includes(String(answer && answer.questionId || '').trim())
-      }))
-
-  return {
-    submittedAt: String(row && row.submittedAt || '').trim(),
-    summary: row && row.summary ? row.summary : buildCheckSubmissionSummary(answers),
-    answers: answers,
-    latestBatch: latestBatchIds.length ? {
-      submittedAt: String(row && row.latestBatch && row.latestBatch.submittedAt || row && row.submittedAt || '').trim(),
-      questionIds: latestBatchIds,
-      summary: latestBatchSummary,
-      editedCount: Number(row && row.latestBatch && row.latestBatch.editedCount || 0),
-      newCount: Number(row && row.latestBatch && row.latestBatch.newCount || Math.max(0, latestBatchIds.length - Number(row && row.latestBatch && row.latestBatch.editedCount || 0)))
-    } : null
-  }
-}
 
 function buildPortalSetStorageKey(kind){
   return PORTAL_ENHANCEMENT_KEYS.contentPrefix + 'set_docs_' + String(kind || '').trim()
@@ -8116,9 +8206,31 @@ async function deleteCloudSetDoc(kind, docId){
 async function getCloudSetDoc(kind, docId){
   const targetId = String(docId || '').trim()
   if(!targetId) return null
-  const rows = await loadCloudSetDocs(kind)
-  return rows.find(function(entry){
-    return String(entry && entry.docId || '').trim() === targetId
+  if(targetId === '.' || targetId === '..' || targetId.includes('/')) throw new Error('Invalid document ID')
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled) throw new Error('Account disabled')
+  if(portalState.firebaseEnabled){
+    if(!portalState.db) throw new Error('Firestore unavailable')
+    const session = portalState.userSession
+    const userId = String(portalState.currentUser && portalState.currentUser.uid || '')
+    if(!userId) throw new Error('Authentication unavailable')
+    const collection = getPortalSetCollection(kind)
+    let record
+    try{
+      const snapshot = await withPortalReadTimeout(portalState.db.collection(collection).doc(targetId).get({ source: 'server' }), 8000)
+      if(snapshot.metadata && (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) throw new Error('Material read is not server-confirmed')
+      record = snapshot.exists ? snapshot.data() : null
+    }catch(error){
+      if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('Portal user changed')
+      const doc = await readPortalFirestoreRest('/' + collection + '/' + encodeURIComponent(targetId))
+      if(doc && (typeof doc.name !== 'string' || doc.name.split('/').pop() !== targetId || !doc.fields)) throw new Error('Invalid material document')
+      record = doc ? decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }) : null
+    }
+    if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('Portal user changed')
+    const normalized = record ? normalizePortalSetDoc(kind, Object.assign({}, record, { docId: targetId })) : null
+    return normalized && normalized.payload ? normalized : null
+  }
+  return readLocalPortalSetDocs(kind).map(function(record){ return normalizePortalSetDoc(kind, record) }).find(function(entry){
+    return entry.payload && String(entry.docId || '').trim() === targetId
   }) || null
 }
 
@@ -8359,11 +8471,14 @@ function getLatestPortalTimestamp(values){
   }, '')
 }
 
-async function loadPortalPrepBundleFromSources(){
+async function loadPortalPrepBundleFromSources(request){
   const session = portalState.userSession
-  const catalogDoc = await loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
-  const legacyDoc = await loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep)
-  const setDocs = await loadCloudSetDocs('prep')
+  const [catalogDoc, legacyDoc, setDocs] = await Promise.all([
+    loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC),
+    loadCloudContentDoc(PORTAL_CLOUD_DOCS.prep),
+    loadCloudSetDocs('prep')
+  ])
+  if(portalState.userSession !== session || (request && portalState.prepSyncRequest !== request)) throw new Error('PREP user or request changed')
   const catalogPayload = catalogDoc && catalogDoc.payload && typeof catalogDoc.payload === 'object'
     ? catalogDoc.payload
     : {}
@@ -8389,15 +8504,14 @@ async function loadPortalPrepBundleFromSources(){
     return normalizeStoredPrepSet(doc.payload, index, classes)
   }).filter(Boolean)
 
-  if(portalState.userSession !== session) throw new Error('PREP user changed')
-  portalState.prepSetInventory = buildPortalPrepSetInventory(legacySets, setDocs, classes)
+  if(portalState.userSession !== session || (request && portalState.prepSyncRequest !== request)) throw new Error('PREP user or request changed')
+  const inventory = buildPortalPrepSetInventory(legacySets, setDocs, classes)
 
   if(!legacyBundle && !setDocs.length && !classes.length){
-    portalState.prepSetInventory = []
-    return null
+    return { bundle: null, inventory: [] }
   }
 
-  return {
+  return { inventory: inventory, bundle: {
     version: 2,
     prepConfig: prepConfig,
     classes: classes,
@@ -8408,7 +8522,7 @@ async function loadPortalPrepBundleFromSources(){
     ].concat(setDocs.map(function(doc){
       return doc.updatedAt
     })))
-  }
+  } }
 }
 
 async function loadPortalCheckDataFromSources(){
@@ -8471,8 +8585,20 @@ async function syncPrepContentAfterLogin(forceReload){
   if(portalState.prepSyncPromise && !forceReload) return portalState.prepSyncPromise
 
   const session = portalState.userSession
-  portalState.prepSyncPromise = loadPortalPrepBundleFromSources().then(function(bundle){
-    if(portalState.userSession !== session || !bundle) return false
+  const request = {}
+  portalState.prepSyncRequest = request
+  portalState.prepSyncError = ''
+  // Commit only a complete, current result; a timeout must leave no late state writes.
+  portalState.prepSyncPromise = withPortalReadTimeout(Promise.all([
+    loadPortalPrepBundleFromSources(request),
+    fetchCurrentPortalPrepVideoProgressRows()
+  ]), 20000).then(function(results){
+    if(portalState.userSession !== session || portalState.prepSyncRequest !== request) return false
+    const bundle = results[0].bundle
+    if(!bundle) return false
+    portalState.prepSetInventory = results[0].inventory
+    portalState.currentPrepVideoProgressRows = results[1]
+    portalState.currentPrepVideoProgressLoadedUserId = getPortalPrepVideoProgressUserId()
     portalState.contentMeta.prep = {
       updatedAt: bundle.updatedAt || '',
       fileName: '세트별 PREP 데이터'
@@ -8480,14 +8606,19 @@ async function syncPrepContentAfterLogin(forceReload){
     if(typeof window.applyPrepSessionData === 'function'){
       window.applyPrepSessionData(bundle, { source: 'remote', skipRoute: true })
     }
-    return refreshPortalPrepVideoProgressForCurrentUser(false).then(function(){
-      return true
-    })
+    const changed = applyPortalPrepVideoProgressRowsToCurrentPrepClass()
+    refreshVisiblePortalPrepProgressAfterHydration(changed)
+    return true
   }).catch(function(error){
+    if(portalState.userSession !== session || portalState.prepSyncRequest !== request) return false
     console.error(error)
+    portalState.prepSyncError = 'PREP read failed'
     return false
   }).finally(function(){
-    if(portalState.userSession === session) portalState.prepSyncPromise = null
+    if(portalState.userSession === session && portalState.prepSyncRequest === request){
+      portalState.prepSyncPromise = null
+      portalState.prepSyncRequest = null
+    }
   })
 
   return portalState.prepSyncPromise
@@ -9764,7 +9895,6 @@ function renderPortalPrepVideoManager(){
   modal.setAttribute('aria-hidden', 'false')
   document.body.classList.add('modal-open')
 }
-
 
 
 function closePortalPrepVideoManager(options){
@@ -11602,122 +11732,6 @@ async function getFirebaseUserProfileSnapshot(uid){
   }
 }
 
-async function fetchOrCreateUserProfile(user){
-  const snapshot = await getFirebaseUserProfileSnapshot(user.uid)
-  if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({}, snapshot.data(), { uid: user.uid }))
-  }
-
-  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
-  const loginId = derivePortalLoginId({ email: user.email || '' })
-  const profile = {
-    uid: user.uid,
-    loginId: loginId,
-    email: user.email || '',
-    name: user.displayName || '',
-    studentId: loginId,
-    classIds: fallbackClassId ? [fallbackClassId] : [],
-    role: 'student',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  await saveFirebaseUserProfile(user.uid, profile)
-  return normalizeUserProfile(profile)
-}
-
-async function loginPortalUser(loginId, password){
-  if(portalState.firebaseEnabled){
-    await portalState.auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
-    return
-  }
-
-  const user = findLocalPortalUser(loginId, password)
-  if(!user) throw Object.assign(new Error('?꾩씠???먮뒗 鍮꾨?踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.'), { code: 'auth/invalid-credential' })
-
-  localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
-  portalState.currentUser = buildLocalAuthUser(user)
-  portalState.currentProfile = user
-  routePortalAfterState()
-}
-
-async function submitPasswordChange(){
-  const currentPassword = String(document.getElementById('password-current').value || '').trim()
-  const nextPassword = String(document.getElementById('password-next').value || '').trim()
-  const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
-
-  if(!currentPassword || !nextPassword || !confirmPassword){
-    setPasswordError('모든 칸을 입력해 주세요.')
-    return
-  }
-  if(nextPassword.length < 6){
-    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.', 'password-next')
-    return
-  }
-  if(nextPassword !== confirmPassword){
-    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.', 'password-confirm')
-    return
-  }
-  if(currentPassword === nextPassword){
-    setPasswordError('현재 비밀번호와 다른 값을 입력해 주세요.', 'password-next')
-    return
-  }
-
-  try{
-    if(portalState.firebaseEnabled){
-      const user = portalState.auth.currentUser
-      if(!user || !user.email) throw new Error('Login information is unavailable.')
-      const updatedAt = new Date().toISOString()
-      const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword)
-      await user.reauthenticateWithCredential(credential)
-      await user.updatePassword(nextPassword)
-      await saveFirebaseUserProfile(user.uid, {
-        passwordResetRequired: false,
-        updatedAt: updatedAt
-      })
-
-      const refreshedSnapshot = await getFirebaseUserProfileSnapshot(user.uid)
-      if(refreshedSnapshot.exists){
-        portalState.currentProfile = normalizeUserProfile(Object.assign({ uid: user.uid }, refreshedSnapshot.data()))
-      }else{
-        portalState.currentProfile = normalizeUserProfile(Object.assign({}, portalState.currentProfile || {}, {
-          uid: user.uid,
-          passwordResetRequired: false,
-          updatedAt: updatedAt
-        }))
-      }
-    }else{
-      const currentUserId = portalState.currentUser ? portalState.currentUser.uid : ''
-      const users = readLocalUsers()
-      const targetIndex = users.findIndex(function(entry){
-        return entry.id === currentUserId
-      })
-      if(targetIndex < 0) throw new Error('Account information was not found.')
-      if(users[targetIndex].password !== currentPassword) return setPasswordError('현재 비밀번호가 올바르지 않습니다.', 'password-current')
-
-      users[targetIndex].password = nextPassword
-      users[targetIndex].passwordResetRequired = false
-      users[targetIndex].updatedAt = new Date().toISOString()
-      writeLocalUsers(users)
-      portalState.currentProfile = users[targetIndex]
-      portalState.currentUser = buildLocalAuthUser(users[targetIndex])
-    }
-
-    portalState.forcePasswordChange = false
-    portalState.forcePasswordReset = false
-    clearPasswordError()
-    clearPasswordFields()
-
-    const backBtn = document.getElementById('password-back-btn')
-    const homeBtn = document.getElementById('password-home-btn')
-    if(backBtn) backBtn.style.display = ''
-    if(homeBtn) homeBtn.style.display = ''
-
-    showToast('비밀번호를 변경했습니다.', 'var(--green)')
-    showPortalScreen()
-  }catch(error){
-    setPasswordError(getPasswordChangeErrorMessage(error), getPasswordChangeErrorField(error))
-  }
-}
 
 const PORTAL_EXAM_STATE_DOC = 'exam-state'
 const SUPERADMIN_CLASS_ADMIN_HEADERS = ['classId', 'className', 'managerUid', 'managerLoginId', 'managerName', 'managerEmail', 'managerScope']
@@ -12320,6 +12334,7 @@ function buildPortalExamArchiveExcelHtml(snapshot){
       '</head>' +
       '<body>' +
         '<h1>' + escapeHtml((snapshot && snapshot.examName || '시험 종료') + ' 아카이브') + '</h1>' +
+        '<p>CHECK는 자기 학습·2차 오답 생성용 참고 기록이며 공식 성적이 아닙니다.</p>' +
         '<h2>요약</h2>' + buildPortalHtmlTable(['항목', '값'], summaryRows) +
         '<h2>반 목록</h2>' + buildPortalHtmlTable(['classId', 'className', 'password'], classRows) +
         '<h2>사용자</h2>' + buildPortalHtmlTable(['role', 'adminScope', 'status', 'loginId', 'name', 'studentId', 'email', 'classIds'], userRows) +
@@ -13103,6 +13118,10 @@ loadPortalPrepBundleFromSources = async function(){
 function resetPortalUserState(){
   portalState.userSession = (portalState.userSession || 0) + 1
   portalState.currentPrepVideoProgressLoadedUserId = ''
+  portalState.prepSyncRequest = null
+  portalState.prepEntryRequest = null
+  portalState.prepSyncError = ''
+  portalState.prepEntryPhase = ''
   ;['checkData', 'checkSyncPromise', 'prepSyncPromise', 'currentCheckSet', 'currentCheckSubmission', 'currentCounselEditRecord'].forEach(function(key){ portalState[key] = null })
   ;['checkSetInventory', 'prepSetInventory', 'currentQuestionIssues', 'myCounselRequests', 'currentPrepVideoProgressRows'].forEach(function(key){ portalState[key] = [] })
   portalState.prepVideoDrafts = {}
@@ -13123,6 +13142,9 @@ function resetPortalUserState(){
   portalState.currentCheckExpandedResults = {}
   portalState.isSubmittingCheck = false
   if(portalState.grammarProgress){
+    if(portalState.grammarProgress.saveTimer && typeof window !== 'undefined') window.clearTimeout(portalState.grammarProgress.saveTimer)
+    portalState.grammarProgress.saveTimer = 0
+    portalState.grammarProgress.savePromise = null
     portalState.grammarProgress.rows = []
     portalState.grammarProgress.loadedUserId = ''
     portalState.grammarProgress.loadPromise = null
@@ -13177,106 +13199,6 @@ async function signOutDisabledPortalUser(){
   }catch(error){}
 }
 
-async function handleResolvedAuthUser(user){
-  if(user) portalState.authSessionError = ''
-  portalState.authResolved = true
-  resetPortalUserState()
-  const session = portalState.userSession
-  portalState.currentUser = user
-  portalState.currentProfile = null
-  let profile
-  try{
-    profile = user ? await fetchOrCreateUserProfile(user) : null
-  }catch(error){
-    if(portalState.userSession !== session) return
-    throw error
-  }
-  if(portalState.userSession !== session) return
-  portalState.currentProfile = profile
-
-  if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
-    return signOutDisabledPortalUser()
-  }
-
-  routePortalAfterState()
-}
-
-async function fetchOrCreateUserProfile(user){
-  const snapshot = await getFirebaseUserProfileSnapshot(user.uid)
-  if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({}, snapshot.data(), { uid: user.uid }))
-  }
-
-  const loginId = derivePortalLoginId({ email: user.email || '' })
-  const profile = {
-    uid: user.uid,
-    loginId: loginId,
-    email: user.email || '',
-    name: user.displayName || '',
-    studentId: loginId,
-    classIds: [],
-    role: 'student',
-    adminScope: 'assigned',
-    loginDisabled: false,
-    grammarAccessMode: 'none',
-    grammarUnitIds: [],
-    grammarObjectPaths: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  await saveFirebaseUserProfile(user.uid, profile)
-  return normalizeUserProfile(profile)
-}
-
-async function loginPortalUser(loginId, password){
-  portalState.authSessionError = ''
-  if(portalState.firebaseEnabled){
-    const auth = portalState.auth
-    const request = {}
-    portalState.pendingLoginAttempt = request
-    const startedSession = portalState.userSession
-    let credential
-    try{
-      credential = await auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
-    }catch(error){
-      if(portalState.pendingLoginAttempt !== request || portalState.userSession !== startedSession) return false
-      throw error
-    }
-    const user = credential && credential.user ? credential.user : auth.currentUser
-    if(portalState.pendingLoginAttempt !== request || portalState.auth !== auth || !user || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
-    if(portalState.currentUser && portalState.currentUser.uid === user.uid && portalState.currentProfile) return true
-    if((!portalState.currentUser || portalState.currentUser.uid !== user.uid) && typeof resetPortalUserState === 'function') resetPortalUserState()
-    const session = portalState.userSession
-    portalState.authResolved = true
-    portalState.currentUser = user || null
-    portalState.currentProfile = null
-    let profile
-    try{
-      profile = user ? await fetchOrCreateUserProfile(user) : null
-    }catch(error){
-      if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
-      throw error
-    }
-    if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
-    portalState.currentProfile = profile
-    if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
-      await signOutDisabledPortalUser()
-      return false
-    }
-    routePortalAfterState()
-    return
-  }
-
-  const user = findLocalPortalUser(loginId, password)
-  if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
-  if(user.loginDisabled) throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
-
-  if(typeof resetPortalUserState === 'function') resetPortalUserState()
-  localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
-  portalState.currentUser = buildLocalAuthUser(user)
-  portalState.currentProfile = user
-  routePortalAfterState()
-}
 
 const originalRoutePortalAfterStateForExamCenter = routePortalAfterState
 routePortalAfterState = function(){

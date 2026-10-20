@@ -56,6 +56,15 @@
         ],
         "createdAt": "2026-10-19T18:29:55.198Z",
         "reason": "Agent: source identifies this motion as an indeterminate loading progress bar rather than scrolling content; reduced-motion users receive a static indicator with loading status text."
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-20T03:54:07.742Z",
+        "reason": "Agent: static hover/active cascade false positive (white on white); actual Edge keeps the green active-choice gradient at >=5.66:1 and counter at >=7.76:1 at 390/1280px. Rule has no extractable value; tool only supports this file-scoped exception. Real browser contrast regression remains enabled in tools/test-check-practice-browser.js and tools/test-accessibility-browser.js. See .local/p2-sequence-2026-10-20/check-browser.log."
       }
     ]
   }

@@ -7616,6 +7616,11 @@ body.app-screen-study-cafe .app-chrome{
   color:#fff;
 }
 
+#passage-screen[data-prep-entry-state] > :not(.hd):not(#prep-entry-status),
+#passage-screen[data-prep-entry-state] > .hd .sub{
+  display:none;
+}
+
 /* 2026 Unified Page Background */
 :root{
   --code-lab-page-bg:

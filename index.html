@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./rotation_prep.css?v=20261020-accessibility-02">
+<link rel="stylesheet" href="./rotation_prep.css?v=20261020-prep-entry-01">
 </head>
 <body>
 <a class="skip-link" href="#app-main">본문으로 건너뛰기</a>
@@ -557,6 +557,14 @@
   </div>
 
   <div class="hd"><h1>PREP</h1><span class="sub" id="passage-subtitle"></span></div>
+  <section class="group hidden" id="prep-entry-status" aria-labelledby="prep-entry-title">
+    <div class="group-title"><h2 id="prep-entry-title">PREP 자료 불러오기</h2></div>
+    <p class="admin-content-copy" id="prep-entry-message" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="bottom-actions">
+      <button class="btn btn-blue hidden" type="button" id="prep-entry-retry-btn" disabled>다시 시도</button>
+      <button class="btn btn-ghost" type="button" id="prep-entry-home-btn">메인으로</button>
+    </div>
+  </section>
 
   <div class="class-bar" id="passage-bar">
     <div class="class-bar-copy">
@@ -647,6 +655,7 @@
   </div>
 
   <div class="hd"><h1>CHECK</h1><span class="sub" id="check-subtitle"></span></div>
+  <p class="admin-content-copy" id="check-practice-notice">자기 학습·2차 오답 생성용 참고 기록이며 공식 성적이 아닙니다.</p>
 
   <div class="class-bar" style="display:flex">
     <div class="class-bar-copy">
@@ -673,6 +682,7 @@
   </div>
 
   <div class="hd"><h1>CHECK</h1><span class="sub" id="check-set-subtitle"></span></div>
+  <p class="admin-content-copy" id="check-set-practice-notice">자기 학습·2차 오답 생성용 참고 기록이며 공식 성적이 아닙니다.</p>
 
   <div class="class-bar" style="display:flex">
     <div class="class-bar-copy">
@@ -758,6 +768,7 @@
     <div class="class-bar-copy">
       <div class="class-bar-label">CHECK 세트 분석</div>
       <div class="class-bar-name" id="admin-set-filter-name">전체 세트</div>
+      <div class="admin-content-copy" id="admin-check-practice-notice">자기 학습·2차 오답 생성용 참고 기록이며 공식 성적이 아닙니다.</div>
     </div>
     <div class="admin-filter-actions">
       <div class="admin-filter-wrap admin-set-filter-wrap">
@@ -991,12 +1002,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="./rotation_prep_core.js?v=20261020-p1-fixes-01"></script>
+<script src="./rotation_prep_core.js?v=20261020-prep-entry-01"></script>
 <script src="./rotation_prep_bundle.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_passages.js?v=20260422-study-cafe-hosting-01"></script>
 <script src="./rotation_prep_ui.js?v=20261020-accessibility-01"></script>
-<script src="./rotation_portal.js?v=20261020-p1-fixes-01"></script>
+<script src="./rotation_portal.js?v=20261020-prep-entry-01"></script>
 <script src="./grammar_catalog.js?v=20260722-grammar-progress-07"></script>
-<script src="./rotation_portal_enhancements.js?v=20261020-p1-fixes-01"></script>
+<script src="./rotation_portal_enhancements.js?v=20261020-prep-entry-01"></script>
 </body>
 </html>

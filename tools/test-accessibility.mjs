@@ -48,7 +48,7 @@ vm.runInContext(definitions(portal).get('applyChoiceGroupSelection'),ctx)
 ctx.applyChoiceGroupSelection({querySelectorAll:()=>buttons},'1,3')
 assert.deepEqual(buttons.map(button=>button['aria-pressed']),['true','false','true'])
 
-// Exercise both retained password handlers, including the final runtime override.
+// Exercise the single authoritative password handler.
 const valid=['synthetic-current','synthetic-next','synthetic-next']
 const cases=[
   {values:['synthetic-current','synthetic-next','synthetic-other'],target:'password-confirm'},
@@ -71,7 +71,7 @@ const cases=[
   {name:'local storage read failure',local:true,stage:'read',target:null},
   {name:'local storage write failure',local:true,stage:'write',target:null}
 ]
-for(const text of [source,portal]){
+for(const text of [portal]){
   for(const test of cases){
     let passwordFocus='password-confirm',authAttempts=0,passwordWrites=0,profileWrites=0,localWrites=0
     const values=test.values || valid
@@ -117,7 +117,7 @@ for(const text of [source,portal]){
     assert.ok(Object.values(fields).every(field=>!('aria-invalid' in field.attributes)))
   }
 }
-console.log(`Accessibility contracts: ${screens} screen outlines, typography, tab keyboard, selections, reduced motion and ${cases.length*2} password error cases: OK`)
+console.log(`Accessibility contracts: ${screens} screen outlines, typography, tab keyboard, selections, reduced motion and ${cases.length} password error cases: OK`)
 
 
 const loginCases=[
@@ -189,7 +189,7 @@ for(const submit of authHandlers){
   }
 }
 // Exercise real local credential checks, rather than a mocked login service.
-for(const [text,disabled] of [[portal,false],[source,false],[source,true]]){
+for(const [text,disabled] of [[portal,false],[portal,true]]){
   let focused='auth-submit-btn',writes=0
   const fields=Object.fromEntries(['auth-email','auth-password'].map(id=>[id,{id,value:'synthetic',attributes:{},removeAttribute(name){delete this.attributes[name]},setAttribute(name,value){this.attributes[name]=value},getClientRects:()=>[{}],focus(){focused=id}}]))
   const error={textContent:''}
@@ -204,4 +204,4 @@ for(const [text,disabled] of [[portal,false],[source,false],[source,true]]){
   assert.equal(error.textContent,disabled?'현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.':'아이디 또는 비밀번호가 올바르지 않습니다.')
   assert.equal(writes,0,'A failed/disabled local login must not persist an active session')
 }
-console.log(`Login error regression: ${loginCases.length*authHandlers.length} validation/service cases with successful retries and status clearing, plus 3 actual local credential cases: OK`)
+console.log(`Login error regression: ${loginCases.length*authHandlers.length} validation/service cases with successful retries and status clearing, plus 2 actual local credential cases: OK`)

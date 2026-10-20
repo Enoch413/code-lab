@@ -38,6 +38,7 @@ async function initApp(){
   setBootState('PREP 자료를 불러오는 중입니다.', '웹에서는 같은 폴더의 <b>session.json</b>을 자동으로 확인합니다.')
   setSessionStatus('info', '대기 중', 'session.json을 확인하는 중입니다.', '')
   resetViewportPosition()
+  if(typeof isFirebaseConfigured === 'function' && isFirebaseConfigured()) return
   const loaded = await loadRemoteSession({ silent: true, silentToast: true })
   if(!loaded) showNoSessionState()
 }

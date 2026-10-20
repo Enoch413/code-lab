@@ -7,7 +7,7 @@ const source = read('rotation_portal_enhancements.js')
 const portal = read('rotation_portal.js')
 const core = read('rotation_prep_core.js')
 const definitions = text => new Map([...text.matchAll(/^(?:async )?function (\w+)\([^]*?^}\r?$/gm)].map(match => [match[1], match[0]]))
-const funcs = definitions(source), coreFuncs = definitions(core)
+const funcs = new Map([...definitions(portal), ...definitions(source)]), coreFuncs = definitions(core)
 function load(ctx, names, map = funcs){
   for(const name of names){ assert.ok(map.has(name), name); vm.runInContext(map.get(name), ctx) }
 }

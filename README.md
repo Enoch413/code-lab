@@ -25,7 +25,7 @@ Firebase login-based PREP/CHECK web app for CODE LAB.
 node tools/test-local.mjs
 ```
 
-This runs syntax checks and the seven offline regression suites with Node 24. The old GRAMMAR `--rules` production API mode has been removed; extra arguments fail before tests start.
+This runs syntax checks and twelve offline regression suites with Node 24. The old GRAMMAR `--rules` production API mode has been removed; extra arguments fail before tests start.
 
 For Firestore and Storage rules, install Firebase CLI **15.34.0** and Java **21**. Set `JAVA_HOME` and prepend its `bin` directory to `PATH` in the current terminal if Java 11 is the default, then run:
 
@@ -35,7 +35,15 @@ node tools/test-rules-local.mjs
 
 The runner accepts no arguments, uses `firebase.local.json`, and starts only loopback Firestore (8786) and Storage (9298) emulators for `demo-codelab-reaudit`. It runs `tools/test-rules-suites.mjs`, which executes the Firestore and Storage checks in sequence. Tests refuse unexpected emulator endpoints. They never use the production project or CLI login credentials for data access. No production project alias or deployment configuration is supplied. Emulator permission checks do not prove that production composite indexes are installed.
 
-The GitHub workflow runs these same local checks without secrets or deployment steps. Python admin tools retain their existing architecture and use the locally verified `firebase-admin==7.7.0`; do not run roster import, account update or exam reset tools as a smoke test. Transitive Python dependencies are not fully locked.
+The GitHub workflow runs these same local checks without secrets or deployment steps. Python admin tools retain their existing architecture and `firebase-admin==7.7.0`. `tools/requirements-firebase-admin.txt` declares the direct dependency; `tools/requirements-firebase-admin.lock` pins the 35 resolved distributions with hashes, preserving the locally installed versions. The lock was installed and checked in a separate Windows CPython 3.14 environment; other interpreter/platform combinations have not been verified. For a fresh development environment, install with:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install --require-hashes -r tools/requirements-firebase-admin.lock
+.venv\Scripts\python.exe -m pip check
+```
+
+Do not run roster import, account update or exam reset tools as a smoke test. Locked versions and verified hashes improve reproducibility; they do not certify that dependencies have no vulnerabilities.
 
 Serve public assets at `http://127.0.0.1:8000` in another terminal with `python tools/serve-local.py`. The server uses the Git tracked-file list and excludes tools, hidden files, private documents and backups; newly created application assets must be tracked before it serves them. Do not use a generic repository-wide file server.
 
@@ -46,6 +54,9 @@ playwright-cli -s=codelab-a11y open --browser=msedge
 playwright-cli -s=codelab-a11y run-code --filename=tools/test-accessibility-browser.js
 playwright-cli -s=codelab-a11y run-code --filename=tools/test-p1-browser.js
 playwright-cli -s=codelab-a11y run-code --filename=tools/test-session-recovery-browser.js
+playwright-cli -s=codelab-a11y run-code --filename=tools/test-grammar-recovery-browser.js
+playwright-cli -s=codelab-a11y run-code --filename=tools/test-check-practice-browser.js
+playwright-cli -s=codelab-a11y run-code --filename=tools/test-prep-entry-browser.js
 playwright-cli -s=codelab-a11y close
 ```
 
@@ -54,6 +65,14 @@ The browser check uses synthetic local state, blocks production API requests and
 The P1 browser check verifies PREP title/link drafts during saving, failure and success, preservation of other rows, dynamic button decoration settling to zero idle mutations, and the disabled exam reset button.
 
 Session recovery checks cover server-confirmed PREP reads, cached/offline failures, credential and profile completion order, CHECK entry/save transitions and scoped equality queries. Auth feedback checks connect the real observer, router, screen and error output: current profile/disabled-account notices survive sign-out notification timing, retries and logout clear old notices, and late sign-out completions preserve newer feedback. The browser check includes the real Firebase SDK with networking disabled, synthetic Auth events, stale credential/form completion, CHECK failure/retry, and all three admin dialogs discarding private drafts and releasing keyboard focus on logout at desktop and mobile widths, including saving/loading states.
+
+GRAMMAR progress stores unsent changes synchronously under an Auth-UID-specific device key before the normal eight-second network timer. The pending records omit profile name, email, login ID, student ID and class assignments. Reload/offline recovery and an online event retry only the current student's records, merging watched ranges and completion with the latest server document in a transaction. Acknowledgements leave newer unsent changes intact. The player labels pending synchronization; device-storage failure shows a warning. Clearing browser storage before synchronization discards that unsent progress. Simultaneous localStorage writes from different tabs are not transactional; serialized tab updates and server transaction merges are tested.
+
+CHECK is a self-study and second-round wrong-question practice record, not an official or server-certified grade. Subjective questions retain the existing student's right/wrong self-marking. Own-record Firestore writes can still forge grading flags; the emulator test documents that boundary rather than claiming to block it. Unknown grading is excluded from correct/wrong lists, and submission summaries are derived from answers. Screens and Excel exports state the practice purpose. Normal objective/self-marked grading, answer corrections, wrong-question lists and exported purpose labels are tested; the external PDF LAB generation pipeline is outside this repository's local checks.
+
+Seven authentication functions have one authoritative declaration in `rotation_portal.js`; three CHECK persistence/normalization functions have one in `rotation_portal_enhancements.js`. The existing route wrapper and HTML script order remain intact. Other UI overrides are outside this cleanup. Single-set editor reads request one server-confirmed document, retain the existing authenticated REST fallback and local preview mode, and discard results after a session change. Aggregate callers still use their existing scoped list queries.
+
+After authentication, the home or required-password-reset screen opens immediately; PREP synchronization is not a login dependency. Firebase startup also skips the legacy static `session.json` bootstrap, which remains available in local preview mode. Entering PREP shows loading/error/retry feedback in its existing screen and hides previous content until ready. Independent material sources and server-confirmed progress load in parallel under one 20-second deadline, and only the current complete result installs the bundle, inventory and progress. Timeouts keep previous data intact and discard late results; screen/account/request changes cannot pull navigation back. History restoration and refresh reuse PREP entry when loading or failed. The browser check exercises stalled PREP alongside CHECK/GRAMMAR, timeout/retry, keyboard feedback and logout at 390/1280px with synthetic services and a controlled expiry. In-flight SDK reads are not forcibly canceled by the timeout; their late results are ignored.
 
 ## Authorization and assignment contract
 

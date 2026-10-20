@@ -180,4 +180,9 @@ for(const [col,field,value] of [['grammarVideoProgress','userId','alice'],['prep
   await check(col+'-specific-teacher-query',await filteredQuery('teachA',col,[['classIds','ARRAY_CONTAINS_ANY',['a']],[field,'EQUAL',value]]),200)
   await check(col+'-specific-cross-class-query-denied',await filteredQuery('teachB',col,[['classIds','ARRAY_CONTAINS_ANY',['a']],[field,'EQUAL',value]]),403)
 }
+// Practice scores are self-reported, not server-certified grades; document that boundary explicitly.
+await check('practice-client-grading-fields-are-not-server-verified',await req('checkResponses/alice__practice-boundary','alice',{
+  userId:'alice',classIds:['a'],checkSetId:'practice-boundary',
+  answers:[{questionId:'q1',userAnswer:'1',isCorrect:true}],summary:{total:1,correct:999,wrong:0}
+}),200,'practice-trust-boundary')
 console.log(JSON.stringify({passed:results.length, productionAccess:false}))

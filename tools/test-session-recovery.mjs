@@ -4,7 +4,7 @@ import vm from 'node:vm'
 
 const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8')
 const definitions=text=>new Map([...text.matchAll(/^(?:async )?function (\w+)\([^]*?^}\r?$/gm)].map(m=>[m[1],m[0]]))
-const enh=definitions(read('rotation_portal_enhancements.js')),portal=definitions(read('rotation_portal.js')),core=definitions(read('rotation_prep_core.js'))
+const portal=definitions(read('rotation_portal.js')),enh=new Map([...portal,...definitions(read('rotation_portal_enhancements.js'))]),core=definitions(read('rotation_prep_core.js'))
 const load=(ctx,names,map=enh)=>names.forEach(name=>{assert.ok(map.has(name),name);vm.runInContext(map.get(name),ctx)})
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve()}

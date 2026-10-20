@@ -258,62 +258,122 @@ function initLocalPortal(){
 }
 
 async function handleResolvedAuthUser(user){
+  if(user) portalState.authSessionError = ''
   portalState.authResolved = true
+  resetPortalUserState()
+  const session = portalState.userSession
   portalState.currentUser = user
-  portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
+  portalState.currentProfile = null
+  let profile
+  try{
+    profile = user ? await fetchOrCreateUserProfile(user) : null
+  }catch(error){
+    if(portalState.userSession !== session) return
+    throw error
+  }
+  if(portalState.userSession !== session) return
+  portalState.currentProfile = profile
+
+  if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
+    return signOutDisabledPortalUser()
+  }
+
   routePortalAfterState()
 }
 
 function routePortalAfterState(){
   syncAuthClassOptions()
-  unlockAllPrepClasses()
-  if(!bundleData) return
+  if(bundleData) unlockAllPrepClasses()
+
   if(!portalState.authResolved){
     showAuthScreen('로그인 상태를 확인하는 중입니다.')
     return
   }
+
   if(!portalState.currentUser){
     showAuthScreen('')
     return
   }
+
   clearAuthError()
   updatePortalUserCard()
+
+  if(isPasswordResetRequired(portalState.currentProfile)){
+    openPasswordScreen(true)
+    return
+  }
   showPortalScreen()
-  handlePortalHashRoute()
+  if(typeof handlePortalHashRoute === 'function') handlePortalHashRoute()
 }
 
 async function submitAuthForm(){
   clearAuthError()
-  const email = String(document.getElementById('auth-email').value || '').trim()
+  const loginId = String(document.getElementById('auth-email').value || '').trim()
   const password = String(document.getElementById('auth-password').value || '').trim()
 
-  if(!email || !password){
-    setAuthError('아이디와 비밀번호를 입력해 주세요.', !email ? 'auth-email' : 'auth-password')
+  if(!loginId || !password){
+    setAuthError('아이디와 비밀번호를 입력해 주세요.', !loginId ? 'auth-email' : 'auth-password')
     return
   }
 
+  const request = {}
+  portalState.authFormRequest = request
   setAuthLoading(true)
   try{
-    await loginPortalUser(email, password)
+    const result = await loginPortalUser(loginId, password)
+    if(portalState.authFormRequest !== request || result === false) return
     clearAuthFields()
   }catch(error){
-    setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
+    if(portalState.authFormRequest === request) setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
   }finally{
-    setAuthLoading(false)
+    if(portalState.authFormRequest === request) setAuthLoading(false)
   }
 }
 
-async function loginPortalUser(email, password){
+async function loginPortalUser(loginId, password){
+  portalState.authSessionError = ''
   if(portalState.firebaseEnabled){
-    await portalState.auth.signInWithEmailAndPassword(email, password)
+    const auth = portalState.auth
+    const request = {}
+    portalState.pendingLoginAttempt = request
+    const startedSession = portalState.userSession
+    let credential
+    try{
+      credential = await auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
+    }catch(error){
+      if(portalState.pendingLoginAttempt !== request || portalState.userSession !== startedSession) return false
+      throw error
+    }
+    const user = credential && credential.user ? credential.user : auth.currentUser
+    if(portalState.pendingLoginAttempt !== request || portalState.auth !== auth || !user || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+    if(portalState.currentUser && portalState.currentUser.uid === user.uid && portalState.currentProfile) return true
+    if((!portalState.currentUser || portalState.currentUser.uid !== user.uid) && typeof resetPortalUserState === 'function') resetPortalUserState()
+    const session = portalState.userSession
+    portalState.authResolved = true
+    portalState.currentUser = user || null
+    portalState.currentProfile = null
+    let profile
+    try{
+      profile = user ? await fetchOrCreateUserProfile(user) : null
+    }catch(error){
+      if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+      throw error
+    }
+    if(portalState.userSession !== session || portalState.pendingLoginAttempt !== request || !auth.currentUser || auth.currentUser.uid !== user.uid) return false
+    portalState.currentProfile = profile
+    if(portalState.currentProfile && portalState.currentProfile.loginDisabled){
+      await signOutDisabledPortalUser()
+      return false
+    }
+    routePortalAfterState()
     return
   }
 
-  const user = readLocalUsers().find(function(entry){
-    return entry.email.toLowerCase() === email.toLowerCase() && entry.password === password
-  })
+  const user = findLocalPortalUser(loginId, password)
   if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
+  if(user.loginDisabled) throw new Error('현재 비활성화된 계정입니다. 관리자에게 문의해 주세요.')
 
+  if(typeof resetPortalUserState === 'function') resetPortalUserState()
   localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
   portalState.currentUser = buildLocalAuthUser(user)
   portalState.currentProfile = user
@@ -337,21 +397,25 @@ async function logoutPortal(){
 }
 
 async function fetchOrCreateUserProfile(user){
-  const snapshot = await portalState.db.collection('users').doc(user.uid).get()
+  const snapshot = await getFirebaseUserProfileSnapshot(user.uid)
   if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
+    return normalizeUserProfile(Object.assign({}, snapshot.data(), { uid: user.uid }))
   }
 
-  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
+  const loginId = derivePortalLoginId({ email: user.email || '' })
   const profile = {
     uid: user.uid,
-    loginId: user.email ? String(user.email).split('@', 1)[0] : '',
+    loginId: loginId,
     email: user.email || '',
     name: user.displayName || '',
-    studentId: '',
-    classIds: fallbackClassId ? [fallbackClassId] : [],
+    studentId: loginId,
+    classIds: [],
     role: 'student',
     adminScope: 'assigned',
+    loginDisabled: false,
+    grammarAccessMode: 'none',
+    grammarUnitIds: [],
+    grammarObjectPaths: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
@@ -637,8 +701,8 @@ function activatePortalScreen(screenId){
 
 function showAuthScreen(errorMessage){
   syncAuthClassOptions()
-  setAuthPasswordVisibility(false)
-  if(errorMessage) setAuthError(errorMessage)
+  if(errorMessage || portalState.authSessionError) setAuthError(errorMessage || portalState.authSessionError)
+  else clearAuthError()
   activatePortalScreen('auth-screen')
 }
 
@@ -736,45 +800,76 @@ async function submitPasswordChange(){
   const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
 
   if(!currentPassword || !nextPassword || !confirmPassword){
-    document.getElementById('password-error').textContent = '모든 칸을 입력해 주세요.'
+    setPasswordError('모든 칸을 입력해 주세요.')
     return
   }
   if(nextPassword.length < 6){
-    document.getElementById('password-error').textContent = '새 비밀번호는 6자 이상으로 입력해 주세요.'
+    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.', 'password-next')
     return
   }
   if(nextPassword !== confirmPassword){
-    document.getElementById('password-error').textContent = '새 비밀번호 확인이 일치하지 않습니다.'
+    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.', 'password-confirm')
+    return
+  }
+  if(currentPassword === nextPassword){
+    setPasswordError('현재 비밀번호와 다른 값을 입력해 주세요.', 'password-next')
     return
   }
 
   try{
     if(portalState.firebaseEnabled){
       const user = portalState.auth.currentUser
-      if(!user || !user.email) throw new Error('로그인 정보를 확인할 수 없습니다.')
+      if(!user || !user.email) throw new Error('Login information is unavailable.')
+      const updatedAt = new Date().toISOString()
       const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword)
       await user.reauthenticateWithCredential(credential)
       await user.updatePassword(nextPassword)
+      await saveFirebaseUserProfile(user.uid, {
+        passwordResetRequired: false,
+        updatedAt: updatedAt
+      })
+
+      const refreshedSnapshot = await getFirebaseUserProfileSnapshot(user.uid)
+      if(refreshedSnapshot.exists){
+        portalState.currentProfile = normalizeUserProfile(Object.assign({ uid: user.uid }, refreshedSnapshot.data()))
+      }else{
+        portalState.currentProfile = normalizeUserProfile(Object.assign({}, portalState.currentProfile || {}, {
+          uid: user.uid,
+          passwordResetRequired: false,
+          updatedAt: updatedAt
+        }))
+      }
     }else{
       const currentUserId = portalState.currentUser ? portalState.currentUser.uid : ''
       const users = readLocalUsers()
-      const targetIndex = users.findIndex(function(user){
-        return user.id === currentUserId
+      const targetIndex = users.findIndex(function(entry){
+        return entry.id === currentUserId
       })
-      if(targetIndex < 0) throw new Error('계정 정보를 찾지 못했습니다.')
-      if(users[targetIndex].password !== currentPassword) throw new Error('현재 비밀번호가 올바르지 않습니다.')
+      if(targetIndex < 0) throw new Error('Account information was not found.')
+      if(users[targetIndex].password !== currentPassword) return setPasswordError('현재 비밀번호가 올바르지 않습니다.', 'password-current')
+
       users[targetIndex].password = nextPassword
+      users[targetIndex].passwordResetRequired = false
       users[targetIndex].updatedAt = new Date().toISOString()
       writeLocalUsers(users)
       portalState.currentProfile = users[targetIndex]
       portalState.currentUser = buildLocalAuthUser(users[targetIndex])
     }
 
-    document.getElementById('password-error').textContent = ''
+    portalState.forcePasswordChange = false
+    portalState.forcePasswordReset = false
+    clearPasswordError()
+    clearPasswordFields()
+
+    const backBtn = document.getElementById('password-back-btn')
+    const homeBtn = document.getElementById('password-home-btn')
+    if(backBtn) backBtn.style.display = ''
+    if(homeBtn) homeBtn.style.display = ''
+
     showToast('비밀번호를 변경했습니다.', 'var(--green)')
     showPortalScreen()
   }catch(error){
-    document.getElementById('password-error').textContent = getPasswordChangeErrorMessage(error)
+    setPasswordError(getPasswordChangeErrorMessage(error), getPasswordChangeErrorField(error))
   }
 }
 
@@ -1679,34 +1774,6 @@ function readCheckUserAnswer(question){
   return getChoiceGroupAnswer(group)
 }
 
-async function saveCheckSubmission(checkSet, submission){
-  const profile = portalState.currentProfile || {}
-  const payload = {
-    id: 'resp-' + simpleHash((portalState.currentUser && portalState.currentUser.uid) + '_' + checkSet.id + '_' + submission.submittedAt),
-    checkSetId: checkSet.id,
-    checkSetTitle: checkSet.title,
-    classIds: getProfileClassIds(),
-    userId: portalState.currentUser ? portalState.currentUser.uid : '',
-    email: profile.email || '',
-    name: profile.name || '',
-    studentId: profile.studentId || '',
-    role: profile.role || 'student',
-    submittedAt: submission.submittedAt,
-    summary: submission.summary,
-    answers: submission.answers
-  }
-
-  if(portalState.firebaseEnabled){
-    await portalState.db.collection('checkResponses').doc(payload.id).set(payload, { merge: true })
-    return
-  }
-
-  const rows = readLocalResponses().filter(function(entry){
-    return entry.id !== payload.id
-  })
-  rows.push(payload)
-  writeLocalResponses(rows)
-}
 
 async function renderAdminScreen(){
   const responses = await fetchAllCheckResponses()
@@ -1912,7 +1979,7 @@ window.handleAdminStudentFilterChange = function(value){
 function extractWrongAnswers(rows){
   return rows.flatMap(function(entry){
     return (Array.isArray(entry.answers) ? entry.answers : []).filter(function(answer){
-      return !answer.isCorrect
+      return answer && answer.isCorrect === false
     }).map(function(answer, answerIndex){
       return {
         submittedAt: entry.submittedAt,
@@ -1941,7 +2008,7 @@ function buildStudentSetWrongItems(rows, selectedStudentKey){
 
   return Array.from(latestMap.values()).map(function(entry){
     const wrongNumbers = (Array.isArray(entry.answers) ? entry.answers : []).filter(function(answer){
-      return !answer.isCorrect
+      return answer && answer.isCorrect === false
     }).map(function(answer, answerIndex){
       return resolveSubmittedQuestionNumber(answer, answerIndex + 1)
     }).filter(function(number, index, list){
@@ -2223,54 +2290,6 @@ function ensureLocalPreviewUsers(){
   return { users: readLocalUsers(), seeded: false }
 }
 
-async function fetchOrCreateUserProfile(user){
-  const snapshot = await portalState.db.collection('users').doc(user.uid).get()
-  if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
-  }
-
-  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
-  const loginId = derivePortalLoginId({ email: user.email || '' })
-  const profile = {
-    uid: user.uid,
-    loginId: loginId,
-    email: user.email || '',
-    name: user.displayName || '',
-    studentId: loginId,
-    classIds: fallbackClassId ? [fallbackClassId] : [],
-    role: 'student',
-    passwordResetRequired: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  await saveFirebaseUserProfile(user.uid, profile)
-  return normalizeUserProfile(profile)
-}
-
-function routePortalAfterState(){
-  syncAuthClassOptions()
-  unlockAllPrepClasses()
-  if(!bundleData) return
-  if(!portalState.authResolved){
-    showAuthScreen('로그인 상태를 확인하는 중입니다.')
-    return
-  }
-  if(!portalState.currentUser){
-    showAuthScreen('')
-    return
-  }
-  if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
-  clearAuthError()
-  updatePortalUserCard()
-
-  if(isPasswordResetRequired(portalState.currentProfile)){
-    openPasswordScreen(true)
-    return
-  }
-
-  showPortalScreen()
-  handlePortalHashRoute()
-}
 
 function openPasswordScreen(forceChange){
   const isForced = !!forceChange || isPasswordResetRequired(portalState.currentProfile)
@@ -2283,64 +2302,6 @@ function openPasswordScreen(forceChange){
   activatePortalScreen('password-screen')
 }
 
-async function submitPasswordChange(){
-  const currentPassword = String(document.getElementById('password-current').value || '').trim()
-  const nextPassword = String(document.getElementById('password-next').value || '').trim()
-  const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
-
-  if(!currentPassword || !nextPassword || !confirmPassword){
-    document.getElementById('password-error').textContent = '모든 칸을 입력해 주세요.'
-    return
-  }
-  if(nextPassword.length < 6){
-    document.getElementById('password-error').textContent = '새 비밀번호는 6자 이상으로 입력해 주세요.'
-    return
-  }
-  if(nextPassword !== confirmPassword){
-    document.getElementById('password-error').textContent = '새 비밀번호 확인이 일치하지 않습니다.'
-    return
-  }
-
-  try{
-    if(portalState.firebaseEnabled){
-      const user = portalState.auth.currentUser
-      if(!user || !user.email) throw new Error('로그인 정보를 확인할 수 없습니다.')
-      const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword)
-      await user.reauthenticateWithCredential(credential)
-      await user.updatePassword(nextPassword)
-      if(portalState.currentProfile){
-        const nextProfile = Object.assign({}, portalState.currentProfile, {
-          passwordResetRequired: false,
-          updatedAt: new Date().toISOString()
-        })
-        await saveFirebaseUserProfile(user.uid, nextProfile)
-        portalState.currentProfile = normalizeUserProfile(nextProfile)
-      }
-    }else{
-      const currentUserId = portalState.currentUser ? portalState.currentUser.uid : ''
-      const users = readLocalUsers()
-      const targetIndex = users.findIndex(function(user){
-        return user.id === currentUserId
-      })
-      if(targetIndex < 0) throw new Error('계정 정보를 찾지 못했습니다.')
-      if(users[targetIndex].password !== currentPassword) throw new Error('현재 비밀번호가 올바르지 않습니다.')
-      users[targetIndex].password = nextPassword
-      users[targetIndex].passwordResetRequired = false
-      users[targetIndex].updatedAt = new Date().toISOString()
-      writeLocalUsers(users)
-      portalState.currentProfile = users[targetIndex]
-      portalState.currentUser = buildLocalAuthUser(users[targetIndex])
-    }
-
-    document.getElementById('password-error').textContent = ''
-    document.getElementById('password-back-btn').style.display = ''
-    document.getElementById('password-home-btn').style.display = ''
-    showToast('비밀번호를 변경했습니다.', 'var(--green)')
-    showPortalScreen()
-  }catch(error){
-    document.getElementById('password-error').textContent = getPasswordChangeErrorMessage(error)
-  }
-}
 
 function isPasswordResetRequired(profile){
   return !!(profile && profile.passwordResetRequired)
@@ -2498,53 +2459,6 @@ function initLocalPortal(){
   routePortalAfterState()
 }
 
-async function fetchOrCreateUserProfile(user){
-  const snapshot = await portalState.db.collection('users').doc(user.uid).get()
-  if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
-  }
-
-  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
-  const loginId = derivePortalLoginId({ email: user.email || '' })
-  const profile = {
-    uid: user.uid,
-    loginId: loginId,
-    email: user.email || '',
-    name: user.displayName || '',
-    studentId: loginId,
-    classIds: fallbackClassId ? [fallbackClassId] : [],
-    role: 'student',
-    passwordResetRequired: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  await saveFirebaseUserProfile(user.uid, profile)
-  return normalizeUserProfile(profile)
-}
-
-function routePortalAfterState(){
-  syncAuthClassOptions()
-  unlockAllPrepClasses()
-  if(!bundleData) return
-  if(!portalState.authResolved){
-    showAuthScreen('로그인 상태를 확인하는 중입니다.')
-    return
-  }
-  if(!portalState.currentUser){
-    showAuthScreen('')
-    return
-  }
-  if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
-  clearAuthError()
-  updatePortalUserCard()
-  mountPortalPasswordButton()
-  if(isPasswordResetRequired(portalState.currentProfile)){
-    openPasswordScreen(true)
-    return
-  }
-  showPortalScreen()
-  handlePortalHashRoute()
-}
 
 function showPortalScreen(){
   if(!portalState.currentUser){
@@ -2588,76 +2502,6 @@ function openPasswordScreen(forceChange){
   activatePortalScreen('password-screen')
 }
 
-async function submitPasswordChange(){
-  const currentPassword = String(document.getElementById('password-current').value || '').trim()
-  const nextPassword = String(document.getElementById('password-next').value || '').trim()
-  const confirmPassword = String(document.getElementById('password-confirm').value || '').trim()
-
-  if(!currentPassword || !nextPassword || !confirmPassword){
-    setPasswordError('모든 칸을 입력해 주세요.')
-    return
-  }
-  if(nextPassword.length < 6){
-    setPasswordError('새 비밀번호는 6자 이상으로 입력해 주세요.', 'password-next')
-    return
-  }
-  if(nextPassword !== confirmPassword){
-    setPasswordError('새 비밀번호 확인이 일치하지 않습니다.', 'password-confirm')
-    return
-  }
-  if(currentPassword === nextPassword){
-    setPasswordError('현재 비밀번호와 다른 값으로 바꿔 주세요.', 'password-next')
-    return
-  }
-
-  try{
-    if(portalState.firebaseEnabled){
-      const user = portalState.auth.currentUser
-      if(!user || !user.email) throw new Error('로그인 정보를 확인할 수 없습니다.')
-      const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword)
-      await user.reauthenticateWithCredential(credential)
-      await user.updatePassword(nextPassword)
-      await saveFirebaseUserProfile(user.uid, {
-        passwordResetRequired: false,
-        updatedAt: new Date().toISOString()
-      })
-      portalState.currentProfile = normalizeUserProfile(Object.assign({}, portalState.currentProfile || {}, {
-        uid: user.uid,
-        passwordResetRequired: false,
-        updatedAt: new Date().toISOString()
-      }))
-    }else{
-      const currentUserId = portalState.currentUser ? portalState.currentUser.uid : ''
-      const users = readLocalUsers()
-      const targetIndex = users.findIndex(function(entry){
-        return entry.id === currentUserId
-      })
-      if(targetIndex < 0) throw new Error('계정 정보를 찾지 못했습니다.')
-      if(users[targetIndex].password !== currentPassword) return setPasswordError('현재 비밀번호가 올바르지 않습니다.', 'password-current')
-
-      users[targetIndex].password = nextPassword
-      users[targetIndex].passwordResetRequired = false
-      users[targetIndex].updatedAt = new Date().toISOString()
-      writeLocalUsers(users)
-      portalState.currentProfile = users[targetIndex]
-      portalState.currentUser = buildLocalAuthUser(users[targetIndex])
-    }
-
-    portalState.forcePasswordChange = false
-    clearPasswordError()
-    clearPasswordFields()
-
-    const backBtn = document.getElementById('password-back-btn')
-    const homeBtn = document.getElementById('password-home-btn')
-    if(backBtn) backBtn.style.display = ''
-    if(homeBtn) homeBtn.style.display = ''
-
-    showToast('비밀번호를 변경했습니다.', 'var(--green)')
-    showPortalScreen()
-  }catch(error){
-    setPasswordError(getPasswordChangeErrorMessage(error), getPasswordChangeErrorField(error))
-  }
-}
 
 function getPortalErrorMessage(error){
   const message = String(error && error.message || '')
@@ -3056,96 +2900,6 @@ function initLocalPortal(){
   routePortalAfterState()
 }
 
-async function fetchOrCreateUserProfile(user){
-  const snapshot = await portalState.db.collection('users').doc(user.uid).get()
-  if(snapshot.exists){
-    return normalizeUserProfile(Object.assign({ uid: user.uid }, snapshot.data()))
-  }
-
-  const fallbackClassId = prepClasses[0] ? prepClasses[0].id : ''
-  const loginId = derivePortalLoginId({ email: user.email || '' })
-  const profile = {
-    uid: user.uid,
-    loginId: loginId,
-    email: user.email || '',
-    name: user.displayName || '',
-    studentId: loginId,
-    classIds: fallbackClassId ? [fallbackClassId] : [],
-    role: 'student',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  await saveFirebaseUserProfile(user.uid, profile)
-  return normalizeUserProfile(profile)
-}
-
-function routePortalAfterState(){
-  syncAuthClassOptions()
-  unlockAllPrepClasses()
-  if(!bundleData) return
-  if(!portalState.authResolved){
-    showAuthScreen('로그인 상태를 확인하는 중입니다.')
-    return
-  }
-  if(!portalState.currentUser){
-    showAuthScreen('')
-    return
-  }
-  if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
-  clearAuthError()
-  updatePortalUserCard()
-  mountPortalPasswordButton()
-  if(isPasswordResetRequired(portalState.currentProfile)){
-    openPasswordScreen(true)
-    return
-  }
-  showPortalScreen()
-  handlePortalHashRoute()
-}
-
-async function submitAuthForm(){
-  clearAuthError()
-  const loginId = String(document.getElementById('auth-email').value || '').trim()
-  const password = String(document.getElementById('auth-password').value || '').trim()
-
-  if(!loginId || !password){
-    setAuthError('아이디와 비밀번호를 입력해 주세요.', !loginId ? 'auth-email' : 'auth-password')
-    return
-  }
-
-  const request = {}
-  portalState.authFormRequest = request
-  setAuthLoading(true)
-  try{
-    const result = await loginPortalUser(loginId, password)
-    if(portalState.authFormRequest !== request || result === false) return
-    clearAuthFields()
-  }catch(error){
-    if(portalState.authFormRequest === request) setAuthError(getPortalErrorMessage(error), getAuthErrorField(error))
-  }finally{
-    if(portalState.authFormRequest === request) setAuthLoading(false)
-  }
-}
-
-async function loginPortalUser(loginId, password){
-  if(portalState.firebaseEnabled){
-    const credential = await portalState.auth.signInWithEmailAndPassword(toPortalLoginEmail(loginId), password)
-    const user = credential && credential.user ? credential.user : portalState.auth.currentUser
-    portalState.authResolved = true
-    portalState.currentUser = user || null
-    portalState.currentProfile = user ? await fetchOrCreateUserProfile(user) : null
-    routePortalAfterState()
-    return
-  }
-
-  const user = findLocalPortalUser(loginId, password)
-  if(!user) throw Object.assign(new Error('아이디 또는 비밀번호가 올바르지 않습니다.'), { code: 'auth/invalid-credential' })
-
-  localStorage.setItem(PORTAL_STORAGE_KEYS.currentUserId, user.id)
-  portalState.currentUser = buildLocalAuthUser(user)
-  portalState.currentProfile = user
-  routePortalAfterState()
-}
 
 function updatePortalUserCard(){
   const profile = portalState.currentProfile
