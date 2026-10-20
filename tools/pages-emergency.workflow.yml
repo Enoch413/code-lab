@@ -1,0 +1,40 @@
+# Candidate only: this file is outside .github/workflows and cannot run here.
+name: Approved P0 public release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-emergency
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tools/test-public-release.mjs
+      - id: build
+        run: |
+          node tools/build-public.mjs > release-build.json
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('release-build.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'site='+r.site+'\n')"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.build.outputs.site }}
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -25,7 +25,7 @@ Firebase login-based PREP/CHECK web app for CODE LAB.
 node tools/test-local.mjs
 ```
 
-This runs syntax checks and twelve offline regression suites with Node 24. The old GRAMMAR `--rules` production API mode has been removed; extra arguments fail before tests start.
+This runs syntax checks and thirteen offline regression suites with Node 24, including the restricted emergency-release artifact checks. The old GRAMMAR `--rules` production API mode has been removed; extra arguments fail before tests start.
 
 For Firestore and Storage rules, use the project-local Firebase CLI **15.34.0** lock and Java **21**. Set `JAVA_HOME` and prepend its `bin` directory to `PATH` in the current terminal if Java 11 is the default, then run:
 
@@ -115,3 +115,11 @@ Browser exam reset is intentionally disabled. The existing administrative reset 
 ## Private imports
 
 Only the header-only `tools/firebase_bulk_users_template.csv` belongs in Git. Keep operational rosters, temporary passwords, backups and service-account keys outside the repository and web root. See [SECURITY.md](SECURITY.md) and [FIREBASE_BULK_USERS.md](FIREBASE_BULK_USERS.md).
+
+## Emergency public-release preparation
+
+`node tools/build-public.mjs` creates a fresh ignored `.local/public-release-*/site` directory from the fixed, reviewed P0 commit in `tools/public-release.json`. It copies only 18 explicit application assets and generates empty `session.json`, empty `check_data.json`, and `.nojekyll`. It does not copy the working directory, legacy learning passwords, tools, documents, backups or Firebase rules. The source preserves the previously deployed Firestore contract; it intentionally excludes the later P1 rollout. The two tracked static data files are also empty to prevent raw GitHub exposure on a future push; their originals were preserved in restricted ignored storage. Local JSON preview now requires an operator-selected private file. Local HTML/CSS/PWA dependencies and secret markers are checked before output. Known private roster/password comparisons are an additional operator-only check, not a universal PII detector.
+
+Run `node tools/test-public-release.mjs` for synthetic forbidden-file, credential, legacy-data and broken-dependency cases. Its shared CSV policy rejects every tracked `.csv` path regardless of case except the exact `tools/firebase_bulk_users_template.csv` path, whose contents must be the existing header only. Tests include renamed/nested/uppercase CSV paths and single-line data disguised as a template; failures withhold contents. CI fetches the local history needed for the fixed source commit, but does not build/upload/deploy an artifact. If approved history cleanup changes that commit ID, update and review the manifest; never silently fall back to HEAD.
+
+No deployment workflow is enabled by this change. The manual workflow candidate and account/history/cache response plan are in [the exposure response plan](docs/PUBLIC_EXPOSURE_RESPONSE.md). Pages must first be switched from repository-root publishing to an approved artifact-only source, with separate approval, before any push. Publishing the repository root ignores this build allowlist. Building this candidate does not revoke credentials, remove public Git history or change live Pages.

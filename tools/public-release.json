@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "ac4689d8bf8fa1d30b574c2e323bdccc085fca1c",
+  "rulesBaseline": "0631677a7315f6b2b56549f3bc4d84eb535ae322",
+  "files": [
+    "index.html", "ROTATION_PREP_MOBILE.html", "rotation_prep.css",
+    "firebase-config.js", "rotation_prep_core.js", "rotation_prep_bundle.js",
+    "rotation_prep_passages.js", "rotation_prep_ui.js", "rotation_portal.js",
+    "rotation_portal_enhancements.js", "grammar_catalog.js", "manifest.webmanifest",
+    "service-worker.js", "prep-icon-180.png", "prep-icon-192.png", "prep-icon-512.png",
+    "prep-icon.ico", "prep-icon.svg"
+  ]
+}
