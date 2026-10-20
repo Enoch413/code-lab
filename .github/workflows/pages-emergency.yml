@@ -1,4 +1,4 @@
-# Candidate only: this file is outside .github/workflows and cannot run here.
+# Manual release only; pushing this file does not start a Pages deployment.
 name: Approved P0 public release
 on:
   workflow_dispatch:
@@ -11,10 +11,12 @@ jobs:
   build:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -35,6 +37,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
