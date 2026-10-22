@@ -74,8 +74,8 @@ changing the login ID also changes the internal Firebase email:
 ### 6. Limit which TOOLS LAB buttons an admin can see
 
 ```powershell
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --allowed-labs "word-lab,builder-lab"
-& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --allowed-labs "word-lab,builder-lab"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER_DRYRUN.bat" --login-id example-student --allowed-labs "word-lab,merger-lab"
+& "C:\Users\CHOI\Documents\CODE LAB\tools\UPDATE_FIREBASE_USER.bat" --login-id example-student --allowed-labs "word-lab,merger-lab"
 ```
 
 Notes:
@@ -83,7 +83,8 @@ Notes:
 - Missing `allowedLabs` means all LAB buttons stay visible
 - `--allowed-labs ""` means show none
 - `--allowed-labs "all"` means show all
-- Supported values: `word-lab`, `pdf-lab`, `builder-lab`, `pinpoint-lab`
+- Supported values: `word-lab`, `pdf-lab`, `merger-lab`, `pinpoint-lab`
+- Legacy `builder-lab` permissions are treated as `merger-lab` by CODE LAB; no account migration is required.
 
 ### 7. Set a new temporary password
 

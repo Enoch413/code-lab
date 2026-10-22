@@ -13,6 +13,7 @@ const checks = [
   ['tools/test-prep-watch.mjs'],
   ['tools/test-prep-watch-fixes.mjs'],
   ['tools/test-prep-watch-transitions.mjs'],
+  ['tools/test-admin-tools.mjs'],
   ['--check', 'tools/test-cross-app-browser.cjs'],
   ...['check-entry-loading','grammar-only-class','security-boundaries','student-creation-recovery','accessibility','p1-regressions','session-recovery','grammar-recovery','check-practice','critical-definitions','single-set-read','prep-entry','public-release','authenticated-video','legacy-rollout'].map(name=>['tools/test-' + name + '.mjs'])
 ]

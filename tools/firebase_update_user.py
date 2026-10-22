@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--allowed-labs",
-        help="Optional visible TOOLS LAB list separated by | , or ;  Example: word-lab|builder-lab . Use all to allow every LAB, or an empty string for none.",
+        help="Optional visible TOOLS LAB list separated by | , or ;  Example: word-lab|merger-lab . Use all to allow every LAB, or an empty string for none.",
     )
     parser.add_argument(
         "--password-reset-required",

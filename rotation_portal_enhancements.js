@@ -92,14 +92,14 @@ const CHROME_BREADCRUMBS = {
 const ADMIN_PORTAL_LABS = {
   'WORD LAB': 'https://enoch413.github.io/word-lab/',
   'PDF LAB': 'https://enoch413.github.io/pdf-lab/',
-  'BUILDER LAB': 'https://enoch413.github.io/builder-lab/',
+  'MERGER LAB': 'https://merger-lab.nimbler413.chatgpt.site/',
   'PINPOINT LAB': 'https://enoch413.github.io/pinpoint-lab/'
 }
 
 const ADMIN_PORTAL_LAB_BUTTON_IDS = {
   'WORD LAB': 'admin-portal-word-btn',
   'PDF LAB': 'admin-portal-pdf-btn',
-  'BUILDER LAB': 'admin-portal-builder-btn',
+  'MERGER LAB': 'admin-portal-merger-btn',
   'PINPOINT LAB': 'admin-portal-pinpoint-btn'
 }
 
@@ -736,7 +736,7 @@ function bindPortalEnhancementEvents(){
   bindClick('admin-portal-refresh-btn', refreshPortalData)
   bindClick('admin-portal-word-btn', function(){ openLabPlaceholder('WORD LAB') })
   bindClick('admin-portal-pdf-btn', function(){ openLabPlaceholder('PDF LAB') })
-  bindClick('admin-portal-builder-btn', function(){ openLabPlaceholder('BUILDER LAB') })
+  bindClick('admin-portal-merger-btn', function(){ openLabPlaceholder('MERGER LAB') })
   bindClick('admin-portal-pinpoint-btn', function(){ openLabPlaceholder('PINPOINT LAB') })
   bindClick('admin-portal-home-btn', openToolsPortal)
   bindClick('admin-tools-entry-btn', openToolsPortal)
@@ -3776,7 +3776,9 @@ function normalizeAdminPortalLabName(value){
   if(raw === 'all' || raw === '*') return '*'
   if(raw === 'word' || raw === 'wordlab' || raw === 'word-lab' || raw === 'word lab') return 'WORD LAB'
   if(raw === 'pdf' || raw === 'pdflab' || raw === 'pdf-lab' || raw === 'pdf lab') return 'PDF LAB'
-  if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'BUILDER LAB'
+  if(raw === 'merger' || raw === 'mergerlab' || raw === 'merger-lab' || raw === 'merger lab') return 'MERGER LAB'
+  // Preserve existing instructor access without rewriting account profiles.
+  if(raw === 'builder' || raw === 'builderlab' || raw === 'builder-lab' || raw === 'builder lab') return 'MERGER LAB'
   if(raw === 'pinpoint' || raw === 'pinpointlab' || raw === 'pinpoint-lab' || raw === 'pinpoint lab') return 'PINPOINT LAB'
   return ''
 }
