@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "373bbf4c0b9565063ab45ab5c3226b0212527481",
+  "rulesSha256": {
+    "firestore.rules": "cb02265dde97ef5ae3003e39961ff9b72cbc488aeea9b72ce32219815a735c82",
+    "storage.rules": "2c04962091010dc00e00193af630a26e6a2a9c2bfebc68670352c93f535e2c48"
+  },
+  "fileHashes": {
+    "index.html": "e3dc34628cfd624398547718ff62f058f9b9432e62d922fd6d5ad0f0ce907be9",
+    "ROTATION_PREP_MOBILE.html": "8dd5c38581184d15035a4cde523d6212752193bd064179eb7512a1ddb200effe",
+    "rotation_prep.css": "f1ae2a24abe03980821b57b32bcc36e965c59815c5645618c78b3e070e4840c4",
+    "firebase-config.js": "8066b40a085acc7c7d5ba4ec0da743621ee9d70460c4fff244f7b0599d6dfde6",
+    "rotation_prep_core.js": "3ee39e933183ecb17186a2d3942b42a6ce7ab574208154dbc64b9f0a87552ed3",
+    "rotation_prep_bundle.js": "60aed01803fceccb5c21c1fe380ff13e1f4fd056855f944772dab199ff652cc1",
+    "rotation_prep_passages.js": "7eb07ffa6aee5a5667254f04cf4cce74b346d19e30635ba9bddc017916d8e2b1",
+    "rotation_prep_ui.js": "b06b102497a8bb22a5a073639a54cb562297015c92021c384739afada849b69b",
+    "rotation_portal.js": "941cedd64354bef80da512aafcc9ff93a9c8507e398dd940ebf2cccbe6f65acc",
+    "rotation_portal_enhancements.js": "36f4073fe682336fdcc4d6df3de0b29d6badad03332a6944442c2fad6ff1a6fc",
+    "grammar_catalog.js": "6e75fd95a837488e5023b5a57ac69e96515f180027830acb6f4acfe72a80819e",
+    "manifest.webmanifest": "35b4f0a048f6debe6d9ce8f927049e90c8c035850ad1e645d2b1b961663afd58",
+    "service-worker.js": "f6b91d700cbe44d8b918548e341dd6368a6319d56281807816d914ceddfc3e1e",
+    "prep-icon-180.png": "5cdaf3034a0081c49d82981def8ccd67b2a8d77fb1d315d457b899d7e8830cf5",
+    "prep-icon-192.png": "2692dcf8f32c75869f33cd32a5e4f6a9275cd51a170c514383df0288716a8eba",
+    "prep-icon-512.png": "fb74df3ca6dee27e04631be3ac8f4ec633bd14b616a7b2dd307a42fb4240b9e7",
+    "prep-icon.ico": "b1fc1052dc0bfc31d6af0426cb0a83c927f5f9bdd1e797cc2fca932b71ea1b39",
+    "prep-icon.svg": "1c9570769cc7e0c405420544184b6696f3026c2e72c8c0f38f0301664ffd513e",
+    "session.json": "0a7692730ccc5b05595f11918b0fb0d306f793b85852b957ac27ae008b22988c",
+    "check_data.json": "aeacd545ff898ebd5e887b4d5de5c4f3e87c802b12c0699b5e626c5376e530d1",
+    ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

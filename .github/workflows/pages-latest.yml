@@ -1,0 +1,44 @@
+# Manual release of the reviewed latest app; the fixed P0 workflow is unchanged.
+name: Approved latest public release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-emergency
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tools/test-public-release.mjs
+      - run: node tools/test-latest-public.mjs
+      - id: build
+        run: |
+          node tools/build-latest-public.mjs > latest-release-build.json
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('latest-release-build.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'site='+r.site+'\n')"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.build.outputs.site }}
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
