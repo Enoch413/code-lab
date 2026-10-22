@@ -166,9 +166,9 @@ const groups={
         normalizeGrammarVideoProgressRecord:row=>row,normalizePortalPrepVideoProgressRecord:row=>row,PORTAL_GRAMMAR_VIDEO_PROGRESS_COLLECTION:'grammar',PORTAL_PREP_VIDEO_PROGRESS_COLLECTION:'prep'})
       load(ctx,['fetchScopedPortalRecordDocs','fetchGrammarVideoProgressRows','fetchPortalPrepVideoProgressRows','fetchCheckResponsesForSet'])
       await ctx.fetchGrammarVideoProgressRows({userId:'alice'});await ctx.fetchPortalPrepVideoProgressRows({setId:'prep-set'});await ctx.fetchCheckResponsesForSet('check-set')
-      assert.equal(calls.length,role==='teacher'?6:3)
+      assert.equal(calls.length,role==='teacher'?8:4)
       for(const call of calls){
-        const field=call.collection==='grammar'?'userId':call.collection==='prep'?'setId':'checkSetId'
+        const field=call.collection==='grammar'?'userId':['prep','prepWatchProgress'].includes(call.collection)?'setId':'checkSetId'
         const value=field==='userId'?'alice':field==='setId'?'prep-set':'check-set'
         assert.ok(call.clauses.some(clause=>clause[0]===field&&clause[1]==='=='&&clause[2]===value),role+': server equality filter missing')
         if(role==='teacher')assert.ok(call.clauses.some(clause=>clause[0]==='classIds'&&clause[2].length<=30))
@@ -404,7 +404,7 @@ const groups={
     }
     // Stop each upload/link/delete continuation at every asynchronous boundary.
     for(const name of ['savePortalPrepPassageVideoUrl','removePortalPrepPassageVideo','handlePortalPrepVideoUploadChange']){
-      const stages=name==='handlePortalPrepVideoUploadChange'?['upload','save','refresh','read']:['save','refresh','read']
+      const stages=name==='handlePortalPrepVideoUploadChange'?['duration','upload','save','refresh','read']:['save','refresh','read']
       for(const stage of stages)for(const rejected of [false,true]){
         const task=deferred(),calls=[],doc={docId:'old-doc',payload:{passages:[{id:'p',title:'Synthetic'}]}}
         const state={userSession:1,prepVideoManager:{open:true,docId:'old-doc',pendingPassageIndex:0,currentDoc:doc}}
@@ -412,7 +412,7 @@ const groups={
         const ctx=vm.createContext({portalState:state,window:{confirm:()=>true},
           normalizePortalPrepYouTubeUrl:()=>({url:'https://example.invalid',embedUrl:''}),getPortalPrepVideoInputValue:()=> 'synthetic',getPortalPrepVideoTitleInputValue:()=> 'Synthetic',
           buildPassageState:()=>({title:'Synthetic',hasVideo:true}),clonePlainData:structuredClone,isPortalDirectPrepVideoPayload:()=>false,
-          canUsePortalCloudStorage:()=>true,sanitizePortalStoragePathPart:value=>value,
+          canUsePortalCloudStorage:()=>true,readPortalPrepVideoDuration:()=>step('duration',12),sanitizePortalStoragePathPart:value=>value,
           renderPortalPrepVideoManager:()=>calls.push('render'),showToast:()=>calls.push('toast'),
           saveCloudSetDoc:()=>step('save',doc),syncPrepContentAfterLogin:()=>step('refresh',true),getCloudSetDoc:()=>step('read',doc),console:{error(){}}})
         state.storage={ref:()=>({child:()=>({put:()=>step('upload',{ref:{getDownloadURL:()=>step('download','https://example.invalid')}})})})}

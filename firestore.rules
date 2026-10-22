@@ -130,6 +130,19 @@ service cloud.firestore {
       allow delete: if canUseRegularPortal() && manages(resource.data);
     }
 
+    // Server-certified PREP progress is never writable through a client SDK.
+    match /prepWatchProgress/{progressId} {
+      allow get, list: if canUseRegularPortal() && (manages(resource.data) || owns(resource.data));
+      allow write: if false;
+    }
+
+    match /prepWatchSessions/{userId} {
+      allow read, write: if false;
+    }
+    match /prepWatchVideoMetadata/{videoId} {
+      allow read, write: if false;
+    }
+
     match /grammarVideoProgress/{progressId} {
       allow get: if isActive() && (manages(resource.data) || owns(resource.data)
         || (progressId.split('__')[0] == request.auth.uid

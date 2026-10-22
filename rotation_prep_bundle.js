@@ -103,6 +103,7 @@ function normalizeStudySet(source, index, classes){
 
   return {
     id: sanitizeId(String(source && source.id || ('set-' + (index + 1)))) || ('set-' + (index + 1)),
+    materialId: String(source && source.materialId || ''),
     title: String(source && (source.title || source.name) || ('학습 세트 ' + (index + 1))).trim() || ('학습 세트 ' + (index + 1)),
     sourceName: String(source && source.sourceName || '').trim(),
     startDate: normalizeDateValue(source && source.startDate),

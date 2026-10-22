@@ -8,6 +8,11 @@ const checks = [
   ['--check', 'rotation_prep_core.js'],
   ['--check', 'rotation_prep_ui.js'],
   ['--check', 'rotation_prep_passages.js'],
+  ['--check', 'functions/index.js'],
+  ['--check', 'functions/prep-watch.cjs'],
+  ['tools/test-prep-watch.mjs'],
+  ['tools/test-prep-watch-fixes.mjs'],
+  ['tools/test-prep-watch-transitions.mjs'],
   ['--check', 'tools/test-cross-app-browser.cjs'],
   ...['check-entry-loading','grammar-only-class','security-boundaries','student-creation-recovery','accessibility','p1-regressions','session-recovery','grammar-recovery','check-practice','critical-definitions','single-set-read','prep-entry','public-release','authenticated-video','legacy-rollout'].map(name=>['tools/test-' + name + '.mjs'])
 ]

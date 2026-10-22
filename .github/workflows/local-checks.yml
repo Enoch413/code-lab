@@ -32,6 +32,13 @@ jobs:
       - run: node tools/test-rules-local.mjs
       - run: npm install --prefix .local/firebase-sdk --ignore-scripts --save-exact --no-audit --no-fund firebase@10.12.5
       - run: node tools/test-auth-integration-local.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix functions --ignore-scripts
+      - run: npm ci --prefix tools/browser-tests --ignore-scripts
+      - run: node tools/browser-tests/node_modules/playwright/cli.js install --with-deps chromium
+      - run: node tools/test-prep-watch-local.mjs
   python-lock:
     runs-on: windows-latest
     timeout-minutes: 15

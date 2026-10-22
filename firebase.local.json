@@ -1,4 +1,5 @@
 {
+  "functions": [{"source": "functions", "codebase": "prep-watch"}],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
@@ -7,6 +8,7 @@
     "rules": "storage.rules"
   },
   "emulators": {
+    "functions": {"host": "127.0.0.1", "port": 5001},
     "auth": {
       "host": "127.0.0.1",
       "port": 9098

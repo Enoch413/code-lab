@@ -21,6 +21,7 @@ function buildPassageState(source, index){
     videoTitle: video.title,
     videoDescription: video.description,
     videoProvider: video.provider,
+    videoUpdatedAt: String(source && (source.video && source.video.updatedAt || source.videoUpdatedAt) || ''),
     videoStoragePath: video.storagePath,
     videoRequiresAuth: video.requiresAuth,
     hasVideo: video.hasVideo,

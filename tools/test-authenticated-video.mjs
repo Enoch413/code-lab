@@ -34,11 +34,12 @@ state.currentUser.getIdToken=async()=>{state.userSession++;return 'synthetic-fix
 
 // A late authenticated response cannot attach after navigation/account reset; retry releases old blobs.
 let resolve, revoked=0, created=0, failed=false
-const player={src:'',load(){}},status={textContent:''},retry={hidden:true},screen={querySelectorAll:()=>[]}
+const player={src:'',pause(){},removeAttribute(){},load(){}},status={textContent:''},retry={hidden:true},screen={querySelectorAll:()=>[]}
 const playback=vm.createContext({AbortController,URL:{createObjectURL:()=>{created++;return 'blob:fixture'},revokeObjectURL:()=>revoked++},
   document:{querySelector:()=>player,getElementById:id=>id==='study-screen'?screen:id==='prep-video-load-status'?status:retry},
   fetchPortalStorageBlob:()=>failed?Promise.reject(Error('offline')):new Promise(yes=>{resolve=yes}),console:{warn(){}}})
 vm.runInContext('let prepStoragePlayback=null',playback)
+playback.stopPrepWatchTracking=()=>{}
 load(playback,ui,['loadPrepStorageVideo','stopActivePrepVideoPlayback'])
 const passage={videoStoragePath:'prep-videos/a/set/file.mp4'}
 let pending=playback.loadPrepStorageVideo(passage);playback.stopActivePrepVideoPlayback();resolve(new Blob());await pending;assert.equal(created,0);checks++
@@ -51,7 +52,7 @@ assert.ok(!read('rotation_portal_enhancements.js').includes('getDownloadURL()'),
 const transitionDefinitions=new Map([...defs('rotation_prep_core.js'),...defs('rotation_prep_bundle.js'),...passages,...enh])
 function transitionFixture(operation,aliases=false){
   const fixture={saved:null,deletes:0,refreshes:0,fail:false,stale:false,confirm:true,errors:0}
-  const context=vm.createContext({URL,Date,Set,Map,APP_CONFIG:{defaultTitle:'Synthetic'},window:{ROTATION_FIREBASE_CONFIG:{storageBucket:'demo-bucket'},confirm:()=>fixture.confirm},portalState:{userSession:1},console:{error:()=>fixture.errors++}})
+  const context=vm.createContext({URL,Date,Set,Map,APP_CONFIG:{defaultTitle:'Synthetic'},window:{location:{origin:'http://127.0.0.1:8000'},ROTATION_FIREBASE_CONFIG:{storageBucket:'demo-bucket'},confirm:()=>fixture.confirm},portalState:{userSession:1},console:{error:()=>fixture.errors++}})
   for(const source of transitionDefinitions.values())vm.runInContext(source,context)
   vm.runInContext(ui.get('renderPassageVideoPlayer'),context)
   const raw={classes:[{id:'a',name:'Synthetic'}],studySets:[{id:'old',title:'Synthetic',classAssignments:[{classId:'a',passageIndexes:[0]}],passages:[{id:'p',title:'Synthetic',videoStoragePath:'prep-videos/a/old/file.mp4'}]}]}

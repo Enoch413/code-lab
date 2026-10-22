@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs'
 
 export function runLocalFirebaseTests(suite) {
   assert.equal(process.argv.length, 2, 'No arguments accepted')
-  const plans = { rules: ['firestore,storage', 'tools/test-rules-suites.mjs'], auth: ['firestore,auth', 'tools/test-auth-sdk-integration.cjs'], crossApp: ['firestore,auth,storage', 'tools/test-cross-app-browser.cjs'] }
+  const plans = { rules: ['firestore,storage', 'tools/test-rules-suites.mjs'], auth: ['firestore,auth', 'tools/test-auth-sdk-integration.cjs'], crossApp: ['firestore,auth,storage', 'tools/test-cross-app-browser.cjs'], prepWatch:['firestore,auth,functions','tools/test-prep-watch-integration.cjs'] }
   assert.ok(Object.hasOwn(plans, suite))
   const root = fileURLToPath(new URL('../', import.meta.url))
   const config = JSON.parse(readFileSync(new URL('../firebase.local.json', import.meta.url), 'utf8'))
@@ -26,7 +26,18 @@ export function runLocalFirebaseTests(suite) {
   assert.equal(pinned.status, 0)
   assert.equal(pinned.stdout.trim(), '15.34.0')
   const [only, script] = plans[suite]
-  const result = spawnSync(process.execPath, [cli,'emulators:exec','--config','firebase.local.json','--project','demo-codelab-reaudit','--only',only,`node ${script}`], {cwd:root,env,stdio:'inherit'})
+  const secret = new URL('../functions/.secret.local', import.meta.url)
+  if(suite === 'prepWatch'){
+    assert.equal(config.emulators.functions.host,'127.0.0.1')
+    assert.equal(config.emulators.functions.port,5001)
+    assert.deepEqual(config.functions,[{source:'functions',codebase:'prep-watch'}])
+    assert.ok(!existsSync(secret),'Refuse to overwrite an existing functions local secret file')
+    assert.ok(existsSync(new URL('../functions/node_modules/firebase-functions/package.json',import.meta.url)),'Run npm ci --prefix functions --ignore-scripts')
+    writeFileSync(secret,'YOUTUBE_DATA_API_KEY=emulator-only-not-a-key\n',{flag:'wx'})
+  }
+  let result
+  try { result = spawnSync(process.execPath, [cli,'emulators:exec','--config','firebase.local.json','--project','demo-codelab-reaudit','--only',only,`node ${script}`], {cwd:root,env,stdio:'inherit'}) }
+  finally { if(suite === 'prepWatch') unlinkSync(secret) }
   if (result.error) throw result.error
   process.exit(result.status === null ? 1 : result.status)
 }

@@ -19,7 +19,7 @@ class Handler(SimpleHTTPRequestHandler):
         if (
             path not in PUBLIC
             or not target.is_relative_to(ROOT)
-            or path.startswith(("tools/", "backups/", ".", "private/", "secrets/"))
+            or path.startswith(("tools/", "functions/", "backups/", ".", "private/", "secrets/"))
             or path in {"firebase.local.json", "firestore.indexes.json"}
             or target.suffix.lower() not in EXTENSIONS
         ):
