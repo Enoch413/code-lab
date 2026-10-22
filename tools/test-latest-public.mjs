@@ -3,8 +3,8 @@ import {spawnSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
 import {collectLatestPublicFiles,validateLatestPublicFiles,release} from './build-latest-public.mjs'
 assert.equal(process.argv.length,2,'No arguments accepted')
-assert.equal(release.sourceCommit,'0a2acdd2c49c5b0a343b71284dcfee6042903384')
-assert.deepEqual(release.rulesSha256,{'firestore.rules':'cb02265dde97ef5ae3003e39961ff9b72cbc488aeea9b72ce32219815a735c82','storage.rules':'51d0fc31f1652438660db9b660d1e64f1030ce9fe97ece836a8376437766ff1a'})
+assert.equal(release.sourceCommit,'23cac1869478151de23e99efe85bb544bc422dfb')
+assert.deepEqual(release.rulesSha256,{'firestore.rules':'70e28878a4612215222ab506a759ff67f772e298346c422da591b72d708a8ad4','storage.rules':'51d0fc31f1652438660db9b660d1e64f1030ce9fe97ece836a8376437766ff1a'})
 const files=collectLatestPublicFiles()
 assert.equal(files.size,21)
 let checks=1

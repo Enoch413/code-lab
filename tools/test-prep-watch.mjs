@@ -184,4 +184,8 @@ validatePublicFiles(publicFiles)
 assert.equal(publicFiles.size,21)
 assert.ok(![...publicFiles.keys()].some(name=>name.startsWith('functions/')))
 assert.ok(readFileSync(new URL('./serve-local.py',import.meta.url),'utf8').includes('"functions/"'));checks++
+const productionConfig=JSON.parse(readFileSync(new URL('../firebase.prep-watch.json',import.meta.url),'utf8'))
+assert.deepEqual(Object.keys(productionConfig),['functions'],'Dedicated rollout config must not deploy hosting, rules or indexes')
+assert.deepEqual(productionConfig.functions,[{source:'functions',codebase:'prep-watch',ignore:['node_modules','.git','firebase-debug.log','firebase-debug.*.log','.env*','.secret.local']}]);checks++
+assert.equal(publicFiles.has('firebase.prep-watch.json'),false);checks++
 console.log(`PREP automatic watch: ${checks} grouped server/client regressions passed; no production connection.`)
