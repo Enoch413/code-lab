@@ -159,16 +159,17 @@ for (const uid of [null, 'missingProfile', 'student', 'otherTeacher', 'disabledA
 await check('prep-wrong-mime', await upload('prep-videos/a/storage-regression/wrong.mp4', 'teacher', 'application/pdf'), 403)
 
 for (const [name, kind] of [[grammar, 'video'], [material, 'material']]) {
-  for (const uid of [null, 'missingProfile', 'student', 'otherUnit', 'teacherWithGrant', 'fullWithGrant', 'disabledStudent', 'disabledUnit', 'disabledAdmin']) {
+  for (const uid of [null, 'missingProfile', 'student', 'otherUnit', 'disabledStudent', 'disabledUnit', 'disabledAdmin']) {
     await check('grammar-' + kind + '-read-denied-' + (uid || 'anonymous'), await read(name, uid, uid === 'disabledAdmin' ? managerEmail : undefined), 403)
   }
-  for (const uid of ['allGrammar', 'unitGrammar', 'grammarOnly']) await check('grammar-' + kind + '-read-allowed-' + uid, await read(name, uid), 200)
+  for (const uid of ['allGrammar', 'unitGrammar', 'grammarOnly', 'teacher', 'otherTeacher', 'teacherWithGrant', 'full', 'fullWithGrant']) await check('grammar-' + kind + '-read-allowed-' + uid, await read(name, uid), 200)
   await check('grammar-' + kind + '-manager-read', await read(name, 'full', managerEmail), 200)
 }
 for (const email of [managerEmail, 'passion413@prep.local', 'khe2016@prep.local']) {
   await check('grammar-existing-manager-allowlist-' + results.length, await read(grammar, 'full', email), 200)
 }
 await check('grammar-assigned-range', await read(grammar, 'unitGrammar', undefined, { Range: 'bytes=0-3' }), 206)
+await check('grammar-instructor-range', await read(grammar, 'teacher', undefined, { Range: 'bytes=0-3' }), 206)
 await check('grammar-unassigned-range-denied', await read(grammar, 'otherUnit', undefined, { Range: 'bytes=0-3' }), 403)
 await check('grammar-object-grant-exact-path', await read('videos/grammar/other.mp4', 'unitGrammar'), 403)
 await check('grammar-nested-path-denied', await read('videos/grammar/nested/storage-regression.mp4', 'allGrammar'), 403)
@@ -213,6 +214,8 @@ await check('prep-revoked-personal-target-denied', await read('prep-videos/a/sto
 await seedProfile('unitGrammar', { ...profiles.unitGrammar, grammarObjectPaths: [] })
 await check('grammar-revoked-object-denied', await read(grammar, 'unitGrammar'), 403)
 await seedProfile('teacher', { ...profiles.teacher, loginDisabled: true })
+await check('grammar-disabled-instructor-denied', await read(grammar, 'teacher'), 403)
+await check('grammar-disabled-instructor-material-denied', await read(material, 'teacher'), 403)
 await check('pdf-library-disabled-existing-admin-denied', await read(library, 'teacher'), 403)
 await check('pdf-library-disabled-admin-list-denied', await list('pdf-lab/shared-library/', 'teacher'), 403)
 

@@ -61,7 +61,7 @@ service firebase.storage {
     }
 
     function hasAllGrammarAccess() {
-      return canManageGrammar() || (
+      return isAdmin() || (
         isStudent() &&
         userDoc().data.get('grammarAccessMode', 'none') == 'all'
       );

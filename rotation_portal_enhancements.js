@@ -929,7 +929,7 @@ function canManageGrammarAccess(){
 function canAccessGrammarPortal(){
   if(portalState.currentProfile && portalState.currentProfile.loginDisabled) return false
   if(!portalState.currentUser) return false
-  if(canManageGrammarAccess()) return true
+  if(isPortalAdmin()) return true
   const mode = getProfileGrammarAccessMode(portalState.currentProfile)
   if(mode === 'all') return true
   return mode === 'units' && getProfileGrammarUnitIds(portalState.currentProfile).length > 0
@@ -938,7 +938,7 @@ function canAccessGrammarPortal(){
 function canAccessGrammarUnit(unitId){
   const normalizedId = String(unitId || '').trim()
   if(!normalizedId || !canAccessGrammarPortal()) return false
-  if(canManageGrammarAccess()) return true
+  if(isPortalAdmin()) return true
   const mode = getProfileGrammarAccessMode(portalState.currentProfile)
   if(mode === 'all') return true
   return mode === 'units' && getProfileGrammarUnitIds(portalState.currentProfile).indexOf(normalizedId) >= 0
@@ -1205,7 +1205,8 @@ function buildGrammarObjectPathsForUnitIds(unitIds){
 }
 
 function canAccessGrammarObjectPath(objectPath){
-  if(canManageGrammarAccess()) return true
+  if(!canAccessGrammarPortal()) return false
+  if(isPortalAdmin()) return true
   const mode = getProfileGrammarAccessMode(portalState.currentProfile)
   if(mode === 'all') return true
   if(mode !== 'units') return false

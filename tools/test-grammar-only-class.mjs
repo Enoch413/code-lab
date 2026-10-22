@@ -98,4 +98,49 @@ state.currentProfile = { role: 'admin', classIds: [classId] }
 assert.equal(context.canAccessPortalScreen('admin-screen'), true)
 state.currentUser = null
 assert.equal(context.isGrammarOnlyStudent(), false)
-console.log('GRAMMAR-only class navigation and data guards: OK')
+// Instructor reading is separate from the full administrator's student-permission editor.
+const grammarState = {currentUser:{uid:'synthetic-instructor'},currentProfile:{role:'admin',adminScope:'assigned',classIds:['synthetic-class']}}
+const grammarNodes = Object.fromEntries(['portal-grammar-lab-btn','drawer-grammar-lab-btn'].map(id=>[id,{
+  hidden:true,disabled:true,attributes:{},setAttribute(key,value){this.attributes[key]=value},
+  classList:{toggle(key,value){grammarNodes[id][key]=value}}
+}]))
+const grammarContext = vm.createContext({
+  portalState:grammarState,PORTAL_GRAMMAR_MANAGER_LOGIN_IDS:['synthetic-manager'],PORTAL_GRAMMAR_ACCESS_MODES:['none','all','units'],
+  getCurrentGrammarLoginId:()=>grammarState.currentProfile.loginId || 'synthetic-instructor',
+  getProfileGrammarUnitIds:profile=>profile?.grammarUnitIds || [],
+  buildGrammarObjectPathsForUnitIds:ids=>ids.map(id=>'videos/grammar/'+id+'.mp4'),
+  isGrammarOnlyStudent:()=>false,document:{getElementById:id=>grammarNodes[id]}
+})
+for(const name of ['getPortalRole','normalizeAdminScopeValue','getPortalAdminScope','isPortalAdmin','isPortalSuperAdmin'])vm.runInContext(definition(portal,name),grammarContext)
+for(const name of ['normalizeGrammarAccessMode','getProfileGrammarAccessMode','canManageGrammarAccess','canAccessGrammarPortal','canAccessGrammarUnit','canAccessGrammarObjectPath','syncGrammarAccessVisibility'])vm.runInContext(definition(source,name),grammarContext)
+for(const adminScope of ['assigned','all']){
+  grammarState.currentProfile={role:'admin',adminScope,classIds:[],grammarAccessMode:'none'}
+  assert.equal(grammarContext.canAccessGrammarPortal(),true,'Active instructors must see GRAMMAR')
+  assert.equal(grammarContext.canAccessGrammarUnit('synthetic-unit'),true)
+  assert.equal(grammarContext.canAccessGrammarObjectPath('videos/grammar/synthetic-unit.mp4'),true)
+  grammarContext.syncGrammarAccessVisibility()
+  assert.equal(grammarNodes['portal-grammar-lab-btn'].hidden,false)
+  assert.equal(grammarNodes['drawer-grammar-lab-btn'].disabled,false)
+  assert.equal(grammarContext.canManageGrammarAccess(),false,'Reading does not grant student-permission editing')
+}
+grammarState.currentProfile={role:'admin',adminScope:'assigned',loginId:'synthetic-manager'}
+assert.equal(grammarContext.canManageGrammarAccess(),false)
+grammarState.currentProfile.adminScope='all'
+assert.equal(grammarContext.canManageGrammarAccess(),true)
+grammarState.currentProfile={role:'student',grammarAccessMode:'units',grammarUnitIds:['assigned-unit']}
+assert.equal(grammarContext.canAccessGrammarUnit('assigned-unit'),true)
+assert.equal(grammarContext.canAccessGrammarUnit('unassigned-unit'),false)
+assert.equal(grammarContext.canAccessGrammarObjectPath('videos/grammar/unassigned-unit.mp4'),false)
+grammarState.currentProfile.grammarAccessMode='none'
+assert.equal(grammarContext.canAccessGrammarPortal(),false)
+grammarState.currentProfile={role:'student',grammarAccessMode:'all'}
+assert.equal(grammarContext.canAccessGrammarUnit('synthetic-unit'),true)
+for(const profile of [{role:'admin',adminScope:'all',loginDisabled:true},{role:'admin',adminScope:'assigned',loginDisabled:true},{role:'student',grammarAccessMode:'all',loginDisabled:true}]){
+  grammarState.currentProfile=profile
+  assert.equal(grammarContext.canAccessGrammarPortal(),false)
+  assert.equal(grammarContext.canAccessGrammarObjectPath('videos/grammar/synthetic-unit.mp4'),false)
+}
+grammarState.currentUser=null
+assert.equal(grammarContext.canAccessGrammarPortal(),false)
+assert.equal(grammarContext.canAccessGrammarObjectPath('videos/grammar/synthetic-unit.mp4'),false)
+console.log('GRAMMAR-only navigation, instructor reading and separate student-permission editing: OK')
