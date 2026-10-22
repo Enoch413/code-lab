@@ -697,8 +697,14 @@ function syncPrepWatchStatus(){
   const summary = document.getElementById('prep-watch-summary')
   const retry = document.getElementById('prep-watch-retry')
   const tracker = prepWatchTracker
-  if(status) status.textContent = tracker ? tracker.message : '자동 기록은 로그인한 학생이 CODE LAB 안에서 재생할 때 적용됩니다.'
-  if(summary) summary.textContent = tracker && tracker.progress ? (formatPrepWatchProgress(tracker.progress) + (tracker.legacyDone ? ' · 기존 수동 완료 기록 보존' : '')) : '기존 수동 완료 기록은 보존되며 자동 시청 시간으로 환산되지 않습니다.'
+  if(status){
+    status.textContent = tracker ? tracker.message : ''
+    status.hidden = !status.textContent
+  }
+  if(summary){
+    summary.textContent = tracker && tracker.progress ? (formatPrepWatchProgress(tracker.progress) + (tracker.legacyDone ? ' · 기존 수동 완료 기록 보존' : '')) : ''
+    summary.hidden = !summary.textContent
+  }
   if(retry) retry.hidden = !tracker || !tracker.error
 }
 

@@ -5706,6 +5706,10 @@ body.app-screen-study-cafe .app-chrome{
   margin-top:16px;
 }
 
+#study-screen #stage-actions [hidden]{
+  display:none;
+}
+
 #study-screen #stage-actions .btn{
   flex:1 1 180px;
   min-height:46px;

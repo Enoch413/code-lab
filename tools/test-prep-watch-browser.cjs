@@ -97,10 +97,15 @@ exports.runBrowserChecks=async({alice,material,seed})=>{
       },{uid:alice.uid,token:alice.token,materialId,provider,nativePath});
       for(const name of ['parsePassageVideoUrl','sanitizePortalPrepProgressSegment','getPortalPrepProgressSetId','getPortalPrepProgressPassageId','normalizePortalPrepProgressIndex','buildPortalPrepVideoProgressDocId','normalizePortalPrepVideoProgressRecord','getPortalPrepVideoProgressUserId','mergePortalPrepVideoProgressCache','getPortalPrepVideoProgressRowTime','findPortalPrepVideoProgressRow','applyPortalPrepVideoProgressRowsToCurrentPrepClass'])await page.addScriptTag({content:functions.get(name)});
       await page.addScriptTag({content:read('rotation_prep_ui.js')});
+      await page.evaluate(()=>renderStageActions());
+      for(const id of ['prep-watch-summary','prep-watch-status','prep-watch-retry'])assert.equal(await page.locator('#'+id).isVisible(),false,'No student tracking: hide empty notices and reconnect control');
       await page.evaluate(()=>{window.renderPassageScreen=()=>listRenders++;window.renderClassSummary=()=>{};renderStudy();prepareNativePlayer()});
       await wait('Initial server connection',()=>prepWatchTracker?.sessionId && !prepWatchTracker.busy && prepWatchTracker.sequence>=1);
       assert.equal(await page.locator('button[onclick="markPassageDone()"]').count(),0);
       assert.equal(await page.locator('#prep-watch-status').getAttribute('role'),'status');
+      assert.equal(await page.locator('#prep-watch-status').isVisible(),true);
+      assert.equal(await page.locator('#prep-watch-summary').isVisible(),true);
+      assert.equal(await page.locator('#prep-watch-retry').isVisible(),false,'Healthy connection must hide retry despite button flex styling');
       assert.equal(await page.evaluate(()=>prepWatchTracker.progress.done),false);
       holdNext=scenario==='delayed-rate';
       await page.evaluate(()=>emitPlayback(1));
@@ -141,6 +146,7 @@ exports.runBrowserChecks=async({alice,material,seed})=>{
       await page.locator('#prep-watch-retry').click();
       await page.evaluate(()=>prepareNativePlayer());
       await wait('Completion retry',()=>prepWatchTracker?.progress?.done && !prepWatchTracker.busy);
+      assert.equal(await page.locator('#prep-watch-retry').isVisible(),false,'Successful retry hides the reconnect control again');
       const retried=requests.filter(request=>request.requestId===failed.requestId);
       assert.ok(retried.length>=2,'Reopening must retry the unacknowledged request');
       for(const request of retried)assert.deepEqual(request,failed,'Retry must submit exactly the same request');
