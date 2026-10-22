@@ -1,18 +1,18 @@
 {
-  "sourceCommit": "23cac1869478151de23e99efe85bb544bc422dfb",
+  "sourceCommit": "5b12f02d23674b1231a1ebac27ec018c4303388f",
   "rulesSha256": {
     "firestore.rules": "70e28878a4612215222ab506a759ff67f772e298346c422da591b72d708a8ad4",
     "storage.rules": "51d0fc31f1652438660db9b660d1e64f1030ce9fe97ece836a8376437766ff1a"
   },
   "fileHashes": {
-    "index.html": "694b7c31f46985491e1ab702fbaebe91c9a86b8e6f5c8683ad01f0089e0e0f46",
-    "ROTATION_PREP_MOBILE.html": "8dd5c38581184d15035a4cde523d6212752193bd064179eb7512a1ddb200effe",
-    "rotation_prep.css": "f1ae2a24abe03980821b57b32bcc36e965c59815c5645618c78b3e070e4840c4",
+    "index.html": "769a7c7e1a862d050cfdc4e5d83bddc92b5fceb90e8b5b8b8347eda14458597d",
+    "ROTATION_PREP_MOBILE.html": "16260dc732493fb505aa18e269403fe32d53eb451e61d5899b349f311c40463a",
+    "rotation_prep.css": "482de12f369794b2e02c81123a3429ac7db66689152caf9480d574f0f18ee7fa",
     "firebase-config.js": "8066b40a085acc7c7d5ba4ec0da743621ee9d70460c4fff244f7b0599d6dfde6",
     "rotation_prep_core.js": "3ee39e933183ecb17186a2d3942b42a6ce7ab574208154dbc64b9f0a87552ed3",
     "rotation_prep_bundle.js": "6a10019b0fa216f12746b4d2f256807a322cc7130a85fcaa4a7bbe0432540802",
     "rotation_prep_passages.js": "fd1c0ea52e393dd5e4f6225eda9153c638cefda958512e8dcb66ad27d149428c",
-    "rotation_prep_ui.js": "e08a390910cc0155f3c2a7123e11e8a2cdf5cc0fb22be731697df2997eb46cb1",
+    "rotation_prep_ui.js": "6166135f7048cc806483bfb88c3dbdbee6835cb6d2ffcd8ef846bcdd7ff4082f",
     "rotation_portal.js": "941cedd64354bef80da512aafcc9ff93a9c8507e398dd940ebf2cccbe6f65acc",
     "rotation_portal_enhancements.js": "80f7e06218da0509fc40d3a079914b37a0c2035a60c230b774b8a7ad58e867aa",
     "grammar_catalog.js": "6e75fd95a837488e5023b5a57ac69e96515f180027830acb6f4acfe72a80819e",
