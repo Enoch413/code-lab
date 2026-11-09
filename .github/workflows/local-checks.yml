@@ -38,6 +38,7 @@ jobs:
       - run: npm ci --prefix functions --ignore-scripts
       - run: npm ci --prefix tools/browser-tests --ignore-scripts
       - run: node tools/browser-tests/node_modules/playwright/cli.js install --with-deps chromium
+      - run: node tools/test-check-classes-browser.cjs
       - run: node tools/test-prep-watch-local.mjs
   python-lock:
     runs-on: windows-latest

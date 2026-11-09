@@ -111,7 +111,8 @@ function harness(){
   const context = vm.createContext({
     portalState, AbortController,
     window: { ROTATION_FIREBASE_CONFIG: { projectId: 'test-project' } },
-    PORTAL_CLOUD_DOCS: { check: 'check-data' }, PORTAL_CONFIG: {},
+    PORTAL_CLOUD_DOCS: { check: 'check-data' }, PORTAL_CLASS_CATALOG_DOC: 'prep-classes', PORTAL_CONFIG: {},
+    PORTAL_CLASS_REFERENCE: [{ id: '2gangseo-a', name: '2강서A' }], getProfileClassIds: () => ['2gangseo-a'], ensurePortalCheckSelection(){},
     PORTAL_CLOUD_SET_COLLECTIONS: { check: 'portalCheckSets', prep: 'portalPrepSets' },
     prepClasses: [{ id: '2gangseo-a', name: '2강서A' }],
     document: { getElementById: id => nodes[id] },
@@ -138,7 +139,7 @@ function harness(){
           : records.map(record => ({ document: { name: 'projects/test-project/databases/(default)/documents/portalCheckSets/' + record.docId, fields: encode(record).mapValue.fields } }))
         return { ok: true, status: 200, json: async () => result }
       }
-      assert.ok(url.endsWith('/portalContent/check-data'))
+      assert.ok(url.endsWith('/portalContent/check-data') || url.endsWith('/portalContent/prep-classes'))
       return { ok: false, status: 404 }
     }
   })

@@ -111,7 +111,8 @@ function updatePrepPassageAdminQuickActions(){
 
 function renderClassList(){
   const container = document.getElementById('class-list')
-  const visibleEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
+  const checkContext = typeof portalState !== 'undefined' && portalState.classSelectionReturnScreen === 'check-screen'
+  const visibleEntries = checkContext ? getVisiblePortalCheckClassEntries() : typeof window.getVisiblePortalPrepClassEntries === 'function'
     ? window.getVisiblePortalPrepClassEntries()
     : prepClasses.map(function(classInfo, index){
       return { classInfo: classInfo, index: index }
@@ -125,17 +126,17 @@ function renderClassList(){
   container.innerHTML = visibleEntries.map(function(entry, visibleIndex){
     const classInfo = entry.classInfo
     const index = entry.index
-    const studyCount = studySets.filter(function(studySet){
+    const studyCount = checkContext ? (portalState.checkData.checkSets || []).filter(function(set){ return (set.classIds || []).indexOf(classInfo.id) >= 0 }).length : studySets.filter(function(studySet){
       return studySet.classAssignments.some(function(assignment){
         return assignment.classId === classInfo.id && assignment.passageIndexes.length > 0
       })
     }).length
 
     return '' +
-      '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="requestClassAccess(' + index + ')">' +
+      '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="' + (checkContext ? 'selectPortalCheckClass' : 'requestClassAccess') + '(' + index + ')">' +
         '<div class="class-body">' +
           '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
-          '<div class="class-preview">' + studyCount + '개의 학습 세트가 준비되어 있습니다.</div>' +
+          '<div class="class-preview">' + studyCount + '개의 ' + (checkContext ? 'CHECK' : '학습') + ' 세트가 준비되어 있습니다.</div>' +
           '<div class="class-tags">' +
             '<span class="class-tag">세트 ' + studyCount + '</span>' +
             '<span class="class-tag">' + (classInfo.password ? '비밀번호 있음' : '바로 입장') + '</span>' +

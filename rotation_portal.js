@@ -952,24 +952,41 @@ function getVisiblePortalPrepClassEntries(){
   })
 }
 
+function getVisiblePortalCheckClassEntries(){
+  if(!portalState.currentUser || (portalState.currentProfile && portalState.currentProfile.loginDisabled)) return []
+  const classes = Array.isArray(portalState.checkData && portalState.checkData.classes) ? portalState.checkData.classes : []
+  const allowedIds = getProfileClassIds()
+  return classes.map(function(classInfo, index){
+    return { classInfo: classInfo, index: index }
+  }).filter(function(entry){
+    return isPortalSuperAdmin() || allowedIds.indexOf(entry.classInfo.id) >= 0
+  })
+}
+
 function ensurePortalCheckSelection(){
-  const visibleEntries = getVisiblePortalPrepClassEntries()
-  if(!visibleEntries.length) return false
-  const currentEntry = visibleEntries.find(function(entry){
-    return entry.index === currentClassIndex
-  }) || visibleEntries[0]
-  if(currentClassIndex !== currentEntry.index){
-    selectClass(currentEntry.index, { stayOnCurrent: true })
-  }
+  const currentEntry = getActivePortalCheckClass()
+  if(!currentEntry) return false
+  portalState.checkClassId = currentEntry.classInfo.id
   return true
 }
 
 function getActivePortalCheckClass(){
-  const visibleEntries = getVisiblePortalPrepClassEntries()
+  const visibleEntries = getVisiblePortalCheckClassEntries()
   if(!visibleEntries.length) return null
   return visibleEntries.find(function(entry){
-    return entry.index === currentClassIndex
+    return entry.classInfo.id === portalState.checkClassId
   }) || visibleEntries[0]
+}
+
+function selectPortalCheckClass(index){
+  if(!isPortalAdmin() || portalState.classSelectionReturnScreen !== 'check-screen') return false
+  const entry = getVisiblePortalCheckClassEntries().find(function(row){ return row.index === index })
+  if(!entry) return false
+  portalState.checkClassId = entry.classInfo.id
+  portalState.classSelectionReturnScreen = ''
+  renderCheckScreen()
+  activatePortalScreen('check-screen')
+  return true
 }
 
 function getActivePortalCheckClassIds(){
@@ -1069,9 +1086,28 @@ async function openCheckPortal(){
   activatePortalScreen('check-screen')
 }
 
-function openCheckClassPicker(){
+async function openCheckClassPicker(){
+  if(!isPortalAdmin()) return false
+  const userId = portalState.currentUser && portalState.currentUser.uid
+  const session = portalState.userSession
+  const screen = document.querySelector('.screen.active')
+  const isCurrent = function(){
+    return portalState.userSession === session && portalState.currentUser && portalState.currentUser.uid === userId && document.querySelector('.screen.active') === screen
+  }
+  try{
+    await ensureCheckData(false)
+  }catch(error){
+    if(isCurrent()){
+      if(typeof showCheckLoadError === 'function') showCheckLoadError(error)
+      else showToast('CHECK 반 정보를 불러오지 못했습니다. 다시 시도해 주세요.', 'var(--red)')
+    }
+    return false
+  }
+  if(!isCurrent() || !isPortalAdmin()) return false
   portalState.classSelectionReturnScreen = 'check-screen'
-  showClassScreen()
+  renderClassList()
+  activatePortalScreen('class-screen')
+  return true
 }
 
 async function refreshCheckDataAndRender(){
@@ -1189,7 +1225,7 @@ function renderCheckScreen(){
   const activeClassName = activeClassEntry && activeClassEntry.classInfo
     ? classInfoName(activeClassEntry.classInfo)
     : (getProfileClassNames()[0] || '반 미지정')
-  const visibleClassEntries = getVisiblePortalPrepClassEntries()
+  const visibleClassEntries = getVisiblePortalCheckClassEntries()
   const checkChangeClassBtn = document.getElementById('check-change-class-btn')
   const checkAdminActions = document.getElementById('check-admin-actions')
   const checkAdminClassBtn = document.getElementById('check-admin-class-btn')
@@ -2467,6 +2503,7 @@ function showPortalScreen(){
   }
   updatePortalUserCard()
   mountPortalPasswordButton()
+  portalState.classSelectionReturnScreen = ''
   activatePortalScreen('portal-screen')
 }
 

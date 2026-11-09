@@ -76,7 +76,7 @@ const plain = value => JSON.parse(JSON.stringify(value))
 // A previous account's delayed response cannot overwrite the new account's cache or promise.
 {
   let resolveOld
-  const state = {currentUser:{uid:'alice'},userSession:1,contentMeta:{},checkData:{secret:'old'},checkDataUserId:'alice'}
+  const state = {currentUser:{uid:'alice'},userSession:1,contentMeta:{},checkData:{secret:'old'},checkDataUserId:'alice',checkClassId:'a',classSelectionReturnScreen:'check-screen'}
   const ctx = vm.createContext({portalState:state,console:{error(){}},isGrammarOnlyStudent:()=>false,
     loadPortalCheckDataFromSources:()=>new Promise(resolve=>{resolveOld=resolve})})
   load(ctx,['ensureCheckData','resetPortalUserState'])
@@ -89,6 +89,8 @@ const plain = value => JSON.parse(JSON.stringify(value))
   resolveOld({secret:'alice'})
   await assert.rejects(pending,/user changed/)
   assert.equal(state.checkData,null)
+  assert.equal(state.checkClassId,'')
+  assert.equal(state.classSelectionReturnScreen,'')
   assert.equal(state.checkSyncPromise,newPromise)
   const keys=[]
   Object.assign(ctx,{getCurrentClass:()=>({id:'a'}),baseProgressKey:'prep',sanitizeId:value=>value,loadProgress(){keys.push(ctx.progressKey)},window:{}})

@@ -507,7 +507,8 @@ function overrideSharedClassListRenderer(){
     const container = document.getElementById('class-list')
     if(!container) return
 
-    const visibleEntries = typeof window.getVisiblePortalPrepClassEntries === 'function'
+    const checkContext = isCheckClassSelectionContext()
+    const visibleEntries = checkContext ? getVisiblePortalCheckClassEntries() : typeof window.getVisiblePortalPrepClassEntries === 'function'
       ? window.getVisiblePortalPrepClassEntries()
       : prepClasses.map(function(classInfo, index){
           return { classInfo: classInfo, index: index }
@@ -521,7 +522,7 @@ function overrideSharedClassListRenderer(){
     container.innerHTML = visibleEntries.map(function(entry, visibleIndex){
       const classInfo = entry.classInfo
       const index = entry.index
-      const studyCount = studySets.filter(function(studySet){
+      const studyCount = checkContext ? 0 : studySets.filter(function(studySet){
         return studySet.classAssignments.some(function(assignment){
           return assignment.classId === classInfo.id && assignment.passageIndexes.length > 0
         })
@@ -531,7 +532,7 @@ function overrideSharedClassListRenderer(){
       const primaryTagText = portalCardMeta.primaryTag || ('세트 ' + studyCount)
 
       return '' +
-        '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="requestClassAccess(' + index + ')">' +
+        '<button type="button" data-ui-icon-skip="true" class="class-item" onclick="' + (checkContext ? 'selectPortalCheckClass' : 'requestClassAccess') + '(' + index + ')">' +
         '<div class="class-body">' +
             '<div class="class-title">' + escapeHtml(classInfo.name) + '</div>' +
             '<div class="class-preview">' + escapeHtml(previewText) + '</div>' +
@@ -3175,6 +3176,7 @@ function syncAppHistoryState(screenId, replaceStateOnly){
 
 function captureAppRoute(screenId){
   const route = { screenId: screenId }
+  if(screenId === 'class-screen' && isCheckClassSelectionContext()) return Object.assign(route, { checkClassPicker: true })
   if(PREP_SCREEN_IDS.indexOf(screenId) >= 0 && typeof window.capturePrepNavigationState === 'function'){
     return window.capturePrepNavigationState(screenId)
   }
@@ -3214,6 +3216,7 @@ function restoreAppRoute(route){
     return
   }
   if(!ensurePortalScreenAccess(route.screenId)) return
+  if(route.screenId === 'class-screen' && route.checkClassPicker) return openCheckClassPicker()
 
   if(route.screenId === 'auth-screen'){
     if(portalState.currentUser){
@@ -3367,6 +3370,7 @@ function syncCheckJumpButtonVisibility(){
 
 
 function showPortalScreen(){
+  portalState.classSelectionReturnScreen = ''
   if(!portalState.currentUser){
     showAuthScreen('')
     return
@@ -3481,14 +3485,14 @@ async function loadCloudContentDoc(docId){
     if(!isPortalSuperAdmin()) return null
     try{
       const reference = portalState.db.collection('portalContent').doc(docId)
-      const snapshot = docId === PORTAL_CLOUD_DOCS.check
+      const snapshot = (docId === PORTAL_CLOUD_DOCS.check || docId === PORTAL_CLASS_CATALOG_DOC)
         ? await withPortalReadTimeout(reference.get({ source: 'server' }), 8000)
         : await reference.get()
       if(!snapshot.exists) return null
       return snapshot.data() || null
     }catch(error){
       console.warn('portalContent read failed:', error && error.message ? error.message : error)
-      if(docId === PORTAL_CLOUD_DOCS.check){
+      if(docId === PORTAL_CLOUD_DOCS.check || docId === PORTAL_CLASS_CATALOG_DOC){
         const doc = await readPortalFirestoreRest('/portalContent/' + encodeURIComponent(docId))
         if(doc && (typeof doc.name !== 'string' || !doc.fields)) throw new Error('Invalid CHECK content document')
         return doc ? decodePortalFirestoreValue({ mapValue: { fields: doc.fields } }) : null
@@ -3595,6 +3599,7 @@ function renderPrepEntryState(phase){
 }
 
 async function openPrepPortal(options){
+  portalState.classSelectionReturnScreen = ''
   if(!ensurePortalScreenAccess('passage-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
@@ -3685,6 +3690,7 @@ async function ensureCheckData(forceReload){
 }
 
 async function openCheckPortal(){
+  portalState.classSelectionReturnScreen = ''
   if(!ensurePortalScreenAccess('check-screen')) return
   if(!portalState.currentUser){
     showAuthScreen('')
@@ -3703,6 +3709,7 @@ async function openCheckPortal(){
   try{
     await ensureCheckData(false)
     if(!portalState.currentUser || portalState.currentUser.uid !== userId) return
+    ensurePortalCheckSelection()
     if(!portalState.firebaseEnabled) ensureCurrentLocalUserHasClass()
     if(getCurrentActiveScreenId() === 'check-screen') renderCheckScreen()
   }catch(error){
@@ -3735,6 +3742,8 @@ async function refreshCheckDataAndRender(){
     renderCheckScreen()
   }else if(document.getElementById('check-set-screen').classList.contains('active') && portalState.currentCheckSet){
     await openCheckSetPortal(portalState.currentCheckSet.id, { preserveHistory: true })
+  }else if(getCurrentActiveScreenId() === 'class-screen' && isCheckClassSelectionContext()){
+    renderClassList()
   }
   updateAdminUploadStatus()
   showToast('CHECK 데이터를 새로 불러왔습니다.', 'var(--green)')
@@ -3912,7 +3921,7 @@ async function openAdminPortal(){
 
 function refreshPortalData(){
   const screenId = getCurrentActiveScreenId()
-  if(screenId === 'check-screen' || screenId === 'check-set-screen'){
+  if(screenId === 'check-screen' || screenId === 'check-set-screen' || (screenId === 'class-screen' && isCheckClassSelectionContext())){
     return refreshCheckDataAndRender()
   }
   if(screenId === 'admin-portal-screen'){
@@ -8542,7 +8551,8 @@ async function loadPortalCheckDataFromSources(){
   const userId = portalState.currentUser && portalState.currentUser.uid
   const sources = await Promise.all([
     loadCloudContentDoc(PORTAL_CLOUD_DOCS.check),
-    loadCloudSetDocs('check')
+    loadCloudSetDocs('check'),
+    loadCloudContentDoc(PORTAL_CLASS_CATALOG_DOC)
   ])
   if(portalState.userSession !== session || !portalState.currentUser || portalState.currentUser.uid !== userId) throw new Error('CHECK user changed')
   const legacyDoc = sources[0]
@@ -8551,7 +8561,9 @@ async function loadPortalCheckDataFromSources(){
   const prepClassEntries = normalizePortalCheckClassList(prepClasses.map(function(classInfo){
     return { id: classInfo.id, name: classInfo.name }
   }))
+  const catalogClasses = sources[2] && sources[2].payload && sources[2].payload.classes || []
   const classes = mergePortalCheckClasses(
+    catalogClasses,
     legacyData ? legacyData.classes : [],
     prepClassEntries,
     portalState.checkData && portalState.checkData.classes ? portalState.checkData.classes : []
@@ -8575,6 +8587,14 @@ async function loadPortalCheckDataFromSources(){
     })
   }).filter(Boolean)
 
+  const names = new Map(mergePortalCheckClasses(PORTAL_CLASS_REFERENCE, classes).map(function(row){ return [row.id, row.name] }))
+  const assignedClasses = getProfileClassIds().map(function(id){ return { id: id, name: names.get(id) || id } })
+  const materialClasses = legacySets.concat(uploadedSets).flatMap(function(set){
+    return (Array.isArray(set.classIds) ? set.classIds : []).map(function(id){ return { id: id, name: names.get(id) || id } })
+  })
+  const availableClasses = mergePortalCheckClasses(classes, materialClasses, assignedClasses)
+  const scopedClasses = isPortalSuperAdmin() ? availableClasses : availableClasses.filter(function(row){ return getProfileClassIds().indexOf(row.id) >= 0 })
+
   portalState.checkSetInventory = buildPortalCheckSetInventory(legacySets, setDocs)
 
   if(!legacyDoc && !setDocs.length && !portalState.firebaseEnabled){
@@ -8586,7 +8606,7 @@ async function loadPortalCheckDataFromSources(){
     updatedAt: getLatestPortalTimestamp([legacyDoc && legacyDoc.updatedAt].concat(setDocs.map(function(doc){
       return doc.updatedAt
     }))),
-    classes: classes,
+    classes: scopedClasses,
     checkSets: legacySets.concat(uploadedSets)
   })
 }
@@ -13231,6 +13251,8 @@ function resetPortalUserState(){
   portalState.pendingCounselRequestId = ''
   portalState.isSubmittingCounsel = false
   portalState.checkDataUserId = ''
+  portalState.checkClassId = ''
+  portalState.classSelectionReturnScreen = ''
   portalState.contentMeta = {}
   portalState.examState = null
   portalState.examStatePromise = null
